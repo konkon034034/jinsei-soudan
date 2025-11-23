@@ -23,11 +23,20 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y imagemagick ffmpeg
+        # ImageMagickのポリシーを修正（PDF/動画処理を許可）
+        sudo sed -i 's/rights="none" pattern="PDF"/rights="read|write" pattern="PDF"/' /etc/ImageMagick-6/policy.xml
 
     - name: 依存関係インストール
       run: |
         pip install --upgrade pip
         pip install -r requirements.txt
+
+    - name: moviepy設定ファイルを作成
+      run: |
+        mkdir -p ~/.config
+        cat > ~/.moviepy_config.txt << EOF
+        IMAGEMAGICK_BINARY=/usr/bin/convert
+        EOF
 
     - name: Google認証情報を設定
       env:
