@@ -9,7 +9,10 @@ google-auth-httplib2>=0.2.0
 gspread>=6.1.0
 
 # 動画・音声処理
-moviepy>=1.0.3
+moviepy==1.0.3
+imageio==2.25.1
+imageio-ffmpeg==0.4.8
+decorator==4.4.2
 pydub>=0.25.1
 Pillow>=10.4.0
 
