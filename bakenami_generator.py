@@ -34,7 +34,7 @@ import numpy as np
 # 定数設定
 # ============================================================
 SCRIPT_NAME = "朝ドラ「ばけばけ」動画生成システム"
-VERSION = "2.0.0"
+VERSION = "2.1.0"  # モデル対応版へバージョンアップ
 OUTPUT_DIR = Path("output")
 TEMP_DIR = Path("temp")
 ASSETS_DIR = Path("assets")
@@ -104,7 +104,7 @@ def get_jst_now():
     return datetime.now(jst)
 
 def find_working_model():
-    """利用可能なGeminiモデルを探す"""
+    """利用可能なGeminiモデルを探す（2025年最新環境対応版）"""
     
     # APIキーの確認
     api_key = os.getenv('GEMINI_API_KEY')
@@ -113,48 +113,67 @@ def find_working_model():
     
     print(f"  APIキー: {api_key[:20]}... (長さ: {len(api_key)})")
     
-    # 利用可能なモデルをリスト表示（デバッグ用）
+    # 1. APIから実際に利用可能なモデル一覧を取得
     try:
         print("  利用可能なモデル一覧を取得中...")
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                print(f"    - {m.name}")
+        # モデル名リストを取得
+        available_models = [m.name for m in genai.list_models()]
+        # デバッグ用（多すぎる場合はコメントアウト）
+        # print(f"  取得したモデル数: {len(available_models)}")
     except Exception as e:
         print(f"  ⚠️ モデル一覧の取得失敗: {e}")
+        available_models = []
     
-    # 2024年11月時点で利用可能なモデル（優先順位順）
-    model_names = [
-        "gemini-1.5-flash",          # 最も一般的
-        "gemini-1.5-pro",            # Pro版
-        "gemini-pro",                # 基本Pro
-        "models/gemini-1.5-flash",   # modelsプレフィックス付き
-        "models/gemini-1.5-pro",
-        "models/gemini-pro",
+    # 2. 優先順位リスト（2025年11月時点の最新モデルを優先）
+    priority_candidates = [
+        "gemini-2.5-flash",          # 最新・高速（最優先）
+        "gemini-2.5-pro",            # 最新・高性能
+        "gemini-2.0-flash",          # 安定版
+        "gemini-2.0-flash-exp",      # 実験的モデル
+        "gemini-2.0-pro-exp",
+        "gemini-1.5-flash",          # 旧バージョン
+        "gemini-1.5-pro",
+        "gemini-pro"
     ]
     
-    for model_name in model_names:
-        try:
-            print(f"  試行中: {model_name}...")
-            model = genai.GenerativeModel(model_name)
-            
-            # 簡単なテストを実行
-            response = model.generate_content("Hello, this is a test")
-            
-            if response and response.text:
-                print(f"  ✅ {model_name} が利用可能です！")
-                print(f"  テスト応答: {response.text[:50]}...")
-                return model, model_name
-                
-        except Exception as e:
-            error_msg = str(e)
-            if "API key not valid" in error_msg:
-                print(f"  ❌ APIキーが無効です")
-                raise Exception("APIキーが無効です。Google AI Studioで新しいキーを取得してください")
-            elif "not found" in error_msg or "404" in error_msg:
-                print(f"  ❌ {model_name} は見つかりません")
-            else:
-                print(f"  ❌ {model_name} エラー: {error_msg[:100]}")
-            continue
+    # 3. 優先リスト順にチェック
+    for candidate in priority_candidates:
+        # APIは "models/gemini-..." または "gemini-..." の形式
+        # 両方のパターンでチェックする
+        checks = [candidate, f"models/{candidate}"]
+        
+        for name in checks:
+            if name in available_models:
+                try:
+                    print(f"  試行中: {name}...")
+                    model = genai.GenerativeModel(name)
+                    
+                    # 疎通テスト
+                    response = model.generate_content("Hello, test.")
+                    if response:
+                        print(f"  ✅ {name} が利用可能です！")
+                        return model, name
+                        
+                except Exception as e:
+                    # 見つかっても権限などでエラーになる場合がある
+                    print(f"  ❌ {name} エラー: {str(e)[:100]}")
+                    continue
+
+    # 4. 優先リストになくても、'flash' または 'pro' を含むモデルがあればそれを使う（動的フォールバック）
+    print("  ⚠️ 推奨リスト内のモデルが見つかりません。代替モデルを検索します...")
+    for model_name in available_models:
+        if "gemini" in model_name and ("flash" in model_name or "pro" in model_name):
+            # 画像生成用や特殊用途(visionなど)を除外する簡易フィルタ
+            if "image" not in model_name and "vision" not in model_name:
+                try:
+                    print(f"  試行中（代替）: {model_name}...")
+                    model = genai.GenerativeModel(model_name)
+                    response = model.generate_content("Test")
+                    if response:
+                        print(f"  ✅ 代替モデルを選択しました: {model_name}")
+                        return model, model_name
+                except:
+                    continue
     
     # すべて失敗した場合
     error_msg = """
