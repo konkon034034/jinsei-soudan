@@ -105,38 +105,73 @@ def get_jst_now():
 
 def find_working_model():
     """利用可能なGeminiモデルを探す"""
-    # 2024年11月時点で利用可能なモデル
+    
+    # APIキーの確認
+    api_key = os.getenv('GEMINI_API_KEY')
+    if not api_key:
+        raise Exception("GEMINI_API_KEY環境変数が設定されていません")
+    
+    print(f"  APIキー: {api_key[:20]}... (長さ: {len(api_key)})")
+    
+    # 利用可能なモデルをリスト表示（デバッグ用）
+    try:
+        print("  利用可能なモデル一覧を取得中...")
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                print(f"    - {m.name}")
+    except Exception as e:
+        print(f"  ⚠️ モデル一覧の取得失敗: {e}")
+    
+    # 2024年11月時点で利用可能なモデル（優先順位順）
     model_names = [
-        "gemini-2.0-flash-exp",      # 最新の実験版（2024年11月）
-        "gemini-1.5-flash",          # 安定版Flash
-        "gemini-1.5-flash-latest",   # Flash最新版
+        "gemini-1.5-flash",          # 最も一般的
         "gemini-1.5-pro",            # Pro版
-        "gemini-1.5-pro-latest",     # Pro最新版
         "gemini-pro",                # 基本Pro
-        "models/gemini-2.0-flash-exp",  # modelsプレフィックス付き
-        "models/gemini-1.5-flash",
+        "models/gemini-1.5-flash",   # modelsプレフィックス付き
         "models/gemini-1.5-pro",
+        "models/gemini-pro",
     ]
     
     for model_name in model_names:
         try:
             print(f"  試行中: {model_name}...")
             model = genai.GenerativeModel(model_name)
+            
             # 簡単なテストを実行
-            response = model.generate_content("Say hello")
+            response = model.generate_content("Hello, this is a test")
+            
             if response and response.text:
                 print(f"  ✅ {model_name} が利用可能です！")
+                print(f"  テスト応答: {response.text[:50]}...")
                 return model, model_name
+                
         except Exception as e:
-            error_msg = str(e)[:100]  # エラーメッセージの一部のみ表示
-            print(f"  ❌ {model_name} は利用できません")
+            error_msg = str(e)
+            if "API key not valid" in error_msg:
+                print(f"  ❌ APIキーが無効です")
+                raise Exception("APIキーが無効です。Google AI Studioで新しいキーを取得してください")
+            elif "not found" in error_msg or "404" in error_msg:
+                print(f"  ❌ {model_name} は見つかりません")
+            else:
+                print(f"  ❌ {model_name} エラー: {error_msg[:100]}")
             continue
     
     # すべて失敗した場合
-    raise Exception(
-        "利用可能なGeminiモデルが見つかりませんでした。\n"
-        "APIキーが正しく設定されているか確認してください。"
-    )
+    error_msg = """
+利用可能なGeminiモデルが見つかりませんでした。
+
+以下を確認してください：
+1. GEMINI_API_KEY が正しく設定されているか
+2. APIキーが有効か（Google AI Studioで確認）
+3. APIキーに適切な権限があるか
+
+APIキーの取得方法：
+1. https://aistudio.google.com/apikey にアクセス
+2. 「Get API Key」をクリック
+3. 新しいAPIキーを生成
+4. GitHub Secretsに設定
+"""
+    raise Exception(error_msg)
 
 # ============================================================
 # メインクラス
