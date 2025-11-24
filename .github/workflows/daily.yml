@@ -1,0 +1,49 @@
+name: Daily Bakenami Video Generation
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # 毎日UTC 0時 (日本時間9時)
+  workflow_dispatch:  # 手動実行も可能
+
+jobs:
+  generate-video:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libavcodec-extra
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install google-generativeai google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client gspread moviepy pillow pydub
+
+      - name: Check available models
+        run: |
+          echo "🔍 利用可能なGeminiモデルを確認中..."
+          python -u check_models.py 2>&1 || echo "⚠️ モデル確認でエラーが発生しましたが、続行します"
+        continue-on-error: true
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+      - name: Run script
+        run: python -u bakenami_generator_auto.py 2>&1 || { echo "ERROR: Script failed with exit code $?"; exit 1; }
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
+          BACKGROUND_IMAGE_ID: ${{ secrets.BACKGROUND_IMAGE_ID }}
+          CHARACTER1_IMAGE_ID: ${{ secrets.CHARACTER1_IMAGE_ID }}
+          CHARACTER2_IMAGE_ID: ${{ secrets.CHARACTER2_IMAGE_ID }}
+          BGM_FILE_ID: ${{ secrets.BGM_FILE_ID }}
