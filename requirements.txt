@@ -1,21 +1,20 @@
-# 朝ドラ「ばけばけ」動画生成システム - 依存パッケージ
+# Google関連
+google-generativeai>=0.3.0
+google-auth>=2.16.0
+google-auth-oauthlib>=1.0.0
+google-auth-httplib2>=0.1.0
+google-api-python-client>=2.70.0
+gspread>=5.7.0
 
-# Google APIs
-google-generativeai>=0.8.0
-google-api-python-client>=2.150.0
-google-auth>=2.35.0
-google-auth-oauthlib>=1.2.0
-google-auth-httplib2>=0.2.0
-gspread>=6.1.0
+# 画像・動画処理
+Pillow>=10.0.0
+opencv-python-headless>=4.8.0
 
-# 動画・音声処理
-moviepy==1.0.3
-imageio==2.25.1
-imageio-ffmpeg==0.4.8
-decorator==4.4.2
+# 音声処理
+gtts>=2.3.0
 pydub>=0.25.1
-Pillow>=10.4.0
 
 # その他
-requests>=2.32.0
-python-dotenv>=1.0.0
+numpy>=1.24.0
+requests>=2.31.0
+python-dateutil>=2.8.2
