@@ -12,14 +12,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Pythonのバージョンを3.11に固定し、キャッシュキーを更新
+      # Pythonのバージョンを3.11に固定
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
-          # キャッシュをクリアするための新しいキー
-          cache-key: '3.11-v2' 
+          cache: 'pip' # キャッシュを有効化
 
       - name: Install dependencies
         run: |
