@@ -41,6 +41,6 @@ jobs:
       # ★★★ main.pyの場所をデバッグするためのステップ ★★★
       - name: Debug: List files
         run: ls -F
-
+        
       - name: Run video generation script
         run: python main.py
