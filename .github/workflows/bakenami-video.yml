@@ -1,4 +1,4 @@
-name: Daily Video Generation
+name: Video Generation
 
 on:
   workflow_dispatch:
