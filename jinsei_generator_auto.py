@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-人生相談チャンネル動画生成システム - 自動実行版
-GitHub Actionsからの自動実行用エントリーポイント
+人生相談チャンネル - 自動実行スクリプト
+GitHub Actionsから呼び出される
 """
 
-import sys
 import os
+import sys
 
 # メインモジュールをインポート
 from jinsei_generator import JinseiSoudanGenerator, print_header, print_error
@@ -30,8 +29,6 @@ def main():
         if result:
             print("\n" + "=" * 60)
             print("🎉 自動生成が完了しました！")
-            print(f"📊 処理行: {result['row_num']}")
-            print(f"📝 台本文字数: {len(result['script'])}文字")
             print("=" * 60)
             return 0
         else:
