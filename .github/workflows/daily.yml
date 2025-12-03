@@ -19,29 +19,6 @@ jobs:
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       
-      - name: Install depende
-cat > /Users/user/jinsei-soudan/.github/workflows/daily.yml << 'EOF'
-name: 人生相談チャンネル動画生成
-
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: '0 21 * * *'
-
-jobs:
-  generate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-      
-      - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      
       - name: Install dependencies
         run: pip install -r requirements.txt
       
