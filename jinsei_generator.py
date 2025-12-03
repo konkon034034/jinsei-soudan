@@ -444,13 +444,20 @@ class JinseiSoudanGenerator:
             except Exception as e:
                 print_error(f"Slack通知失敗（処理は続行）: {str(e)}")
 
-            # 7. ステータスを APPROVAL_PENDING_SCRIPT に更新
-            self.update_status(row_num, Status.APPROVAL_PENDING_SCRIPT)
 
-            print_header("処理完了", 2)
-            print_success(f"行 {row_num} の処理が完了しました")
-            print_info(f"台本文字数: {char_count:,}文字")
-            print_info("Slackで承認後、次工程へ進みます")
+            # 7. 音声・動画生成
+            video_path = generate_audio_and_video(script, row_num)
+            if video_path:
+                self.update_cell(row_num, Col.VIDEO_URL, str(video_path))
+                self.update_status(row_num, Status.COMPLETED)
+                print_header("処理完了", 2)
+                print_success(f"行 {row_num} の動画生成が完了しました")
+                print_info(f"動画: {video_path}")
+            else:
+                self.update_status(row_num, Status.APPROVAL_PENDING_SCRIPT)
+                print_header("処理完了", 2)
+                print_success(f"行 {row_num} の台本生成が完了しました")
+                print_info("動画生成に失敗。Slackで承認後、再試行してください")
 
             return True
 
@@ -533,3 +540,41 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         sys.exit(1)
+
+
+# ============================================================
+# 音声・動画生成（追加機能）
+# ============================================================
+
+def generate_audio_and_video(script: str, row_num: int) -> Optional[str]:
+    """台本から音声・動画を生成"""
+    from tts_generator import TTSGenerator
+    from video_generator_v2 import VideoGenerator
+    
+    try:
+        print_header("ステップ 4: 音声生成", 3)
+        tts = TTSGenerator()
+        audio_path = tts.generate_from_script(script)
+        
+        if not audio_path:
+            print_error("音声生成に失敗しました")
+            return None
+        
+        print_success(f"音声生成完了: {audio_path}")
+        
+        print_header("ステップ 5: 動画生成", 3)
+        video_gen = VideoGenerator()
+        video_path = video_gen.generate(script, audio_path)
+        
+        if not video_path:
+            print_error("動画生成に失敗しました")
+            return None
+        
+        print_success(f"動画生成完了: {video_path}")
+        return video_path
+        
+    except Exception as e:
+        print_error(f"音声・動画生成エラー: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return None
