@@ -1,36 +1,32 @@
-# APIキーやパスワードなどの秘密情報
-*.json
-credentials.json
-client_secret*.json
-token.json
-
-# Pythonの一時ファイル
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-
-# 仮想環境
+.env
+.venv
 venv/
-env/
 ENV/
 
-# IDEの設定ファイル
-.vscode/
+# Output files
+output/audio/*
+output/video/*
+output/temp/*
+output/backgrounds/*
+!output/audio/.gitkeep
+!output/video/.gitkeep
+!output/temp/.gitkeep
+!output/backgrounds/.gitkeep
+
+# IDE
 .idea/
+.vscode/
 *.swp
 *.swo
-*~
-
-# OS固有のファイル
 .DS_Store
-Thumbs.db
 
-# ログファイル
-*.log
-
-# 一時ファイル
-tmp/
-temp/
-*.tmp
+# Credentials
+*.json
+credentials/
+service_account.json
