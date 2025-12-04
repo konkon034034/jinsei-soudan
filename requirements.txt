@@ -16,3 +16,4 @@ unidic-lite>=1.0.8
 janome>=0.5.0
 google-auth-oauthlib
 google-api-python-client
+google-cloud-texttospeech
