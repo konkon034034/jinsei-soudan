@@ -564,7 +564,7 @@ def generate_audio_and_video(script: str, row_num: int) -> Optional[str]:
         
         print_header("ステップ 5: 動画生成", 3)
         video_gen = VideoGenerator()
-        video_path = video_gen.generate(script, audio_path)
+        video_path = video_gen.generate_from_audio_and_script(audio_path, script)
         
         if not video_path:
             print_error("動画生成に失敗しました")
