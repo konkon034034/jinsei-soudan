@@ -59,8 +59,29 @@ TEXT_WHITE = (255, 255, 255)
 TEXT_BLACK = (0, 0, 0)
 DIM_OVERLAY = (0, 0, 0, 120)
 
-# フォント設定
-FONT_PATH = "/System/Library/Fonts/ヒラギノ角ゴシック W7.ttc"  # 太いゴシック
+# フォント設定（環境に応じて自動選択）
+def _get_font_path():
+    """利用可能なフォントパスを取得"""
+    candidates = [
+        # Ubuntu (GitHub Actions)
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJKjp-Regular.otf",
+        "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf",
+        # Mac
+        "/System/Library/Fonts/ヒラギノ角ゴシック W7.ttc",
+        "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+        # Windows
+        "C:/Windows/Fonts/msgothic.ttc",
+        "C:/Windows/Fonts/meiryo.ttc",
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    # フォールバック: 見つからない場合は最初の候補を返す
+    return candidates[0]
+
+FONT_PATH = _get_font_path()
 FONT_SIZE_MAIN = 84  # さらに大きく
 
 # ドロップシャドウ設定
@@ -464,7 +485,19 @@ def create_frame(
     try:
         font = ImageFont.truetype(FONT_PATH, FONT_SIZE_MAIN)
     except:
-        font = ImageFont.truetype("/System/Library/Fonts/AppleSDGothicNeo.ttc", FONT_SIZE_MAIN)
+        # フォールバック: Ubuntu用のNotoフォント
+        fallback_fonts = [
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJKjp-Regular.otf",
+        ]
+        font = None
+        for fb_font in fallback_fonts:
+            if os.path.exists(fb_font):
+                font = ImageFont.truetype(fb_font, FONT_SIZE_MAIN)
+                break
+        if font is None:
+            font = ImageFont.load_default()
 
     line_height = 100  # 行間
 
