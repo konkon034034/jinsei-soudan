@@ -1,25 +1,27 @@
 name: 人生相談チャンネル動画生成
+
 on:
   workflow_dispatch:
   schedule:
     - cron: '0 21 * * *'
+
 jobs:
   generate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-      
+
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      
+
       - name: Install dependencies
         run: pip install -r requirements.txt
-      
+
       - name: Run generator
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -29,7 +31,7 @@ jobs:
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: python jinsei_generator_auto.py
-      
+
       - name: Upload to YouTube
         if: success()
         env:
@@ -39,13 +41,13 @@ jobs:
         run: |
           VIDEO_FILE=$(find output -name "*.mp4" | head -1)
           if [ -n "$VIDEO_FILE" ]; then
-            echo "📹 Found video: $VIDEO_FILE"
+            echo "Found video: $VIDEO_FILE"
             python scripts/upload_youtube.py "$VIDEO_FILE" "今日の人生相談" "人生相談チャンネル"
           else
-            echo "❌ No video file found"
+            echo "No video file found"
             exit 1
           fi
-      
+
       - name: Upload video artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -53,23 +55,3 @@ jobs:
           name: generated-video
           path: output/
           retention-days: 7
-```
-
----
-
-### ③ 「Commit changes」をクリック
-
----
-
-## 変更点の説明
-```
-【追加したもの】
-
-      - name: Upload to YouTube    ← 新しいステップ！
-        if: success()              ← 動画生成成功時のみ実行
-        env:
-          YOUTUBE_CLIENT_ID: ...
-          YOUTUBE_CLIENT_SECRET: ...
-          YOUTUBE_REFRESH_TOKEN: ...
-        run: |
-          （動画ファイルを探してアップロード）
