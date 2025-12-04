@@ -549,7 +549,7 @@ if __name__ == "__main__":
 def generate_audio_and_video(script: str, row_num: int) -> Optional[str]:
     """台本から音声・動画を生成"""
     from tts_generator import TTSGenerator
-    from video_generator_v2 import VideoGenerator
+    from video_generator_v2 import VideoGeneratorV2 as VideoGenerator
     
     try:
         print_header("ステップ 4: 音声生成", 3)
