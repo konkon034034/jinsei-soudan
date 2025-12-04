@@ -596,18 +596,3 @@ def generate_audio_and_video(script: str, row_num: int) -> Optional[str]:
         import traceback
         traceback.print_exc()
         return None
-```
-
----
-
-### ③ 「Commit changes」をクリック
-
----
-
-## 変更点まとめ
-```
-1. find_pending_rows(): 
-   APPROVAL_PENDING_SCRIPT で動画URLが空なら再処理対象に
-
-2. process_row():
-   既存の台本があればスキップ（再生成しない）
