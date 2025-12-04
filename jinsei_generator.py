@@ -235,7 +235,9 @@ class JinseiSoudanGenerator:
 
     def find_pending_rows(self) -> List[int]:
         """
-        未処理行（Status = PENDING）を取得
+        未処理行を取得
+        - Status = PENDING または 空欄
+        - または Status = APPROVAL_PENDING_SCRIPT で VIDEO_URL が空（再処理対象）
 
         Returns:
             行番号のリスト（1始まり）
@@ -248,9 +250,21 @@ class JinseiSoudanGenerator:
         for i, row in enumerate(all_values[1:], start=2):  # ヘッダースキップ
             if len(row) > Col.STATUS:
                 status = row[Col.STATUS].strip().upper()
+
+                # C列（サマリー）が入力されているか確認
+                has_summary = len(row) > Col.SOURCE_SUMMARY and row[Col.SOURCE_SUMMARY].strip()
+
+                if not has_summary:
+                    continue
+
+                # 条件1: Status が PENDING または 空欄
                 if status == Status.PENDING or status == "":
-                    # C列（サマリー）が入力されているか確認
-                    if len(row) > Col.SOURCE_SUMMARY and row[Col.SOURCE_SUMMARY].strip():
+                    pending_rows.append(i)
+                # 条件2: Status が APPROVAL_PENDING_SCRIPT で VIDEO_URL が空（動画生成失敗→再処理）
+                elif status == Status.APPROVAL_PENDING_SCRIPT:
+                    video_url = row[Col.VIDEO_URL].strip() if len(row) > Col.VIDEO_URL else ""
+                    if not video_url:
+                        print_info(f"  → 行 {i}: 動画未生成のため再処理対象に追加")
                         pending_rows.append(i)
 
         print_info(f"未処理行: {len(pending_rows)}件")
@@ -411,39 +425,43 @@ class JinseiSoudanGenerator:
             self.update_status(row_num, Status.PROCESSING)
             self.update_cell(row_num, Col.DATETIME, get_jst_now().strftime('%Y-%m-%d %H:%M:%S'))
 
-            # 3. 台本生成
-            print_header("ステップ 1: 台本生成", 3)
-            script = self.generate_script(source_summary)
+            # 3. 台本生成（既存の台本があればスキップ）
+            existing_script = row_data['script']
+            if existing_script and len(existing_script) > 100:
+                print_info("既存の台本を使用します")
+                script = existing_script
+            else:
+                print_header("ステップ 1: 台本生成", 3)
+                script = self.generate_script(source_summary)
 
-            # 4. F列に台本を保存
-            print_header("ステップ 2: スプレッドシート更新", 3)
-            self.update_cell(row_num, Col.SCRIPT, script)
+                # 4. F列に台本を保存
+                print_header("ステップ 2: スプレッドシート更新", 3)
+                self.update_cell(row_num, Col.SCRIPT, script)
 
-            # 5. E列に文字数を保存
-            char_count = len(script)
-            self.update_cell(row_num, Col.CHAR_COUNT, str(char_count))
+                # 5. E列に文字数を保存
+                char_count = len(script)
+                self.update_cell(row_num, Col.CHAR_COUNT, str(char_count))
 
-            # 6. Slack通知
-            print_header("ステップ 3: Slack通知", 3)
-            try:
-                source_info = {
-                    'title': '',
-                    'summary': source_summary,
-                    'consultation': source_summary,
-                }
-                metadata = {
-                    'title': source_summary[:50] + '...' if len(source_summary) > 50 else source_summary,
-                }
-                notify_script_complete(
-                    source_info=source_info,
-                    script=script,
-                    metadata=metadata,
-                    row_num=row_num,
-                    spreadsheet_id=self.spreadsheet_id
-                )
-            except Exception as e:
-                print_error(f"Slack通知失敗（処理は続行）: {str(e)}")
-
+                # 6. Slack通知
+                print_header("ステップ 3: Slack通知", 3)
+                try:
+                    source_info = {
+                        'title': '',
+                        'summary': source_summary,
+                        'consultation': source_summary,
+                    }
+                    metadata = {
+                        'title': source_summary[:50] + '...' if len(source_summary) > 50 else source_summary,
+                    }
+                    notify_script_complete(
+                        source_info=source_info,
+                        script=script,
+                        metadata=metadata,
+                        row_num=row_num,
+                        spreadsheet_id=self.spreadsheet_id
+                    )
+                except Exception as e:
+                    print_error(f"Slack通知失敗（処理は続行）: {str(e)}")
 
             # 7. 音声・動画生成
             video_path = generate_audio_and_video(script, row_num)
@@ -550,31 +568,46 @@ def generate_audio_and_video(script: str, row_num: int) -> Optional[str]:
     """台本から音声・動画を生成"""
     from tts_generator import TTSGenerator
     from video_generator_v2 import VideoGeneratorV2 as VideoGenerator
-    
+
     try:
         print_header("ステップ 4: 音声生成", 3)
         tts = TTSGenerator()
         audio_path = tts.generate_from_script(script)
-        
+
         if not audio_path:
             print_error("音声生成に失敗しました")
             return None
-        
+
         print_success(f"音声生成完了: {audio_path}")
-        
+
         print_header("ステップ 5: 動画生成", 3)
         video_gen = VideoGenerator()
         video_path = video_gen.generate_from_audio_and_script(audio_path, script)
-        
+
         if not video_path:
             print_error("動画生成に失敗しました")
             return None
-        
+
         print_success(f"動画生成完了: {video_path}")
         return video_path
-        
+
     except Exception as e:
         print_error(f"音声・動画生成エラー: {str(e)}")
         import traceback
         traceback.print_exc()
         return None
+```
+
+---
+
+### ③ 「Commit changes」をクリック
+
+---
+
+## 変更点まとめ
+```
+1. find_pending_rows(): 
+   APPROVAL_PENDING_SCRIPT で動画URLが空なら再処理対象に
+
+2. process_row():
+   既存の台本があればスキップ（再生成しない）
