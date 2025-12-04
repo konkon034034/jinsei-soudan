@@ -3,7 +3,7 @@
 """
 人生相談チャンネル 音声生成モジュール
 
-ElevenLabs APIを使用して、2人のキャラクターの台本を音声化する。
+Google Cloud Text-to-Speech APIを使用して、2人のキャラクターの台本を音声化する。
 
 キャラクター設定:
 - 由美子（相談者）: 柔らかめ、速め、不安げ
@@ -18,49 +18,33 @@ import re
 import sys
 import json
 import time
-import requests
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from pydub import AudioSegment
+from google.cloud import texttospeech
+from google.oauth2 import service_account
 
 # ============================================================
 # 定数設定
 # ============================================================
 
-# ElevenLabs API設定
-ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1"
-
 # キャラクター名
 CHARACTER_CONSULTER = "由美子"  # 相談者
 CHARACTER_ADVISOR = "P"          # 回答者
 
-# ElevenLabs ボイス設定
-# 注意: voice_id は ElevenLabs のアカウントで確認してください
-# 以下はデフォルト値（日本語対応ボイス）
+# Google Cloud TTS ボイス設定
 VOICE_SETTINGS = {
     CHARACTER_CONSULTER: {
-        # 由美子: 柔らかめ、速め、不安げ
-        "voice_id": "EXAVITQu4vr4xnSDxMaL",  # Sarah (変更可能)
-        "model_id": "eleven_multilingual_v2",
-        "voice_settings": {
-            "stability": 0.4,           # 低め = より感情的
-            "similarity_boost": 0.75,
-            "style": 0.5,               # 表現力
-            "use_speaker_boost": True,
-        },
-        "speed": 1.1,  # 速め
+        # 由美子: 柔らかめ、速め、不安げ（女性）
+        "voice_name": "ja-JP-Neural2-B",
+        "pitch": 2.0,           # 少し高め
+        "speaking_rate": 1.1,   # 速め
     },
     CHARACTER_ADVISOR: {
-        # P: 低め、ゆっくり、安心感
-        "voice_id": "pNInz6obpgDQGcFmaJgB",  # Adam (変更可能)
-        "model_id": "eleven_multilingual_v2",
-        "voice_settings": {
-            "stability": 0.7,           # 高め = より安定
-            "similarity_boost": 0.8,
-            "style": 0.3,               # 控えめ
-            "use_speaker_boost": True,
-        },
-        "speed": 0.9,  # ゆっくり
+        # P: 低め、ゆっくり、安心感（女性）
+        "voice_name": "ja-JP-Wavenet-A",
+        "pitch": -2.0,          # 少し低め
+        "speaking_rate": 0.9,   # ゆっくり
     },
 }
 
@@ -146,28 +130,24 @@ def parse_script(script: str) -> List[Dict]:
     return lines
 
 
-def get_available_voices(api_key: str) -> List[Dict]:
-    """利用可能なボイス一覧を取得"""
-    headers = {
-        "xi-api-key": api_key,
-    }
-
-    response = requests.get(
-        f"{ELEVENLABS_API_URL}/voices",
-        headers=headers
-    )
-
-    if response.status_code == 200:
-        return response.json().get("voices", [])
+def get_tts_client():
+    """Google Cloud TTS クライアントを取得"""
+    credentials_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
+    
+    if credentials_json:
+        # 環境変数からJSON文字列を読み込み
+        credentials_info = json.loads(credentials_json)
+        credentials = service_account.Credentials.from_service_account_info(credentials_info)
+        return texttospeech.TextToSpeechClient(credentials=credentials)
     else:
-        print_error(f"ボイス一覧取得失敗: {response.status_code}")
-        return []
+        # デフォルトの認証情報を使用
+        return texttospeech.TextToSpeechClient()
 
 
 def text_to_speech(
     text: str,
     character: str,
-    api_key: str,
+    client: texttospeech.TextToSpeechClient,
     output_path: Path,
 ) -> bool:
     """
@@ -176,7 +156,7 @@ def text_to_speech(
     Args:
         text: 変換するテキスト
         character: キャラクター名
-        api_key: ElevenLabs APIキー
+        client: Google Cloud TTS クライアント
         output_path: 出力ファイルパス
 
     Returns:
@@ -187,53 +167,39 @@ def text_to_speech(
         print_error(f"未知のキャラクター: {character}")
         return False
 
-    headers = {
-        "xi-api-key": api_key,
-        "Content-Type": "application/json",
-    }
-
-    data = {
-        "text": text,
-        "model_id": settings["model_id"],
-        "voice_settings": settings["voice_settings"],
-    }
-
-    url = f"{ELEVENLABS_API_URL}/text-to-speech/{settings['voice_id']}"
-
     try:
-        response = requests.post(
-            url,
-            headers=headers,
-            json=data,
-            stream=True
+        # 入力テキストを設定
+        synthesis_input = texttospeech.SynthesisInput(text=text)
+
+        # ボイス設定
+        voice = texttospeech.VoiceSelectionParams(
+            language_code="ja-JP",
+            name=settings["voice_name"],
         )
 
-        if response.status_code == 200:
-            with open(output_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=1024):
-                    if chunk:
-                        f.write(chunk)
-            return True
-        else:
-            error_msg = response.text[:200] if response.text else "Unknown error"
-            print_error(f"TTS失敗 ({response.status_code}): {error_msg}")
-            return False
+        # オーディオ設定
+        audio_config = texttospeech.AudioConfig(
+            audio_encoding=texttospeech.AudioEncoding.MP3,
+            pitch=settings["pitch"],
+            speaking_rate=settings["speaking_rate"],
+        )
+
+        # 音声を生成
+        response = client.synthesize_speech(
+            input=synthesis_input,
+            voice=voice,
+            audio_config=audio_config
+        )
+
+        # ファイルに保存
+        with open(output_path, "wb") as out:
+            out.write(response.audio_content)
+
+        return True
 
     except Exception as e:
         print_error(f"TTS例外: {str(e)}")
         return False
-
-
-def adjust_speed(audio: AudioSegment, speed: float) -> AudioSegment:
-    """音声の速度を調整"""
-    if speed == 1.0:
-        return audio
-
-    # サンプルレートを変更して速度調整
-    new_frame_rate = int(audio.frame_rate * speed)
-    return audio._spawn(audio.raw_data, overrides={
-        "frame_rate": new_frame_rate
-    }).set_frame_rate(audio.frame_rate)
 
 
 def merge_audio_files(
@@ -261,12 +227,6 @@ def merge_audio_files(
 
             # 音声を読み込み
             audio = AudioSegment.from_mp3(audio_path)
-
-            # 速度調整
-            settings = VOICE_SETTINGS.get(character, {})
-            speed = settings.get("speed", 1.0)
-            if speed != 1.0:
-                audio = adjust_speed(audio, speed)
 
             # 無音を追加
             if len(combined) > 0:
@@ -299,24 +259,9 @@ class TTSGenerator:
 
     def __init__(self):
         """初期化"""
-        self.api_key = os.getenv("ELEVENLABS_API_KEY")
-        if not self.api_key:
-            raise ValueError("ELEVENLABS_API_KEY が設定されていません")
-
+        self.client = get_tts_client()
         ensure_dirs()
-        print_info("TTSGenerator 初期化完了")
-
-    def list_voices(self):
-        """利用可能なボイス一覧を表示"""
-        print_info("利用可能なボイス一覧を取得中...")
-        voices = get_available_voices(self.api_key)
-
-        print(f"\n📋 利用可能なボイス ({len(voices)}件):")
-        for voice in voices:
-            labels = voice.get("labels", {})
-            accent = labels.get("accent", "")
-            gender = labels.get("gender", "")
-            print(f"  - {voice['name']} (ID: {voice['voice_id']}) [{gender}, {accent}]")
+        print_info("TTSGenerator 初期化完了（Google Cloud TTS）")
 
     def generate_from_script(
         self,
@@ -348,7 +293,7 @@ class TTSGenerator:
         temp_files: List[Tuple[Path, str]] = []
 
         # 各セリフを音声化
-        print_info("音声生成中...")
+        print_info("音声生成中（Google Cloud TTS）...")
         for i, item in enumerate(lines):
             character = item["character"]
             line = item["line"]
@@ -364,7 +309,7 @@ class TTSGenerator:
             success = text_to_speech(
                 text=line,
                 character=character,
-                api_key=self.api_key,
+                client=self.client,
                 output_path=temp_path,
             )
 
@@ -373,8 +318,8 @@ class TTSGenerator:
             else:
                 print_error(f"\n  セリフ {i+1} の生成に失敗")
 
-            # レート制限対策
-            time.sleep(0.5)
+            # レート制限対策（Google Cloud TTSは緩いが念のため）
+            time.sleep(0.1)
 
         print()  # 改行
 
@@ -423,7 +368,7 @@ class TTSGenerator:
         success = text_to_speech(
             text=text,
             character=character,
-            api_key=self.api_key,
+            client=self.client,
             output_path=output_path,
         )
 
@@ -441,7 +386,6 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="人生相談チャンネル 音声生成")
-    parser.add_argument("--list-voices", action="store_true", help="利用可能なボイス一覧を表示")
     parser.add_argument("--test", type=str, help="指定キャラのボイスをテスト")
     parser.add_argument("--script", type=str, help="台本ファイルパス")
     parser.add_argument("--output", type=str, default="output.mp3", help="出力ファイル名")
@@ -451,9 +395,7 @@ if __name__ == "__main__":
     try:
         generator = TTSGenerator()
 
-        if args.list_voices:
-            generator.list_voices()
-        elif args.test:
+        if args.test:
             generator.test_voice(args.test)
         elif args.script:
             with open(args.script, 'r', encoding='utf-8') as f:
