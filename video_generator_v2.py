@@ -43,9 +43,9 @@ from pydub import AudioSegment
 # 定数設定
 # ============================================================
 
-# キャラクター名
-CHARACTER_CONSULTER = "由美子"
-CHARACTER_ADVISOR = "P"
+# キャラクター名（環境変数から取得）
+CHARACTER_CONSULTER = os.environ.get("CONSULTER_NAME", "由美子")
+CHARACTER_ADVISOR = os.environ.get("ADVISOR_NAME", "P")
 
 # 動画サイズ
 VIDEO_WIDTH = 1920
