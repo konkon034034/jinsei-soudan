@@ -37,6 +37,3 @@ jobs:
       
       - name: Run generator
         run: python jinsei_generator_auto.py
-      
-      - name: Upload to YouTube
-        run: python scripts/upload_youtube.py
