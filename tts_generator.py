@@ -4,10 +4,7 @@
 人生相談チャンネル 音声生成モジュール
 
 Google Cloud Text-to-Speech APIを使用して、2人のキャラクターの台本を音声化する。
-
-キャラクター設定:
-- 由美子（相談者）: 柔らかめ、速め、不安げ
-- P（回答者）: 低め、ゆっくり、安心感
+環境変数からキャラクター名とボイス設定を取得。
 """
 
 from dotenv import load_dotenv
@@ -25,26 +22,24 @@ from google.cloud import texttospeech
 from google.oauth2 import service_account
 
 # ============================================================
-# 定数設定
+# 定数設定（環境変数から取得）
 # ============================================================
 
 # キャラクター名
-CHARACTER_CONSULTER = "由美子"  # 相談者
-CHARACTER_ADVISOR = "P"          # 回答者
+CHARACTER_CONSULTER = os.environ.get("CONSULTER_NAME", "由美子")
+CHARACTER_ADVISOR = os.environ.get("ADVISOR_NAME", "P")
 
-# Google Cloud TTS ボイス設定
+# ボイス設定（環境変数から取得）
 VOICE_SETTINGS = {
     CHARACTER_CONSULTER: {
-        # 由美子: 柔らかめ、速め、不安げ（女性）
-        "voice_name": "ja-JP-Neural2-B",
-        "pitch": 2.0,           # 少し高め
-        "speaking_rate": 1.1,   # 速め
+        "voice_name": os.environ.get("CONSULTER_VOICE", "ja-JP-Neural2-B"),
+        "pitch": float(os.environ.get("CONSULTER_PITCH", "2.0")),
+        "speaking_rate": float(os.environ.get("CONSULTER_RATE", "1.1")),
     },
     CHARACTER_ADVISOR: {
-        # P: 低め、ゆっくり、安心感（女性）
-        "voice_name": "ja-JP-Wavenet-A",
-        "pitch": -2.0,          # 少し低め
-        "speaking_rate": 0.9,   # ゆっくり
+        "voice_name": os.environ.get("ADVISOR_VOICE", "ja-JP-Wavenet-A"),
+        "pitch": float(os.environ.get("ADVISOR_PITCH", "-2.0")),
+        "speaking_rate": float(os.environ.get("ADVISOR_RATE", "0.9")),
     },
 }
 
@@ -79,21 +74,12 @@ def print_progress(current: int, total: int, message: str = ""):
 
 
 def ensure_dirs():
-    """出力ディレクトリを作成"""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def parse_script(script: str) -> List[Dict]:
-    """
-    台本をパースしてセリフリストに変換
-
-    Args:
-        script: 台本テキスト
-
-    Returns:
-        [{"character": "由美子", "line": "セリフ..."}, ...]
-    """
+    """台本をパースしてセリフリストに変換"""
     lines = []
     current_character = None
     current_line = []
@@ -103,11 +89,9 @@ def parse_script(script: str) -> List[Dict]:
         if not line:
             continue
 
-        # キャラクター名:セリフ のパターンをチェック
-        match = re.match(rf'^({CHARACTER_CONSULTER}|{CHARACTER_ADVISOR})[：:](.*)$', line)
+        match = re.match(rf'^({re.escape(CHARACTER_CONSULTER)}|{re.escape(CHARACTER_ADVISOR)})[：:](.*)$', line)
 
         if match:
-            # 前のセリフを保存
             if current_character and current_line:
                 lines.append({
                     "character": current_character,
@@ -117,10 +101,8 @@ def parse_script(script: str) -> List[Dict]:
             current_character = match.group(1)
             current_line = [match.group(2).strip()]
         elif current_character:
-            # 継続行
             current_line.append(line)
 
-    # 最後のセリフを保存
     if current_character and current_line:
         lines.append({
             "character": current_character,
@@ -132,16 +114,20 @@ def parse_script(script: str) -> List[Dict]:
 
 def get_tts_client():
     """Google Cloud TTS クライアントを取得"""
-    credentials_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
+    # 優先順位: GOOGLE_SERVICE_ACCOUNT_KEY > GOOGLE_CREDENTIALS_JSON > デフォルト
+    sa_key = os.environ.get("GOOGLE_SERVICE_ACCOUNT_KEY")
+    if sa_key:
+        credentials_info = json.loads(sa_key)
+        credentials = service_account.Credentials.from_service_account_info(credentials_info)
+        return texttospeech.TextToSpeechClient(credentials=credentials)
     
+    credentials_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
     if credentials_json:
-        # 環境変数からJSON文字列を読み込み
         credentials_info = json.loads(credentials_json)
         credentials = service_account.Credentials.from_service_account_info(credentials_info)
         return texttospeech.TextToSpeechClient(credentials=credentials)
-    else:
-        # デフォルトの認証情報を使用
-        return texttospeech.TextToSpeechClient()
+    
+    return texttospeech.TextToSpeechClient()
 
 
 def text_to_speech(
@@ -150,48 +136,32 @@ def text_to_speech(
     client: texttospeech.TextToSpeechClient,
     output_path: Path,
 ) -> bool:
-    """
-    テキストを音声に変換
-
-    Args:
-        text: 変換するテキスト
-        character: キャラクター名
-        client: Google Cloud TTS クライアント
-        output_path: 出力ファイルパス
-
-    Returns:
-        成功/失敗
-    """
+    """テキストを音声に変換"""
     settings = VOICE_SETTINGS.get(character)
     if not settings:
         print_error(f"未知のキャラクター: {character}")
         return False
 
     try:
-        # 入力テキストを設定
         synthesis_input = texttospeech.SynthesisInput(text=text)
 
-        # ボイス設定
         voice = texttospeech.VoiceSelectionParams(
             language_code="ja-JP",
             name=settings["voice_name"],
         )
 
-        # オーディオ設定
         audio_config = texttospeech.AudioConfig(
             audio_encoding=texttospeech.AudioEncoding.MP3,
             pitch=settings["pitch"],
             speaking_rate=settings["speaking_rate"],
         )
 
-        # 音声を生成
         response = client.synthesize_speech(
             input=synthesis_input,
             voice=voice,
             audio_config=audio_config
         )
 
-        # ファイルに保存
         with open(output_path, "wb") as out:
             out.write(response.audio_content)
 
@@ -206,16 +176,7 @@ def merge_audio_files(
     audio_files: List[Tuple[Path, str]],
     output_path: Path,
 ) -> bool:
-    """
-    音声ファイルを結合
-
-    Args:
-        audio_files: [(ファイルパス, キャラクター名), ...]
-        output_path: 出力ファイルパス
-
-    Returns:
-        成功/失敗
-    """
+    """音声ファイルを結合"""
     try:
         combined = AudioSegment.empty()
         prev_character = None
@@ -225,23 +186,18 @@ def merge_audio_files(
                 print_error(f"ファイルが見つかりません: {audio_path}")
                 continue
 
-            # 音声を読み込み
             audio = AudioSegment.from_mp3(audio_path)
 
-            # 無音を追加
             if len(combined) > 0:
                 if character != prev_character:
-                    # 話者が変わる場合は長めの無音
                     silence = AudioSegment.silent(duration=SILENCE_BETWEEN_SPEAKERS)
                 else:
-                    # 同じ話者の場合は短めの無音
                     silence = AudioSegment.silent(duration=SILENCE_BETWEEN_LINES)
                 combined += silence
 
             combined += audio
             prev_character = character
 
-        # MP3で出力
         combined.export(output_path, format="mp3", bitrate="192k")
         return True
 
@@ -255,13 +211,13 @@ def merge_audio_files(
 # ============================================================
 
 class TTSGenerator:
-    """音声生成クラス"""
 
     def __init__(self):
-        """初期化"""
         self.client = get_tts_client()
         ensure_dirs()
         print_info("TTSGenerator 初期化完了（Google Cloud TTS）")
+        print_info(f"相談者: {CHARACTER_CONSULTER} ({VOICE_SETTINGS[CHARACTER_CONSULTER]['voice_name']})")
+        print_info(f"回答者: {CHARACTER_ADVISOR} ({VOICE_SETTINGS[CHARACTER_ADVISOR]['voice_name']})")
 
     def generate_from_script(
         self,
@@ -269,17 +225,7 @@ class TTSGenerator:
         output_filename: str = "output.mp3",
         row_num: Optional[int] = None,
     ) -> Optional[Path]:
-        """
-        台本から音声を生成
-
-        Args:
-            script: 台本テキスト
-            output_filename: 出力ファイル名
-            row_num: スプレッドシートの行番号（ファイル名に使用）
-
-        Returns:
-            生成された音声ファイルのパス（失敗時はNone）
-        """
+        """台本から音声を生成"""
         print_info("台本をパース中...")
         lines = parse_script(script)
 
@@ -289,16 +235,13 @@ class TTSGenerator:
 
         print_info(f"セリフ数: {len(lines)}行")
 
-        # 一時ファイルリスト
         temp_files: List[Tuple[Path, str]] = []
 
-        # 各セリフを音声化
         print_info("音声生成中（Google Cloud TTS）...")
         for i, item in enumerate(lines):
             character = item["character"]
             line = item["line"]
 
-            # 空のセリフはスキップ
             if not line.strip():
                 continue
 
@@ -318,32 +261,27 @@ class TTSGenerator:
             else:
                 print_error(f"\n  セリフ {i+1} の生成に失敗")
 
-            # レート制限対策（Google Cloud TTSは緩いが念のため）
             time.sleep(0.1)
 
-        print()  # 改行
+        print()
 
         if not temp_files:
             print_error("音声ファイルが生成されませんでした")
             return None
 
-        # ファイル名を設定
         if row_num:
             output_filename = f"jinsei_{row_num:04d}.mp3"
 
         output_path = OUTPUT_DIR / output_filename
 
-        # 音声を結合
         print_info("音声ファイルを結合中...")
         success = merge_audio_files(temp_files, output_path)
 
         if success:
-            # 一時ファイルを削除
             for temp_path, _ in temp_files:
                 if temp_path.exists():
                     temp_path.unlink()
 
-            # ファイルサイズを取得
             file_size = output_path.stat().st_size / (1024 * 1024)
 
             print_success(f"音声生成完了: {output_path}")
@@ -354,13 +292,7 @@ class TTSGenerator:
             return None
 
     def test_voice(self, character: str, text: str = "こんにちは、テストです。"):
-        """
-        ボイスのテスト
-
-        Args:
-            character: キャラクター名
-            text: テストテキスト
-        """
+        """ボイスのテスト"""
         print_info(f"{character}のボイスをテスト中...")
 
         output_path = OUTPUT_DIR / f"test_{character}.mp3"
@@ -402,7 +334,6 @@ if __name__ == "__main__":
                 script = f.read()
             generator.generate_from_script(script, args.output)
         else:
-            # デフォルト: テスト実行
             print_info("テスト実行...")
             test_script = f"""
 {CHARACTER_CONSULTER}：今日は本当にありがとうございます。実は、最近ちょっと悩んでいることがありまして。
