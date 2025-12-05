@@ -38,53 +38,52 @@ from slack_notifier import notify_script_complete
 # 定数設定
 # ============================================================
 SCRIPT_NAME = "人生相談チャンネル動画生成システム"
-VERSION = "1.0.0"
+VERSION = "2.0.0"
 PROMPTS_DIR = Path("prompts")
 
-# キャラクター設定
-CHARACTER_CONSULTER = "由美子"  # 相談者: 中高年女性、不安げ
-CHARACTER_ADVISOR = "P"          # 回答者: 中高年女性、冷静に寄り添う
+# キャラクター設定（環境変数から取得、デフォルト値あり）
+CHARACTER_CONSULTER = os.environ.get("CONSULTER_NAME", "由美子")
+CHARACTER_ADVISOR = os.environ.get("ADVISOR_NAME", "P")
+
+# シート名（環境変数から取得、デフォルト値あり）
+SHEET_NAME = os.environ.get("SHEET_NAME", "人生相談")
 
 # ステータス定義
 class Status:
-    PENDING = "PENDING"                           # 未処理
-    PROCESSING = "PROCESSING"                     # 処理中
-    APPROVAL_PENDING_SCRIPT = "APPROVAL_PENDING_SCRIPT"  # 台本承認待ち
-    APPROVED_SCRIPT = "APPROVED_SCRIPT"           # 台本承認済み
-    REVISE_SCRIPT = "REVISE_SCRIPT"               # 台本修正待ち
-    REJECTED = "REJECTED"                         # ボツ
-    COMPLETED = "COMPLETED"                       # 完了
-    ERROR = "ERROR"                               # エラー
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    APPROVAL_PENDING_SCRIPT = "APPROVAL_PENDING_SCRIPT"
+    APPROVED_SCRIPT = "APPROVED_SCRIPT"
+    REVISE_SCRIPT = "REVISE_SCRIPT"
+    REJECTED = "REJECTED"
+    COMPLETED = "COMPLETED"
+    ERROR = "ERROR"
 
 # スプレッドシート列インデックス（0始まり）
 class Col:
-    # 基本列（A-K）
-    COMPLETED = 0       # A: 作成済（チェックボックス）
-    DATETIME = 1        # B: 日時
-    SOURCE_SUMMARY = 2  # C: 情報収集（元動画サマリー）
-    PROMPT_MEMO = 3     # D: スクリプト作成（プロンプト指示メモ）
-    CHAR_COUNT = 4      # E: 文字数カウント
-    SCRIPT = 5          # F: script（台本本文）
-    VIDEO_URL = 6       # G: 生成URL（音声/動画のDrive URL）
-    DESC_PROMPT = 7     # H: 概要欄プロンプト
-    METADATA = 8        # I: metadata（タイトル・説明文）
-    COMMENT = 9         # J: comment（初コメ）
-    SEARCH = 10         # K: search（SEOキーワード）
-
-    # 人生相談チャンネル用追加列（L-Q）
-    SOURCE_VIDEO_ID = 11   # L: 元動画ID（重複防止）
-    SOURCE_VIDEO_URL = 12  # M: 元動画URL
-    CONSULTER_INFO = 13    # N: 相談者情報（例：68歳女性/夫と二人暮らし）
-    STATUS = 14            # O: Status（PENDING/PROCESSING/APPROVAL_PENDING_SCRIPT/COMPLETED）
-    TRIGGER_KEYWORD = 15   # P: 高齢女性トリガー（刺さりそうなキーワード）
-    FUNC_TAG = 16          # Q: 機能タグ（厳しめ回/優しめ回など）
+    COMPLETED = 0
+    DATETIME = 1
+    SOURCE_SUMMARY = 2
+    PROMPT_MEMO = 3
+    CHAR_COUNT = 4
+    SCRIPT = 5
+    VIDEO_URL = 6
+    DESC_PROMPT = 7
+    METADATA = 8
+    COMMENT = 9
+    SEARCH = 10
+    SOURCE_VIDEO_ID = 11
+    SOURCE_VIDEO_URL = 12
+    CONSULTER_INFO = 13
+    STATUS = 14
+    TRIGGER_KEYWORD = 15
+    FUNC_TAG = 16
 
 
 # ============================================================
 # ヘルパー関数
 # ============================================================
 def print_header(message: str, level: int = 1):
-    """見出しを出力"""
     if level == 1:
         print("=" * 60)
         print(f"🎬 {message}")
@@ -112,13 +111,11 @@ def print_info(message: str):
 
 
 def get_jst_now() -> datetime:
-    """現在の日本時間を取得"""
     jst = timezone(timedelta(hours=9))
     return datetime.now(jst)
 
 
 def load_prompt(prompt_name: str) -> str:
-    """プロンプトファイルを読み込む"""
     prompt_path = PROMPTS_DIR / f"{prompt_name}.txt"
     if prompt_path.exists():
         return prompt_path.read_text(encoding='utf-8')
@@ -127,7 +124,6 @@ def load_prompt(prompt_name: str) -> str:
 
 
 def find_working_model():
-    """利用可能なGeminiモデルを探す"""
     api_key = os.getenv('GEMINI_API_KEY')
     if not api_key:
         raise Exception("GEMINI_API_KEY環境変数が設定されていません")
@@ -169,13 +165,14 @@ def find_working_model():
 # メインクラス
 # ============================================================
 class JinseiSoudanGenerator:
-    """人生相談動画生成クラス"""
 
     def __init__(self):
-        """初期化"""
         print_header(SCRIPT_NAME, 1)
         print_info(f"バージョン: {VERSION}")
         print_info(f"タイムスタンプ: {get_jst_now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print_info(f"シート: {SHEET_NAME}")
+        print_info(f"相談者: {CHARACTER_CONSULTER}")
+        print_info(f"回答者: {CHARACTER_ADVISOR}")
 
         self.spreadsheet_id = os.getenv('SPREADSHEET_ID')
         if not self.spreadsheet_id:
@@ -185,82 +182,73 @@ class JinseiSoudanGenerator:
         self._setup_gemini()
 
     def _setup_google_apis(self):
-        """Google APIの認証設定"""
         print_info("Google API認証開始...")
 
-        credentials_path = Path("credentials.json")
-        if credentials_path.exists():
-            print("  📄 credentials.json から認証情報を読み込み...")
-            credentials = service_account.Credentials.from_service_account_file(
-                str(credentials_path),
+        sa_key = os.environ.get("GOOGLE_SERVICE_ACCOUNT_KEY")
+        if sa_key:
+            print("  🔐 環境変数から認証情報を読み込み...")
+            credentials = service_account.Credentials.from_service_account_info(
+                json.loads(sa_key),
                 scopes=[
                     'https://www.googleapis.com/auth/spreadsheets',
                     'https://www.googleapis.com/auth/drive',
                 ]
             )
         else:
-            creds_json = os.getenv('GOOGLE_CREDENTIALS_JSON')
-            if not creds_json:
-                raise ValueError("Google認証情報が見つかりません")
-            print("  🔐 環境変数から認証情報を読み込み...")
-            credentials = service_account.Credentials.from_service_account_info(
-                json.loads(creds_json),
-                scopes=[
-                    'https://www.googleapis.com/auth/spreadsheets',
-                    'https://www.googleapis.com/auth/drive',
-                ]
-            )
+            credentials_path = Path("credentials.json")
+            if credentials_path.exists():
+                print("  📄 credentials.json から認証情報を読み込み...")
+                credentials = service_account.Credentials.from_service_account_file(
+                    str(credentials_path),
+                    scopes=[
+                        'https://www.googleapis.com/auth/spreadsheets',
+                        'https://www.googleapis.com/auth/drive',
+                    ]
+                )
+            else:
+                creds_json = os.getenv('GOOGLE_CREDENTIALS_JSON')
+                if not creds_json:
+                    raise ValueError("Google認証情報が見つかりません")
+                print("  🔐 環境変数から認証情報を読み込み...")
+                credentials = service_account.Credentials.from_service_account_info(
+                    json.loads(creds_json),
+                    scopes=[
+                        'https://www.googleapis.com/auth/spreadsheets',
+                        'https://www.googleapis.com/auth/drive',
+                    ]
+                )
 
-        # スプレッドシート接続
         self.gspread_client = gspread.authorize(credentials)
         self.spreadsheet = self.gspread_client.open_by_key(self.spreadsheet_id)
-        # 「人生相談」シートを使用
-        self.worksheet = self.spreadsheet.worksheet('人生相談')
+        self.worksheet = self.spreadsheet.worksheet(SHEET_NAME)
         print_success(f"Google API認証成功（シート: {self.worksheet.title}）")
 
     def _setup_gemini(self):
-        """Gemini APIの設定"""
         print_info("Gemini API設定開始...")
-
         genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
         self.model, self.model_name = find_working_model()
-
         self.generation_config = {
             "temperature": 0.9,
             "top_p": 0.95,
-            "max_output_tokens": 8192,  # 長い台本用に増加
+            "max_output_tokens": 8192,
         }
-
         print_success(f"Gemini API設定成功（{self.model_name}）")
 
     def find_pending_rows(self) -> List[int]:
-        """
-        未処理行を取得
-        - Status = PENDING または 空欄
-        - または Status = APPROVAL_PENDING_SCRIPT で VIDEO_URL が空（再処理対象）
-
-        Returns:
-            行番号のリスト（1始まり）
-        """
         print_info("未処理行を検索中...")
-
         all_values = self.worksheet.get_all_values()
         pending_rows = []
 
-        for i, row in enumerate(all_values[1:], start=2):  # ヘッダースキップ
+        for i, row in enumerate(all_values[1:], start=2):
             if len(row) > Col.STATUS:
                 status = row[Col.STATUS].strip().upper()
-
-                # C列（サマリー）が入力されているか確認
                 has_summary = len(row) > Col.SOURCE_SUMMARY and row[Col.SOURCE_SUMMARY].strip()
 
                 if not has_summary:
                     continue
 
-                # 条件1: Status が PENDING または 空欄
                 if status == Status.PENDING or status == "":
                     pending_rows.append(i)
-                # 条件2: Status が APPROVAL_PENDING_SCRIPT で VIDEO_URL が空（動画生成失敗→再処理）
                 elif status == Status.APPROVAL_PENDING_SCRIPT:
                     video_url = row[Col.VIDEO_URL].strip() if len(row) > Col.VIDEO_URL else ""
                     if not video_url:
@@ -271,24 +259,12 @@ class JinseiSoudanGenerator:
         return pending_rows
 
     def get_row_data(self, row_num: int) -> Dict:
-        """
-        指定行のデータを取得
-
-        Args:
-            row_num: 行番号（1始まり）
-
-        Returns:
-            行データの辞書
-        """
         row = self.worksheet.row_values(row_num)
-
-        # 列数を補完（A-Q = 17列）
         while len(row) < 17:
             row.append("")
 
         return {
             'row_num': row_num,
-            # 基本列（A-K）
             'completed': row[Col.COMPLETED],
             'datetime': row[Col.DATETIME],
             'source_summary': row[Col.SOURCE_SUMMARY],
@@ -300,7 +276,6 @@ class JinseiSoudanGenerator:
             'metadata': row[Col.METADATA],
             'comment': row[Col.COMMENT],
             'search': row[Col.SEARCH],
-            # 人生相談チャンネル用追加列（L-Q）
             'source_video_id': row[Col.SOURCE_VIDEO_ID],
             'source_video_url': row[Col.SOURCE_VIDEO_URL],
             'consulter_info': row[Col.CONSULTER_INFO],
@@ -310,41 +285,26 @@ class JinseiSoudanGenerator:
         }
 
     def update_cell(self, row_num: int, col: int, value: str):
-        """セルを更新"""
-        # 文字数制限（スプレッドシートのセル制限は50000文字）
         if len(str(value)) > 50000:
             value = str(value)[:49990] + "...(truncated)"
-        self.worksheet.update_cell(row_num, col + 1, value)  # gspreadは1始まり
+        self.worksheet.update_cell(row_num, col + 1, value)
 
     def update_status(self, row_num: int, status: str):
-        """ステータスを更新"""
         self.update_cell(row_num, Col.STATUS, status)
         print_info(f"ステータス更新: {status}")
 
     def generate_script(self, source_summary: str) -> str:
-        """
-        台本を生成
-
-        Args:
-            source_summary: 元動画のサマリー（C列）
-
-        Returns:
-            生成された台本
-        """
         print_info("台本生成中...")
-
-        # プロンプトA を読み込む
         prompt_template = load_prompt("prompt_a_script")
 
         if not prompt_template:
-            # デフォルトプロンプト
             prompt_template = """
 あなたは台本作家です。
-以下の人生相談をもとに、女性2人のトーク動画の台本を作成してください。
+以下の人生相談をもとに、2人のトーク動画の台本を作成してください。
 
 【キャラクター設定】
-- {consulter}: 相談者。中高年女性。不安げに悩みを打ち明ける。
-- {advisor}: 回答者。中高年女性。冷静に寄り添いながらアドバイスする。
+- {consulter}: 相談者。中高年。不安げに悩みを打ち明ける。
+- {advisor}: 回答者。冷静に寄り添いながらアドバイスする。
 
 【相談内容】
 {summary}
@@ -369,8 +329,8 @@ class JinseiSoudanGenerator:
             summary=source_summary,
             char1_name=CHARACTER_CONSULTER,
             char2_name=CHARACTER_ADVISOR,
-            char1_personality="相談者。中高年女性。不安げに悩みを打ち明ける。",
-            char2_personality="回答者。中高年女性。冷静に寄り添いながらアドバイスする。",
+            char1_personality="相談者。中高年。不安げに悩みを打ち明ける。",
+            char2_personality="回答者。冷静に寄り添いながらアドバイスする。",
             consultation=source_summary,
             title="",
         )
@@ -380,13 +340,10 @@ class JinseiSoudanGenerator:
                 prompt,
                 generation_config=self.generation_config
             )
-
             script = response.text
             char_count = len(script)
-
             print_success(f"台本生成完了（{char_count:,}文字）")
 
-            # プレビュー表示
             preview_lines = script.split('\n')[:6]
             print("  📄 プレビュー:")
             for line in preview_lines:
@@ -399,19 +356,9 @@ class JinseiSoudanGenerator:
             raise
 
     def process_row(self, row_num: int) -> bool:
-        """
-        1行を処理
-
-        Args:
-            row_num: 行番号（1始まり）
-
-        Returns:
-            成功/失敗
-        """
         print_header(f"行 {row_num} を処理中", 2)
 
         try:
-            # 1. 行データを取得
             row_data = self.get_row_data(row_num)
             source_summary = row_data['source_summary']
 
@@ -421,11 +368,9 @@ class JinseiSoudanGenerator:
 
             print_info(f"サマリー: {source_summary[:100]}...")
 
-            # 2. ステータスを PROCESSING に更新
             self.update_status(row_num, Status.PROCESSING)
             self.update_cell(row_num, Col.DATETIME, get_jst_now().strftime('%Y-%m-%d %H:%M:%S'))
 
-            # 3. 台本生成（既存の台本があればスキップ）
             existing_script = row_data['script']
             if existing_script and len(existing_script) > 100:
                 print_info("既存の台本を使用します")
@@ -434,15 +379,12 @@ class JinseiSoudanGenerator:
                 print_header("ステップ 1: 台本生成", 3)
                 script = self.generate_script(source_summary)
 
-                # 4. F列に台本を保存
                 print_header("ステップ 2: スプレッドシート更新", 3)
                 self.update_cell(row_num, Col.SCRIPT, script)
 
-                # 5. E列に文字数を保存
                 char_count = len(script)
                 self.update_cell(row_num, Col.CHAR_COUNT, str(char_count))
 
-                # 6. Slack通知
                 print_header("ステップ 3: Slack通知", 3)
                 try:
                     source_info = {
@@ -463,7 +405,6 @@ class JinseiSoudanGenerator:
                 except Exception as e:
                     print_error(f"Slack通知失敗（処理は続行）: {str(e)}")
 
-            # 7. 音声・動画生成
             video_path = generate_audio_and_video(script, row_num)
             if video_path:
                 self.update_cell(row_num, Col.VIDEO_URL, str(video_path))
@@ -484,7 +425,6 @@ class JinseiSoudanGenerator:
             import traceback
             traceback.print_exc()
 
-            # エラーステータスに更新
             try:
                 self.update_status(row_num, f"{Status.ERROR}: {str(e)[:50]}")
             except:
@@ -493,30 +433,18 @@ class JinseiSoudanGenerator:
             return False
 
     def run(self, row_num: Optional[int] = None) -> bool:
-        """
-        メイン処理を実行
-
-        Args:
-            row_num: 処理する行番号（指定しない場合は未処理行を自動検索）
-
-        Returns:
-            成功/失敗
-        """
         print_header("メイン処理開始", 2)
 
         try:
             if row_num:
-                # 特定の行を処理
                 return self.process_row(row_num)
             else:
-                # 未処理行を検索して処理
                 pending_rows = self.find_pending_rows()
 
                 if not pending_rows:
                     print_info("処理待ちの行がありません")
                     return True
 
-                # 最初の1行だけ処理（バッチ処理の場合はループに変更）
                 return self.process_row(pending_rows[0])
 
         except Exception as e:
@@ -527,45 +455,9 @@ class JinseiSoudanGenerator:
 
 
 # ============================================================
-# メイン実行
+# 音声・動画生成
 # ============================================================
-if __name__ == "__main__":
-    try:
-        generator = JinseiSoudanGenerator()
-
-        # コマンドライン引数から行番号を取得（オプション）
-        row_num = None
-        if len(sys.argv) > 1:
-            try:
-                row_num = int(sys.argv[1])
-                print_info(f"指定行: {row_num}")
-            except ValueError:
-                print_error(f"無効な行番号: {sys.argv[1]}")
-                sys.exit(1)
-
-        success = generator.run(row_num)
-
-        if not success:
-            print_error("処理が失敗しました")
-            sys.exit(1)
-
-    except KeyboardInterrupt:
-        print("\n⚠️ ユーザーによって中断されました")
-        sys.exit(130)
-
-    except Exception as e:
-        print(f"💥 致命的エラー: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
-
-
-# ============================================================
-# 音声・動画生成（追加機能）
-# ============================================================
-
 def generate_audio_and_video(script: str, row_num: int) -> Optional[str]:
-    """台本から音声・動画を生成"""
     from tts_generator import TTSGenerator
     from video_generator_v2 import VideoGeneratorV2 as VideoGenerator
 
@@ -596,3 +488,39 @@ def generate_audio_and_video(script: str, row_num: int) -> Optional[str]:
         import traceback
         traceback.print_exc()
         return None
+
+
+# ============================================================
+# メイン実行（直接実行時）
+# ============================================================
+def main():
+    """メイン関数（jinsei_generator_auto.py から呼ばれる）"""
+    generator = JinseiSoudanGenerator()
+
+    row_num = None
+    if len(sys.argv) > 1:
+        try:
+            row_num = int(sys.argv[1])
+            print_info(f"指定行: {row_num}")
+        except ValueError:
+            print_error(f"無効な行番号: {sys.argv[1]}")
+            sys.exit(1)
+
+    success = generator.run(row_num)
+
+    if not success:
+        print_error("処理が失敗しました")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n⚠️ ユーザーによって中断されました")
+        sys.exit(130)
+    except Exception as e:
+        print(f"💥 致命的エラー: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
