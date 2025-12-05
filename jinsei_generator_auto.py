@@ -1,46 +1,56 @@
 #!/usr/bin/env python3
 """
-人生相談チャンネル - 自動実行スクリプト
-GitHub Actionsから呼び出される
+人生相談チャンネル 自動生成ラッパー
+環境変数 CHANNEL_KEY に応じて設定を切り替え
 """
 
 import os
 import sys
 
-# メインモジュールをインポート
-from jinsei_generator import JinseiSoudanGenerator, print_header, print_error
+# チャンネルキーを取得（デフォルトは jinsei）
+CHANNEL_KEY = os.environ.get("CHANNEL_KEY", "jinsei")
 
+print(f"=" * 50)
+print(f"🎬 チャンネル: {CHANNEL_KEY}")
+print(f"=" * 50)
 
-def main():
-    """自動実行のメイン処理"""
-    print_header("人生相談チャンネル - 自動生成モード", 1)
+# config から設定を取得
+from config import get_config, CHANNEL_CONFIGS
 
-    try:
-        # 環境変数から動画URLを取得
-        video_url = os.getenv('SOURCE_VIDEO_URL', '')
+if CHANNEL_KEY not in CHANNEL_CONFIGS:
+    print(f"❌ 不明なチャンネルキー: {CHANNEL_KEY}")
+    print(f"有効なキー: {list(CHANNEL_CONFIGS.keys())}")
+    sys.exit(1)
 
-        if not video_url:
-            print("📝 SOURCE_VIDEO_URL が未設定です。スプレッドシートから取得を試みます...")
+config = get_config(CHANNEL_KEY)
 
-        # ジェネレーターを初期化して実行
-        generator = JinseiSoudanGenerator()
-        result = generator.run(video_url)
+print(f"📺 チャンネル名: {config['name']}")
+print(f"📋 シート: {config['sheet_name']}")
+print(f"🎭 回答者: {config['advisor_name']}")
+print(f"👤 相談者: {config['consulter_name']}")
+print(f"🎯 参考チャンネル: {config['reference_channel']}")
+print(f"=" * 50)
 
-        if result:
-            print("\n" + "=" * 60)
-            print("🎉 自動生成が完了しました！")
-            print("=" * 60)
-            return 0
-        else:
-            print_error("自動生成に失敗しました")
-            return 1
+# 環境変数に設定を書き込む（他のスクリプトが参照できるように）
+os.environ["SHEET_NAME"] = config["sheet_name"]
+os.environ["ADVISOR_NAME"] = config["advisor_name"]
+os.environ["CONSULTER_NAME"] = config["consulter_name"]
+os.environ["ADVISOR_VOICE"] = config["advisor_voice"]
+os.environ["ADVISOR_PITCH"] = str(config["advisor_pitch"])
+os.environ["ADVISOR_RATE"] = str(config["advisor_rate"])
+os.environ["CONSULTER_VOICE"] = config["consulter_voice"]
+os.environ["CONSULTER_PITCH"] = str(config["consulter_pitch"])
+os.environ["CONSULTER_RATE"] = str(config["consulter_rate"])
+os.environ["REFERENCE_CHANNEL"] = config["reference_channel"]
 
-    except Exception as e:
-        print_error(f"致命的エラー: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return 1
-
+# メイン処理を実行
+from jinsei_generator import main
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        main()
+    except Exception as e:
+        print(f"❌ エラー: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
