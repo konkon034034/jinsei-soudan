@@ -2,16 +2,6 @@
 # -*- coding: utf-8 -*-
 """
 人生相談チャンネル動画生成システム
-
-処理フロー:
-1. スプレッドシートから未処理行を取得（Status = PENDING）
-2. 元動画からサマリー取得（C列）
-3. プロンプトA + サマリーで台本生成（Gemini API使用）
-4. 生成した台本をF列に保存
-5. 文字数をE列に保存
-6. slack_notifier.py で通知
-7. Status = APPROVAL_PENDING_SCRIPT に更新
-8. 承認待ち
 """
 
 from dotenv import load_dotenv
@@ -25,30 +15,24 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, Optional, List
 
-# Google関連
 import google.generativeai as genai
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 import gspread
 
-# Slack通知
 from slack_notifier import notify_script_complete
 
 # ============================================================
 # 定数設定
 # ============================================================
 SCRIPT_NAME = "人生相談チャンネル動画生成システム"
-VERSION = "2.0.0"
+VERSION = "3.0.0"
 PROMPTS_DIR = Path("prompts")
 
-# キャラクター設定（環境変数から取得、デフォルト値あり）
 CHARACTER_CONSULTER = os.environ.get("CONSULTER_NAME", "由美子")
 CHARACTER_ADVISOR = os.environ.get("ADVISOR_NAME", "P")
-
-# シート名（環境変数から取得、デフォルト値あり）
 SHEET_NAME = os.environ.get("SHEET_NAME", "人生相談")
 
-# ステータス定義
 class Status:
     PENDING = "PENDING"
     PROCESSING = "PROCESSING"
@@ -59,7 +43,6 @@ class Status:
     COMPLETED = "COMPLETED"
     ERROR = "ERROR"
 
-# スプレッドシート列インデックス（0始まり）
 class Col:
     COMPLETED = 0
     DATETIME = 1
@@ -159,6 +142,99 @@ def find_working_model():
                     continue
 
     raise Exception("利用可能なGeminiモデルが見つかりませんでした")
+
+
+# ============================================================
+# YouTube アップロード
+# ============================================================
+def upload_to_youtube(video_path: str, title: str, description: str) -> Optional[str]:
+    """YouTubeに動画をアップロード"""
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload
+    import requests
+
+    print_info("YouTube認証開始...")
+
+    client_id = os.environ.get("YOUTUBE_CLIENT_ID")
+    client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
+    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN")
+
+    if not all([client_id, client_secret, refresh_token]):
+        print_error("YouTube認証情報が不足しています")
+        return None
+
+    # アクセストークンを取得
+    token_url = "https://oauth2.googleapis.com/token"
+    token_data = {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token"
+    }
+
+    try:
+        response = requests.post(token_url, data=token_data)
+        response.raise_for_status()
+        access_token = response.json()["access_token"]
+        print_success("アクセストークン取得成功")
+    except Exception as e:
+        print_error(f"アクセストークン取得失敗: {e}")
+        return None
+
+    # 認証情報を作成
+    credentials = Credentials(
+        token=access_token,
+        refresh_token=refresh_token,
+        token_uri=token_url,
+        client_id=client_id,
+        client_secret=client_secret
+    )
+
+    # YouTube APIクライアントを作成
+    youtube = build("youtube", "v3", credentials=credentials)
+
+    # 動画メタデータ
+    body = {
+        "snippet": {
+            "title": title[:100],
+            "description": description[:5000],
+            "tags": ["人生相談", "お悩み相談", "昭和"],
+            "categoryId": "22"
+        },
+        "status": {
+            "privacyStatus": "public",
+            "selfDeclaredMadeForKids": False
+        }
+    }
+
+    # アップロード
+    print_info(f"アップロード中: {video_path}")
+    media = MediaFileUpload(video_path, mimetype="video/mp4", resumable=True)
+
+    try:
+        request = youtube.videos().insert(
+            part="snippet,status",
+            body=body,
+            media_body=media
+        )
+
+        response = None
+        while response is None:
+            status, response = request.next_chunk()
+            if status:
+                print_info(f"  進捗: {int(status.progress() * 100)}%")
+
+        video_id = response["id"]
+        video_url = f"https://www.youtube.com/watch?v={video_id}"
+        print_success(f"アップロード完了: {video_url}")
+        return video_url
+
+    except Exception as e:
+        print_error(f"アップロードエラー: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 
 # ============================================================
@@ -407,16 +483,24 @@ class JinseiSoudanGenerator:
 
             video_path = generate_audio_and_video(script, row_num)
             if video_path:
-                self.update_cell(row_num, Col.VIDEO_URL, str(video_path))
-                self.update_status(row_num, Status.COMPLETED)
-                print_header("処理完了", 2)
-                print_success(f"行 {row_num} の動画生成が完了しました")
-                print_info(f"動画: {video_path}")
+                # YouTubeにアップロード
+                title = f"人生相談 #{row_num} - {source_summary[:30]}"
+                description = f"{source_summary}\n\n#人生相談 #お悩み相談"
+                
+                youtube_url = upload_to_youtube(str(video_path), title, description)
+                
+                if youtube_url:
+                    self.update_cell(row_num, Col.VIDEO_URL, youtube_url)
+                    self.update_status(row_num, Status.COMPLETED)
+                    print_success(f"行 {row_num} の処理が完了しました")
+                    print_info(f"YouTube URL: {youtube_url}")
+                else:
+                    self.update_cell(row_num, Col.VIDEO_URL, str(video_path))
+                    self.update_status(row_num, Status.APPROVAL_PENDING_SCRIPT)
+                    print_error("YouTubeアップロードに失敗しました")
             else:
                 self.update_status(row_num, Status.APPROVAL_PENDING_SCRIPT)
-                print_header("処理完了", 2)
-                print_success(f"行 {row_num} の台本生成が完了しました")
-                print_info("動画生成に失敗。Slackで承認後、再試行してください")
+                print_error("動画生成に失敗しました")
 
             return True
 
@@ -491,10 +575,9 @@ def generate_audio_and_video(script: str, row_num: int) -> Optional[str]:
 
 
 # ============================================================
-# メイン実行（直接実行時）
+# メイン実行
 # ============================================================
 def main():
-    """メイン関数（jinsei_generator_auto.py から呼ばれる）"""
     generator = JinseiSoudanGenerator()
 
     row_num = None
