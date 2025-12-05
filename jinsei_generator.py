@@ -26,7 +26,7 @@ from slack_notifier import notify_script_complete
 # 定数設定
 # ============================================================
 SCRIPT_NAME = "人生相談チャンネル動画生成システム"
-VERSION = "4.0.0"
+VERSION = "5.0.0"
 PROMPTS_DIR = Path("prompts")
 
 CHARACTER_CONSULTER = os.environ.get("CONSULTER_NAME", "由美子")
@@ -102,7 +102,6 @@ def load_prompt(prompt_name: str) -> str:
     prompt_path = PROMPTS_DIR / f"{prompt_name}.txt"
     if prompt_path.exists():
         return prompt_path.read_text(encoding='utf-8')
-    print(f"⚠️ プロンプトファイルが見つかりません: {prompt_path}")
     return ""
 
 
@@ -149,7 +148,6 @@ def is_script_valid(script: str) -> bool:
     if not script or len(script) < 100:
         return False
     
-    # 現在のキャラクター名が台本に含まれているか確認
     has_consulter = f"{CHARACTER_CONSULTER}：" in script or f"{CHARACTER_CONSULTER}:" in script
     has_advisor = f"{CHARACTER_ADVISOR}：" in script or f"{CHARACTER_ADVISOR}:" in script
     
@@ -157,7 +155,6 @@ def is_script_valid(script: str) -> bool:
         print_info(f"台本に「{CHARACTER_CONSULTER}」と「{CHARACTER_ADVISOR}」が見つかりました")
         return True
     
-    # 古いキャラクター名（由美子、P）が含まれているか確認
     old_chars = ["由美子：", "由美子:", "P：", "P:"]
     has_old = any(old in script for old in old_chars)
     
@@ -391,53 +388,44 @@ class JinseiSoudanGenerator:
     def clear_row_for_retry(self, row_num: int):
         """エラー時にセルをクリアして再処理可能にする"""
         print_info("セルをクリアして再処理準備中...")
-        self.update_cell(row_num, Col.SCRIPT, "")  # F列
-        self.update_cell(row_num, Col.VIDEO_URL, "")  # G列
-        self.update_cell(row_num, Col.CHAR_COUNT, "")  # E列
-        self.update_status(row_num, Status.PENDING)  # O列
+        self.update_cell(row_num, Col.SCRIPT, "")
+        self.update_cell(row_num, Col.VIDEO_URL, "")
+        self.update_cell(row_num, Col.CHAR_COUNT, "")
+        self.update_status(row_num, Status.PENDING)
         print_success("セルをクリアしました。次回実行時に再処理されます。")
 
     def generate_script(self, source_summary: str) -> str:
         print_info("台本生成中...")
-        prompt_template = load_prompt("prompt_a_script")
-
-        if not prompt_template:
-            prompt_template = """
-あなたは台本作家です。
+        
+        prompt = f"""あなたは台本作家です。
 以下の人生相談をもとに、2人のトーク動画の台本を作成してください。
 
 【キャラクター設定】
-- {consulter}: 相談者。中高年。不安げに悩みを打ち明ける。
-- {advisor}: 回答者。冷静に寄り添いながらアドバイスする。
+- {CHARACTER_CONSULTER}: 相談者。中高年。不安げに悩みを打ち明ける。
+- {CHARACTER_ADVISOR}: 回答者。冷静に寄り添いながらアドバイスする。
 
 【相談内容】
-{summary}
+{source_summary}
 
-【出力形式】
-- 約10〜15分（4000〜6000文字程度）の対話形式
+【重要：出力形式のルール】
+1. Markdownは絶対に使わないでください（**や*や#は禁止）
+2. 必ず「名前：セリフ」の形式で出力してください
+3. 名前の後は必ず全角コロン「：」を使ってください
+
+【出力形式の例】
+{CHARACTER_CONSULTER}：今日はよろしくお願いします。実は最近悩んでいることがあって…
+{CHARACTER_ADVISOR}：はい、どうぞお話しください。何でも聞きますよ。
+{CHARACTER_CONSULTER}：ありがとうございます。実は夫のことなんですが…
+{CHARACTER_ADVISOR}：ええ、夫婦のことですね。どんなお悩みですか？
+
+【台本の長さ】
+- 約3分（1500〜2000文字程度）の短い対話
 - 相談者が悩みを話し、回答者が共感しながらアドバイス
-- 具体的かつ実践的なアドバイスを含める
 - 最後は前向きなメッセージで締める
 
-【フォーマット】
-{consulter}：（セリフ）
-{advisor}：（セリフ）
-...
-
-台本のみを出力してください。
+台本のみを出力してください。タイトルや説明は不要です。
+最初の行から「{CHARACTER_CONSULTER}：」で始めてください。
 """
-
-        prompt = prompt_template.format(
-            consulter=CHARACTER_CONSULTER,
-            advisor=CHARACTER_ADVISOR,
-            summary=source_summary,
-            char1_name=CHARACTER_CONSULTER,
-            char2_name=CHARACTER_ADVISOR,
-            char1_personality="相談者。中高年。不安げに悩みを打ち明ける。",
-            char2_personality="回答者。冷静に寄り添いながらアドバイスする。",
-            consultation=source_summary,
-            title="",
-        )
 
         try:
             response = self.model.generate_content(
@@ -475,7 +463,6 @@ class JinseiSoudanGenerator:
             self.update_status(row_num, Status.PROCESSING)
             self.update_cell(row_num, Col.DATETIME, get_jst_now().strftime('%Y-%m-%d %H:%M:%S'))
 
-            # 既存の台本をチェック（キャラクター名が一致するか確認）
             existing_script = row_data['script']
             if existing_script and is_script_valid(existing_script):
                 print_info("既存の台本を使用します")
@@ -483,7 +470,7 @@ class JinseiSoudanGenerator:
             else:
                 if existing_script:
                     print_info("⚠️ 既存の台本は無効です。新しく生成します。")
-                    self.update_cell(row_num, Col.SCRIPT, "")  # 古い台本をクリア
+                    self.update_cell(row_num, Col.SCRIPT, "")
                 
                 print_header("ステップ 1: 台本生成", 3)
                 script = self.generate_script(source_summary)
@@ -531,7 +518,6 @@ class JinseiSoudanGenerator:
                     self.update_status(row_num, Status.APPROVAL_PENDING_SCRIPT)
                     print_error("YouTubeアップロードに失敗しました")
             else:
-                # 動画生成失敗 → セルをクリアして次回再処理
                 print_error("動画生成に失敗しました。セルをクリアします。")
                 self.clear_row_for_retry(row_num)
 
