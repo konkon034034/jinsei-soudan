@@ -1,0 +1,41 @@
+name: Daily Denwa (電話相談)
+
+on:
+  schedule:
+    - cron: '10 0 * * *'  # 毎日 9:10 JST
+  workflow_dispatch:
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    
+    env:
+      CHANNEL_KEY: denwa
+      GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN_2 }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install ffmpeg and Japanese fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-cjk fonts-noto-cjk-extra
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Run generator
+        run: python jinsei_generator_auto.py
+      
+      - name: Upload to YouTube
+        run: python scripts/upload_youtube.py
