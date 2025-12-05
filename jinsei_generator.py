@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-人生相談チャンネル動画生成システム
+人生相談チャンネル動画生成システム（自動修正版）
 """
 
 from dotenv import load_dotenv
@@ -26,7 +26,7 @@ from slack_notifier import notify_script_complete
 # 定数設定
 # ============================================================
 SCRIPT_NAME = "人生相談チャンネル動画生成システム"
-VERSION = "3.0.0"
+VERSION = "4.0.0"
 PROMPTS_DIR = Path("prompts")
 
 CHARACTER_CONSULTER = os.environ.get("CONSULTER_NAME", "由美子")
@@ -144,6 +144,30 @@ def find_working_model():
     raise Exception("利用可能なGeminiモデルが見つかりませんでした")
 
 
+def is_script_valid(script: str) -> bool:
+    """台本が現在のキャラクター設定と一致するか確認"""
+    if not script or len(script) < 100:
+        return False
+    
+    # 現在のキャラクター名が台本に含まれているか確認
+    has_consulter = f"{CHARACTER_CONSULTER}：" in script or f"{CHARACTER_CONSULTER}:" in script
+    has_advisor = f"{CHARACTER_ADVISOR}：" in script or f"{CHARACTER_ADVISOR}:" in script
+    
+    if has_consulter and has_advisor:
+        print_info(f"台本に「{CHARACTER_CONSULTER}」と「{CHARACTER_ADVISOR}」が見つかりました")
+        return True
+    
+    # 古いキャラクター名（由美子、P）が含まれているか確認
+    old_chars = ["由美子：", "由美子:", "P：", "P:"]
+    has_old = any(old in script for old in old_chars)
+    
+    if has_old and (CHARACTER_CONSULTER != "由美子" or CHARACTER_ADVISOR != "P"):
+        print_info(f"⚠️ 古いキャラクター名が検出されました。台本を再生成します。")
+        return False
+    
+    return True
+
+
 # ============================================================
 # YouTube アップロード
 # ============================================================
@@ -164,7 +188,6 @@ def upload_to_youtube(video_path: str, title: str, description: str) -> Optional
         print_error("YouTube認証情報が不足しています")
         return None
 
-    # アクセストークンを取得
     token_url = "https://oauth2.googleapis.com/token"
     token_data = {
         "client_id": client_id,
@@ -182,7 +205,6 @@ def upload_to_youtube(video_path: str, title: str, description: str) -> Optional
         print_error(f"アクセストークン取得失敗: {e}")
         return None
 
-    # 認証情報を作成
     credentials = Credentials(
         token=access_token,
         refresh_token=refresh_token,
@@ -191,10 +213,8 @@ def upload_to_youtube(video_path: str, title: str, description: str) -> Optional
         client_secret=client_secret
     )
 
-    # YouTube APIクライアントを作成
     youtube = build("youtube", "v3", credentials=credentials)
 
-    # 動画メタデータ
     body = {
         "snippet": {
             "title": title[:100],
@@ -208,7 +228,6 @@ def upload_to_youtube(video_path: str, title: str, description: str) -> Optional
         }
     }
 
-    # アップロード
     print_info(f"アップロード中: {video_path}")
     media = MediaFileUpload(video_path, mimetype="video/mp4", resumable=True)
 
@@ -369,6 +388,15 @@ class JinseiSoudanGenerator:
         self.update_cell(row_num, Col.STATUS, status)
         print_info(f"ステータス更新: {status}")
 
+    def clear_row_for_retry(self, row_num: int):
+        """エラー時にセルをクリアして再処理可能にする"""
+        print_info("セルをクリアして再処理準備中...")
+        self.update_cell(row_num, Col.SCRIPT, "")  # F列
+        self.update_cell(row_num, Col.VIDEO_URL, "")  # G列
+        self.update_cell(row_num, Col.CHAR_COUNT, "")  # E列
+        self.update_status(row_num, Status.PENDING)  # O列
+        print_success("セルをクリアしました。次回実行時に再処理されます。")
+
     def generate_script(self, source_summary: str) -> str:
         print_info("台本生成中...")
         prompt_template = load_prompt("prompt_a_script")
@@ -447,11 +475,16 @@ class JinseiSoudanGenerator:
             self.update_status(row_num, Status.PROCESSING)
             self.update_cell(row_num, Col.DATETIME, get_jst_now().strftime('%Y-%m-%d %H:%M:%S'))
 
+            # 既存の台本をチェック（キャラクター名が一致するか確認）
             existing_script = row_data['script']
-            if existing_script and len(existing_script) > 100:
+            if existing_script and is_script_valid(existing_script):
                 print_info("既存の台本を使用します")
                 script = existing_script
             else:
+                if existing_script:
+                    print_info("⚠️ 既存の台本は無効です。新しく生成します。")
+                    self.update_cell(row_num, Col.SCRIPT, "")  # 古い台本をクリア
+                
                 print_header("ステップ 1: 台本生成", 3)
                 script = self.generate_script(source_summary)
 
@@ -483,7 +516,6 @@ class JinseiSoudanGenerator:
 
             video_path = generate_audio_and_video(script, row_num)
             if video_path:
-                # YouTubeにアップロード
                 title = f"人生相談 #{row_num} - {source_summary[:30]}"
                 description = f"{source_summary}\n\n#人生相談 #お悩み相談"
                 
@@ -499,8 +531,9 @@ class JinseiSoudanGenerator:
                     self.update_status(row_num, Status.APPROVAL_PENDING_SCRIPT)
                     print_error("YouTubeアップロードに失敗しました")
             else:
-                self.update_status(row_num, Status.APPROVAL_PENDING_SCRIPT)
-                print_error("動画生成に失敗しました")
+                # 動画生成失敗 → セルをクリアして次回再処理
+                print_error("動画生成に失敗しました。セルをクリアします。")
+                self.clear_row_for_retry(row_num)
 
             return True
 
@@ -510,7 +543,7 @@ class JinseiSoudanGenerator:
             traceback.print_exc()
 
             try:
-                self.update_status(row_num, f"{Status.ERROR}: {str(e)[:50]}")
+                self.clear_row_for_retry(row_num)
             except:
                 pass
 
