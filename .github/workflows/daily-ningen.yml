@@ -2,7 +2,7 @@ name: Daily Ningen (人間関係相談)
 
 on:
   schedule:
-    - cron: '20 0 * * *'  # 毎日 9:20 JST
+    - cron: '20 0 * * *'
   workflow_dispatch:
 
 jobs:
@@ -11,6 +11,7 @@ jobs:
     
     env:
       CHANNEL_KEY: ningen
+      SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
       GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
