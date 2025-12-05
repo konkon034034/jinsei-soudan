@@ -2,7 +2,7 @@ name: Daily Denwa (電話相談)
 
 on:
   schedule:
-    - cron: '10 0 * * *'  # 毎日 9:10 JST
+    - cron: '10 0 * * *'
   workflow_dispatch:
 
 jobs:
@@ -11,6 +11,7 @@ jobs:
     
     env:
       CHANNEL_KEY: denwa
+      SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
       GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
