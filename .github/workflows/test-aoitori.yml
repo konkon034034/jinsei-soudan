@@ -23,7 +23,7 @@ jobs:
       
       - name: Create test video and upload
         run: |
-          ffmpeg -f lavfi -i color=c=skyblue:s=1920x1080:d=30 -f lavfi -i anullsrc=r=44100:cl=stereo -t=30 -c:v libx264 -c:a aac -shortest test_video.mp4
+          ffmpeg -f lavfi -i color=c=skyblue:s=1920x1080:d=30 -f lavfi -i anullsrc=r=44100:cl=stereo -t 30 -c:v libx264 -c:a aac -shortest test_video.mp4
           
           python3 << 'EOF'
           import os
