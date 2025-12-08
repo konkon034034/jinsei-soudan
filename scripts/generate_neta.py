@@ -1,23 +1,125 @@
-name: Daily Generate Neta
+#!/usr/bin/env python3
+import os
+import json
+import gspread
+import requests
+from datetime import datetime
+from google.oauth2.service_account import Credentials
 
-on:
-  schedule:
-    - cron: '0 0 * * *'
-  workflow_dispatch:
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+SPREADSHEET_ID = '15_ixYlyRp9sOlS0tdklhz6wQmwRxWlOL9cPndFWwOFo'
 
-jobs:
-  generate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-      - name: Install dependencies
-        run: pip install gspread google-auth requests
-      - name: Generate neta
-        env:
-          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
-          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
-        run: python scripts/generate_neta.py
+CHANNELS = {
+    1: {"name": "昭和の宝箱", "genre": "総合・歴史", "prompt": "あなたは昭和時代の日本の歴史に詳しい専門家です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：昭和時代の歴史的事件、流行語、発明品、万博、オリンピック、社会現象など。条件：60歳以上の女性が懐かしいと思うテーマ、ランキング形式TOP10-20、8分以上の動画になる内容。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    2: {"name": "懐かしの歌謡曲ch", "genre": "音楽・演歌", "prompt": "あなたは昭和の歌謡曲・演歌に詳しい音楽評論家です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：美空ひばり、石原裕次郎、都はるみ、北島三郎、テレサ・テン、五木ひろし、八代亜紀など昭和の歌手。条件：ランキング形式TOP10-20、8分以上の動画。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    3: {"name": "思い出ランキング", "genre": "社会・女性", "prompt": "あなたは昭和時代の女性の生き方に詳しい社会学者です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：昭和の女性の職業、社会進出、結婚観、専業主婦など。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    4: {"name": "昭和スター名鑑", "genre": "芸能・俳優", "prompt": "あなたは昭和の芸能界に詳しい芸能評論家です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：昭和の美人女優、二枚目俳優、お笑い芸人、司会者など。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    5: {"name": "演歌の殿堂", "genre": "音楽・フォーク", "prompt": "あなたは昭和の演歌・フォークに詳しい音楽評論家です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：演歌、ムード歌謡、フォーク、ニューミュージック。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    6: {"name": "銀幕の思い出", "genre": "映画", "prompt": "あなたは昭和の日本映画に詳しい映画評論家です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：黒澤明、東映任侠、寅さん、恋愛映画など。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    7: {"name": "懐メロ天国", "genre": "音楽・アイドル", "prompt": "あなたは昭和のアイドルに詳しい芸能評論家です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：山口百恵、松田聖子、中森明菜、キャンディーズなど。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    8: {"name": "朝ドラ大全集", "genre": "ドラマ", "prompt": "あなたは昭和のテレビドラマに詳しいドラマ評論家です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：朝ドラ、大河ドラマ、刑事ドラマ、ホームドラマなど。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    9: {"name": "昭和プレイバック", "genre": "遊び・行事", "prompt": "あなたは昭和の子供文化に詳しい研究者です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：子供の遊び、おもちゃ、年中行事、お祭り、縁日など。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    10: {"name": "昭和ノスタルジア", "genre": "季節・自然", "prompt": "あなたは昭和の季節感に詳しい文化研究者です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：四季の歌、季節の行事、風景、旅行、温泉など。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    11: {"name": "黄金時代ch", "genre": "映画・特撮", "prompt": "あなたは昭和の特撮・アニメに詳しい映画評論家です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：ゴジラ、ウルトラマン、仮面ライダー、時代劇映画など。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    12: {"name": "昭和ドラマ劇場", "genre": "ドラマ・学園", "prompt": "あなたは昭和の学園ドラマに詳しいドラマ評論家です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：金八先生、赤いシリーズ、必殺シリーズ、2時間ドラマなど。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    13: {"name": "戦後日本の記憶", "genre": "戦争・復興", "prompt": "あなたは戦後日本の歴史に詳しい歴史研究者です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：戦時中の暮らし、戦後復興、引揚げ、闇市、疎開など。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    14: {"name": "昭和の学校", "genre": "教育・学校", "prompt": "あなたは昭和の学校教育に詳しい教育研究者です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：小中高、教科書、文房具、ランドセル、校舎、運動会など。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    15: {"name": "制服と校則ch", "genre": "教育・部活", "prompt": "あなたは昭和の学校文化に詳しい教育研究者です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：制服、セーラー服、校則、部活動、受験、修学旅行など。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    16: {"name": "昭和の食卓", "genre": "給食・家庭料理", "prompt": "あなたは昭和の食文化に詳しい料理研究家です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：給食、家庭料理、お弁当、おふくろの味、台所道具など。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    17: {"name": "昭和グルメ図鑑", "genre": "外食・お菓子", "prompt": "あなたは昭和の外食産業に詳しい食文化研究者です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：喫茶店、洋食屋、ラーメン、駄菓子、お菓子、アイスなど。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    18: {"name": "昭和CM博覧会", "genre": "CM・広告", "prompt": "あなたは昭和のCMに詳しい広告研究者です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：CMソング、CMタレント、キャッチコピー、CM女王など。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    19: {"name": "CMソング大全", "genre": "CM・企業", "prompt": "あなたは昭和の企業CMに詳しい広告研究者です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：化粧品CM、石鹸CM、シャンプーCM、家電CM、車CM、食品CMなど。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    20: {"name": "昭和の暮らし", "genre": "家電・家具", "prompt": "あなたは昭和の生活文化に詳しい生活史研究者です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：三種の神器、テレビ、冷蔵庫、洗濯機、家具、インテリアなど。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    21: {"name": "昭和の家族", "genre": "家庭・結婚", "prompt": "あなたは昭和の家族文化に詳しい社会学者です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：お見合い、結婚式、新婚旅行、嫁姑関係、団地生活など。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    22: {"name": "おしゃれ街道", "genre": "街・観光地", "prompt": "あなたは昭和の都市文化に詳しい都市研究者です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：銀座、原宿、渋谷、温泉地、観光地、デパート、商店街など。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    23: {"name": "昭和ファッション", "genre": "服・髪型", "prompt": "あなたは昭和のファッションに詳しいファッション評論家です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：ミニスカート、パンタロン、髪型、流行、ブランドなど。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    24: {"name": "レトロビューティー", "genre": "化粧品・美容", "prompt": "あなたは昭和の美容業界に詳しい美容研究者です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：化粧品、口紅、石鹸、シャンプー、美容院、エステなど。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    25: {"name": "昭和スポーツ伝説", "genre": "スポーツ", "prompt": "あなたは昭和のスポーツに詳しいスポーツジャーナリストです。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：長嶋茂雄、王貞治、大相撲、プロレス、オリンピック、甲子園など。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    26: {"name": "昭和バラエティ", "genre": "テレビ・番組", "prompt": "あなたは昭和のテレビ番組に詳しいテレビ評論家です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：歌番組、バラエティ、クイズ番組、ドリフ、ひょうきん族など。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+    27: {"name": "激動の昭和史", "genre": "政治・経済", "prompt": "あなたは昭和の政治・経済に詳しい政治評論家です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：政治家、総理大臣、経済成長、公害問題、オイルショックなど。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル]\nランキング数: [10-20の数字]\nカテゴリ: [カテゴリ名]"},
+}
+
+def get_credentials():
+    creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
+    creds_dict = json.loads(creds_json)
+    return Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+
+def generate_neta_with_claude(channel_id):
+    api_key = os.environ.get('CLAUDE_API_KEY')
+    channel = CHANNELS[channel_id]
+    
+    url = "https://api.anthropic.com/v1/messages"
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json"
+    }
+    payload = {
+        "model": "claude-3-haiku-20240307",
+        "max_tokens": 300,
+        "messages": [{"role": "user", "content": channel["prompt"]}]
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        result = response.json()
+        
+        if 'error' in result:
+            print(f"  ⚠️ エラー: {result['error'].get('message', '不明')[:50]}")
+            return None
+        
+        text = result['content'][0]['text']
+        lines = text.strip().split('\n')
+        title, ranking_num, category = "", 15, ""
+        for line in lines:
+            if 'タイトル' in line and ':' in line:
+                title = line.split(':', 1)[1].strip()
+            elif 'ランキング数' in line and ':' in line:
+                try:
+                    ranking_num = int(''.join(filter(str.isdigit, line.split(':', 1)[1])))
+                except:
+                    ranking_num = 15
+            elif 'カテゴリ' in line and ':' in line:
+                category = line.split(':', 1)[1].strip()
+        return {"title": title, "ranking_num": ranking_num, "category": category}
+    except Exception as e:
+        print(f"  ⚠️ 例外: {e}")
+        return None
+
+def add_neta_to_sheet(sh, channel_id, neta):
+    try:
+        ws = sh.worksheet('ネタ管理')
+    except:
+        ws = sh.add_worksheet(title='ネタ管理', rows=1000, cols=10)
+        ws.update('A1', [['ネタID', 'チャンネル番号', 'カテゴリ', '動画タイトル', 'ランキング数', '状態', '作成日', 'アップロード日']])
+    all_values = ws.get_all_values()
+    next_id = len(all_values)
+    today = datetime.now().strftime('%Y-%m-%d')
+    new_row = [next_id, channel_id, neta['category'], neta['title'], neta['ranking_num'], '未作成', today, '']
+    ws.append_row(new_row)
+    print(f"  📝 追加: {neta['title']}")
+
+def main():
+    creds = get_credentials()
+    gc = gspread.authorize(creds)
+    sh = gc.open_by_key(SPREADSHEET_ID)
+    
+    print("🤖 ネタ自動生成開始（Claude API）...")
+    
+    success_count = 0
+    fail_count = 0
+    
+    for channel_id in CHANNELS.keys():
+        print(f"📺 ch{channel_id}: {CHANNELS[channel_id]['name']}")
+        neta = generate_neta_with_claude(channel_id)
+        if neta and neta['title']:
+            add_neta_to_sheet(sh, channel_id, neta)
+            success_count += 1
+        else:
+            print(f"  ❌ 失敗")
+            fail_count += 1
+    
+    print(f"🎉 完了！ 成功: {success_count} / 失敗: {fail_count}")
+
+if __name__ == "__main__":
+    main()
