@@ -80,20 +80,3 @@ jobs:
           print(f"🎉 アップロード成功！")
           print(f"📺 URL: https://www.youtube.com/watch?v={response['id']}")
           EOF
-```
-
-→「Commit changes」
-
----
-
-## ③ ワークフロー実行
-
-👉 https://github.com/konkon034034/jinsei-soudan/actions
-
-### 「Test Saisho (最初からね テスト)」→「Run workflow」→「Run workflow」
-
----
-
-## ✅ 進捗
-```
-26. kiuj98hj@gmail.com → 最初からね → TOKEN_26 ✅
