@@ -59,7 +59,7 @@ def get_credentials():
     return Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
 
 def call_gemini_api(prompt, model_name, api_key):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={api_key}"
     payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.9, "maxOutputTokens": 500}}
     response = requests.post(url, json=payload)
     return response.json()
