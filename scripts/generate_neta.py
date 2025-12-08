@@ -9,6 +9,17 @@ from google.oauth2.service_account import Credentials
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 SPREADSHEET_ID = '15_ixYlyRp9sOlS0tdklhz6wQmwRxWlOL9cPndFWwOFo'
 
+# Geminiモデル（新しい順）
+GEMINI_MODELS = [
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-exp",
+    "gemini-1.5-flash-latest",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro-latest",
+    "gemini-1.5-pro",
+    "gemini-pro",
+]
+
 CHANNELS = {
     1: {"name": "昭和の宝箱", "genre": "総合・歴史", "prompt": "あなたは昭和時代の日本の歴史に詳しい専門家です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：昭和時代の歴史的事件、流行語、発明品、万博、オリンピック、社会現象など。条件：60歳以上の女性が懐かしいと思うテーマ、ランキング形式TOP10-20、8分以上の動画になる内容。以下の形式で1つだけ出力：タイトル: [動画タイトル] ランキング数: [10-20の数字] カテゴリ: [カテゴリ名] 説明: [50文字以内]"},
     2: {"name": "懐かしの歌謡曲ch", "genre": "音楽・演歌", "prompt": "あなたは昭和の歌謡曲・演歌に詳しい音楽評論家です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：美空ひばり、石原裕次郎、都はるみ、北島三郎、テレサ・テン、五木ひろし、八代亜紀など昭和の歌手。条件：ランキング形式TOP10-20、8分以上の動画。以下の形式で1つだけ出力：タイトル: [動画タイトル] ランキング数: [10-20の数字] カテゴリ: [カテゴリ名] 説明: [50文字以内]"},
@@ -39,37 +50,65 @@ CHANNELS = {
     27: {"name": "激動の昭和史", "genre": "政治・経済", "prompt": "あなたは昭和の政治・経済に詳しい政治評論家です。60歳以上の女性視聴者向けに、YouTube動画のネタを1つ考えてください。テーマ：政治家、総理大臣、経済成長、公害問題、オイルショックなど。条件：ランキング形式TOP10-20。以下の形式で1つだけ出力：タイトル: [動画タイトル] ランキング数: [10-20の数字] カテゴリ: [カテゴリ名] 説明: [50文字以内]"},
 }
 
+# 使えるモデルを保持
+working_model = None
+
 def get_credentials():
     creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
     creds_dict = json.loads(creds_json)
     return Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
 
+def call_gemini_api(prompt, model_name, api_key):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+    payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.9, "maxOutputTokens": 500}}
+    response = requests.post(url, json=payload)
+    return response.json()
+
 def generate_neta_with_gemini(channel_id):
+    global working_model
     api_key = os.environ.get('GEMINI_API_KEY')
     channel = CHANNELS[channel_id]
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-    payload = {"contents": [{"parts": [{"text": channel["prompt"]}]}], "generationConfig": {"temperature": 0.9, "maxOutputTokens": 500}}
-    response = requests.post(url, json=payload)
-    result = response.json()
-    try:
-        text = result['candidates'][0]['content']['parts'][0]['text']
-        lines = text.strip().split('\n')
-        title, ranking_num, category = "", 15, ""
-        for line in lines:
-            if 'タイトル' in line and ':' in line:
-                title = line.split(':', 1)[1].strip()
-            elif 'ランキング数' in line and ':' in line:
-                try:
-                    ranking_num = int(line.split(':', 1)[1].strip())
-                except:
-                    ranking_num = 15
-            elif 'カテゴリ' in line and ':' in line:
-                category = line.split(':', 1)[1].strip()
-        return {"title": title, "ranking_num": ranking_num, "category": category}
-    except Exception as e:
-        print(f"エラー: {e}")
-        print(f"APIレスポンス: {result}")
-        return None
+    
+    # 既に使えるモデルがわかってる場合はそれを使う
+    if working_model:
+        models_to_try = [working_model]
+    else:
+        models_to_try = GEMINI_MODELS
+    
+    for model_name in models_to_try:
+        result = call_gemini_api(channel["prompt"], model_name, api_key)
+        
+        # エラーチェック
+        if 'error' in result:
+            print(f"  ⚠️ {model_name}: 失敗 - {result['error'].get('message', '不明なエラー')[:50]}")
+            continue
+        
+        # 成功
+        if 'candidates' in result:
+            working_model = model_name
+            print(f"  ✅ {model_name}: 成功")
+            try:
+                text = result['candidates'][0]['content']['parts'][0]['text']
+                lines = text.strip().split('\n')
+                title, ranking_num, category = "", 15, ""
+                for line in lines:
+                    if 'タイトル' in line and ':' in line:
+                        title = line.split(':', 1)[1].strip()
+                    elif 'ランキング数' in line and ':' in line:
+                        try:
+                            ranking_num = int(line.split(':', 1)[1].strip())
+                        except:
+                            ranking_num = 15
+                    elif 'カテゴリ' in line and ':' in line:
+                        category = line.split(':', 1)[1].strip()
+                return {"title": title, "ranking_num": ranking_num, "category": category}
+            except Exception as e:
+                print(f"  ⚠️ パースエラー: {e}")
+                continue
+    
+    # 全モデル失敗時はリセットして次回再試行
+    working_model = None
+    return None
 
 def add_neta_to_sheet(sh, channel_id, neta):
     try:
@@ -82,21 +121,32 @@ def add_neta_to_sheet(sh, channel_id, neta):
     today = datetime.now().strftime('%Y-%m-%d')
     new_row = [next_id, channel_id, neta['category'], neta['title'], neta['ranking_num'], '未作成', today, '']
     ws.append_row(new_row)
-    print(f"✅ ch{channel_id}: {neta['title']}")
+    print(f"  📝 スプレッドシートに追加: {neta['title']}")
 
 def main():
     creds = get_credentials()
     gc = gspread.authorize(creds)
     sh = gc.open_by_key(SPREADSHEET_ID)
+    
     print("🤖 ネタ自動生成開始...")
+    print(f"📋 使用モデル候補: {', '.join(GEMINI_MODELS)}")
+    print("")
+    
+    success_count = 0
+    fail_count = 0
+    
     for channel_id in CHANNELS.keys():
         print(f"📺 ch{channel_id}: {CHANNELS[channel_id]['name']}")
         neta = generate_neta_with_gemini(channel_id)
         if neta and neta['title']:
             add_neta_to_sheet(sh, channel_id, neta)
+            success_count += 1
         else:
-            print(f"⚠️ ch{channel_id}失敗")
-    print("🎉 完了！")
+            print(f"  ❌ 全モデルで失敗")
+            fail_count += 1
+        print("")
+    
+    print(f"🎉 完了！ 成功: {success_count} / 失敗: {fail_count}")
 
 if __name__ == "__main__":
     main()
