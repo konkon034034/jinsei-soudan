@@ -40,7 +40,7 @@ CHANNELS = {
 }
 
 def get_credentials():
-    creds_json = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON')
+    creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
     creds_dict = json.loads(creds_json)
     return Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
 
