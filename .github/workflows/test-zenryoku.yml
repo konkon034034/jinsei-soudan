@@ -80,20 +80,3 @@ jobs:
           print(f"🎉 アップロード成功！")
           print(f"📺 URL: https://www.youtube.com/watch?v={response['id']}")
           EOF
-```
-
-→「Commit changes」
-
----
-
-## ④ ワークフロー実行
-
-👉 https://github.com/konkon034034/jinsei-soudan/actions
-
-### 「Test Zenryoku (全力ガール テスト)」→「Run workflow」→「Run workflow」
-
----
-
-## ✅ 進捗
-```
-25. 369fsi@gmail.com → 全力ガール → TOKEN_25 ✅
