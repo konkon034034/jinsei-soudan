@@ -47,7 +47,7 @@ def get_credentials():
 def generate_neta_with_gemini(channel_id):
     api_key = os.environ.get('GEMINI_API_KEY')
     channel = CHANNELS[channel_id]
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
     payload = {"contents": [{"parts": [{"text": channel["prompt"]}]}], "generationConfig": {"temperature": 0.9, "maxOutputTokens": 500}}
     response = requests.post(url, json=payload)
     result = response.json()
