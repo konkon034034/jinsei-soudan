@@ -129,6 +129,7 @@ def main():
     sh = gc.open_by_key(SPREADSHEET_ID)
     
     print("🤖 ネタ自動生成開始...")
+    print(f"🔑 APIキー末尾: ...{os.environ.get('GEMINI_API_KEY', '')[-8:]}")
     print(f"📋 使用モデル候補: {', '.join(GEMINI_MODELS)}")
     print("")
     
