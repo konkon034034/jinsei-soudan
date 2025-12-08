@@ -68,6 +68,7 @@ def generate_neta_with_gemini(channel_id):
         return {"title": title, "ranking_num": ranking_num, "category": category}
     except Exception as e:
         print(f"エラー: {e}")
+        print(f"APIレスポンス: {result}")
         return None
 
 def add_neta_to_sheet(sh, channel_id, neta):
