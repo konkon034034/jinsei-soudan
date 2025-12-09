@@ -14,6 +14,7 @@ SCOPES = [
     'https://www.googleapis.com/auth/drive.file'
 ]
 SPREADSHEET_ID = '15_ixYlyRp9sOlS0tdklhz6wQmwRxWlOL9cPndFWwOFo'
+DRIVE_FOLDER_ID = '1J6hA04BXtpxaveq9i5eic3tfnGGT8miY'
 
 CHANNELS = {
     1: "昭和の宝箱", 2: "懐かしの歌謡曲ch", 3: "思い出ランキング", 4: "昭和スター名鑑",
