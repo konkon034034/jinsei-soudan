@@ -127,48 +127,18 @@ def generate_ranking_content(neta):
     return None
 
 def generate_audio_google_tts(text, output_path):
-    creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
-    creds_dict = json.loads(creds_json)
-    credentials = service_account.Credentials.from_service_account_info(creds_dict)
-    
-    url = "https://texttospeech.googleapis.com/v1/text:synthesize"
-    
-    from google.auth.transport.requests import Request
-    credentials.refresh(Request())
-    
-    headers = {
-        "Authorization": f"Bearer {credentials.token}",
-        "Content-Type": "application/json"
-    }
-    
-    max_chars = 4500
-    if len(text) > max_chars:
-        text = text[:max_chars]
-    
-    payload = {
-        "input": {"text": text},
-        "voice": {
-            "languageCode": "ja-JP",
-            "name": "ja-JP-Neural2-B",
-            "ssmlGender": "FEMALE"
-        },
-        "audioConfig": {
-            "audioEncoding": "MP3",
-            "speakingRate": 0.9,
-            "pitch": 0
-        }
-    }
+    """gTTSで音声生成（無料）"""
+    from gtts import gTTS
     
     try:
-        response = requests.post(url, headers=headers, json=payload)
-        result = response.json()
+        # テキストを分割（長すぎると失敗するため）
+        max_chars = 5000
+        if len(text) > max_chars:
+            text = text[:max_chars]
         
-        if 'audioContent' in result:
-            import base64
-            audio_data = base64.b64decode(result['audioContent'])
-            with open(output_path, 'wb') as f:
-                f.write(audio_data)
-            return True
+        tts = gTTS(text=text, lang='ja', slow=False)
+        tts.save(output_path)
+        return True
     except Exception as e:
         print(f"  ⚠️ 音声生成エラー: {e}")
     return False
