@@ -4,10 +4,8 @@ import json
 import gspread
 import requests
 import tempfile
-import time
 from datetime import datetime
 from google.oauth2.service_account import Credentials
-from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
@@ -126,11 +124,9 @@ def generate_ranking_content(neta):
     return None
 
 def generate_audio_google_tts(text, output_path):
-    """gTTSで音声生成（無料）"""
     from gtts import gTTS
     
     try:
-        # テキストを分割（長すぎると失敗するため）
         max_chars = 5000
         if len(text) > max_chars:
             text = text[:max_chars]
@@ -175,7 +171,7 @@ def download_image(url, output_path):
 def create_video_with_moviepy(audio_path, images, title, output_path):
     from moviepy.editor import (
         AudioFileClip, ImageClip, CompositeVideoClip, 
-        concatenate_videoclips, TextClip, ColorClip
+        concatenate_videoclips, ColorClip
     )
     
     audio = AudioFileClip(audio_path)
@@ -198,17 +194,6 @@ def create_video_with_moviepy(audio_path, images, title, output_path):
     video = concatenate_videoclips(clips, method="compose")
     video = video.set_audio(audio)
     
-    try:
-        txt_clip = TextClip(
-            title, 
-            fontsize=50, 
-            color='white',
-            font='Noto-Sans-CJK-JP'
-        ).set_position(('center', 50)).set_duration(5)
-        video = CompositeVideoClip([video, txt_clip])
-    except:
-        pass
-    
     video.write_videofile(
         output_path,
         fps=24,
@@ -224,20 +209,6 @@ def upload_to_drive(file_path, file_name, creds):
     
     file_metadata = {
         'name': file_name
-    }
-    media = MediaFileUpload(file_path, mimetype='video/mp4')
-    
-    file = service.files().create(
-        body=file_metadata,
-        media_body=media,
-        fields='id,webViewLink'
-    ).execute()
-    
-    return file.get('webViewLink')    service = build('drive', 'v3', credentials=creds)
-    
-    file_metadata = {
-        'name': file_name,
-        'parents': [DRIVE_FOLDER_ID]
     }
     media = MediaFileUpload(file_path, mimetype='video/mp4')
     
