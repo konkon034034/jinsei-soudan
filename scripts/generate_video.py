@@ -209,7 +209,8 @@ def upload_to_drive(file_path, file_name, creds):
     service = build('drive', 'v3', credentials=creds)
     
     file_metadata = {
-        'name': file_name
+        'name': file_name,
+        'parents': [DRIVE_FOLDER_ID]
     }
     media = MediaFileUpload(file_path, mimetype='video/mp4')
     
@@ -287,3 +288,22 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
+
+---
+
+## ステップ4：保存
+
+1. 緑の「**Commit changes**」ボタンをクリック
+2. そのまま「**Commit changes**」
+
+---
+
+## ステップ5：フォルダ共有（まだなら）
+
+**👉 [このフォルダを開く](https://drive.google.com/drive/folders/1J6hA04BXtpxaveq9i5eic3tfnGGT8miY)**
+
+1. フォルダ名の横 → **「共有」**
+2. このメールを追加：
+```
+bakenami-robot@unique-terminus-440002-k4.iam.gserviceaccount.com
