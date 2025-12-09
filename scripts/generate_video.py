@@ -16,7 +16,6 @@ SCOPES = [
     'https://www.googleapis.com/auth/drive.file'
 ]
 SPREADSHEET_ID = '15_ixYlyRp9sOlS0tdklhz6wQmwRxWlOL9cPndFWwOFo'
-DRIVE_FOLDER_ID = '1oqjzUgpNexap4mgioXO43UUO3XI5XEzl'
 
 CHANNELS = {
     1: "昭和の宝箱", 2: "懐かしの歌謡曲ch", 3: "思い出ランキング", 4: "昭和スター名鑑",
@@ -222,6 +221,19 @@ def create_video_with_moviepy(audio_path, images, title, output_path):
 
 def upload_to_drive(file_path, file_name, creds):
     service = build('drive', 'v3', credentials=creds)
+    
+    file_metadata = {
+        'name': file_name
+    }
+    media = MediaFileUpload(file_path, mimetype='video/mp4')
+    
+    file = service.files().create(
+        body=file_metadata,
+        media_body=media,
+        fields='id,webViewLink'
+    ).execute()
+    
+    return file.get('webViewLink')    service = build('drive', 'v3', credentials=creds)
     
     file_metadata = {
         'name': file_name,
