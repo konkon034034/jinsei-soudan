@@ -24,7 +24,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           pip install gspread google-auth google-auth-oauthlib google-auth-httplib2
-          pip install google-api-python-client requests moviepy
+          pip install google-api-python-client requests moviepy gtts
       
       - name: Generate video
         env:
