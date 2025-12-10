@@ -26,6 +26,51 @@ YOUTUBE_TOKENS = {
     3: 'TOKEN_3',  # Channel 19-27
 }
 
+# Cache for channel info from spreadsheet
+_channel_info_cache = None
+
+def get_channel_info_from_sheet(sh):
+    """Read channel information from '27チャンネル一覧' sheet."""
+    global _channel_info_cache
+
+    if _channel_info_cache is not None:
+        return _channel_info_cache
+
+    try:
+        ws = sh.worksheet('27チャンネル一覧')
+        all_data = ws.get_all_values()
+
+        channel_info = {}
+        for row in all_data[1:]:  # Skip header
+            if len(row) >= 3:
+                try:
+                    token_num = int(row[0])
+                    email = row[1]
+                    channel_name = row[2]
+                    channel_info[token_num] = {
+                        'email': email,
+                        'name': channel_name if channel_name != '（未設定）' else None
+                    }
+                except (ValueError, IndexError):
+                    continue
+
+        _channel_info_cache = channel_info
+        return channel_info
+    except Exception as e:
+        print(f"  ⚠️ チャンネル情報読み込みエラー: {e}")
+        return {}
+
+def get_channel_name(sh, channel_id):
+    """Get channel name for the given channel ID."""
+    channel_info = get_channel_info_from_sheet(sh)
+
+    # Get channel number from environment or use channel_id
+    channel_number = int(os.environ.get('CHANNEL_NUMBER', channel_id))
+
+    info = channel_info.get(channel_number, {})
+    return info.get('name')
+
+# Fallback channel names (used when spreadsheet doesn't have the info)
 CHANNELS = {
     1: "昭和の宝箱", 2: "懐かしの歌謡曲ch", 3: "思い出ランキング", 4: "昭和スター名鑑",
     5: "演歌の殿堂", 6: "銀幕の思い出", 7: "懐メロ天国", 8: "朝ドラ大全集",
@@ -484,20 +529,30 @@ def update_sheet_status(sh, row_num, status, video_url=''):
 
 def main():
     print("🎬 動画生成開始...")
-    
+
     creds = get_credentials()
     gc = gspread.authorize(creds)
     sh = gc.open_by_key(SPREADSHEET_ID)
-    
+
+    # Get channel info from spreadsheet
+    channel_number = int(os.environ.get('CHANNEL_NUMBER', 1))
+    channel_name = get_channel_name(sh, channel_number)
+    if channel_name:
+        print(f"📺 チャンネル: {channel_name} (TOKEN_{channel_number})")
+    else:
+        # Fallback to hardcoded name
+        channel_name = CHANNELS.get(channel_number, f"チャンネル{channel_number}")
+        print(f"📺 チャンネル: {channel_name} (TOKEN_{channel_number}) [フォールバック]")
+
     neta = get_pending_neta(sh)
     if not neta:
         print("📭 未作成のネタがありません")
         return
-    
-    print(f"📺 ch{neta['channel_id']}: {neta['title']}")
-    
+
+    print(f"📝 ネタ: {neta['title']}")
+
     update_sheet_status(sh, neta['row_num'], '作成中')
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         print("  📝 原稿生成中...")
         script = generate_ranking_content(neta)
@@ -505,14 +560,14 @@ def main():
             update_sheet_status(sh, neta['row_num'], 'エラー')
             return
         print(f"  ✅ 原稿生成完了（{len(script)}文字）")
-        
+
         print("  🎤 音声生成中...")
         audio_path = os.path.join(tmpdir, "audio.mp3")
         if not generate_audio_google_tts(script, audio_path):
             update_sheet_status(sh, neta['row_num'], 'エラー')
             return
         print("  ✅ 音声生成完了")
-        
+
         print("  🖼️ 画像取得中...")
         images = get_images_with_fallback(
             title=neta['title'],
@@ -521,17 +576,21 @@ def main():
             tmpdir=tmpdir
         )
         print(f"  ✅ 画像取得完了（{len(images)}枚）")
-        
+
         print("  🎥 動画生成中...")
         video_path = os.path.join(tmpdir, "output.mp4")
         if not create_video_with_moviepy(audio_path, images, neta['title'], video_path):
             update_sheet_status(sh, neta['row_num'], 'エラー')
             return
         print("  ✅ 動画生成完了")
-        
+
         print("  📺 YouTubeアップロード中...")
-        # Create description: first 100 chars of script + hashtags
-        description = script[:100] + "...\n\n#昭和 #懐かしい #ランキング #思い出 #レトロ"
+        # Create description with channel name
+        description = f"{script[:100]}...\n\n"
+        if channel_name:
+            description += f"【{channel_name}】\n"
+        description += "#昭和 #懐かしい #ランキング #思い出 #レトロ"
+
         video_url = upload_to_youtube(
             file_path=video_path,
             title=neta['title'],
