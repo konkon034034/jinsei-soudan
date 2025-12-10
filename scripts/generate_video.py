@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 import json
 import gspread
@@ -6,15 +9,22 @@ import requests
 import tempfile
 from datetime import datetime
 from google.oauth2.service_account import Credentials
+from google.oauth2.credentials import Credentials as OAuthCredentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
-    'https://www.googleapis.com/auth/drive.file'
+    'https://www.googleapis.com/auth/youtube.upload'
 ]
 SPREADSHEET_ID = '15_ixYlyRp9sOlS0tdklhz6wQmwRxWlOL9cPndFWwOFo'
-DRIVE_FOLDER_ID = '1J6hA04BXtpxaveq9i5eic3tfnGGT8miY'
+
+# YouTube OAuth tokens (from GitHub Secrets)
+YOUTUBE_TOKENS = {
+    1: 'TOKEN_1',  # Channel 1-9
+    2: 'TOKEN_2',  # Channel 10-18
+    3: 'TOKEN_3',  # Channel 19-27
+}
 
 CHANNELS = {
     1: "昭和の宝箱", 2: "懐かしの歌謡曲ch", 3: "思い出ランキング", 4: "昭和スター名鑑",
@@ -139,24 +149,217 @@ def generate_audio_google_tts(text, output_path):
         print(f"  ⚠️ 音声生成エラー: {e}")
     return False
 
-def get_unsplash_images(query, count=10):
+# Japanese to English keyword mapping for Unsplash search
+KEYWORD_MAP = {
+    # Categories
+    '歌謡曲': 'japanese music vintage',
+    '演歌': 'japanese traditional music',
+    '映画': 'vintage cinema japan',
+    '銀幕': 'classic movie theater',
+    'ドラマ': 'vintage television japan',
+    '朝ドラ': 'japanese morning drama vintage',
+    'CM': 'vintage advertisement japan',
+    '広告': 'retro advertising',
+    'ファッション': 'vintage fashion 1960s 1970s',
+    'おしゃれ': 'retro style fashion',
+    '化粧品': 'vintage cosmetics beauty',
+    'ビューティー': 'retro beauty makeup',
+    '食卓': 'japanese home cooking vintage',
+    'グルメ': 'vintage japanese food',
+    '学校': 'vintage school classroom japan',
+    '制服': 'japanese school uniform vintage',
+    'スポーツ': 'vintage sports japan',
+    'バラエティ': 'japanese entertainment vintage',
+    '暮らし': 'vintage japanese lifestyle',
+    '家族': 'japanese family vintage',
+    '昭和': 'japan 1960s 1970s vintage',
+    'レトロ': 'retro vintage nostalgic',
+    '懐かしい': 'nostalgic vintage memories',
+    '思い出': 'memories nostalgia vintage',
+    'スター': 'vintage celebrity star',
+    '名鑑': 'vintage portrait classic',
+    '戦後': 'postwar japan vintage',
+    '黄金時代': 'golden age vintage',
+    '歴史': 'japanese history vintage',
+}
+
+# Fallback search queries for different themes
+FALLBACK_QUERIES = [
+    'vintage japan street',
+    'retro japanese aesthetic',
+    'nostalgic sunset',
+    'vintage paper texture',
+    'retro gradient background',
+    'old photograph sepia',
+    'cherry blossom vintage',
+    'japanese garden peaceful',
+]
+
+def translate_to_english_keywords(japanese_text):
+    """Convert Japanese title/category to English keywords for Unsplash."""
+    keywords = []
+
+    # Check for matching keywords in the text
+    for jp_word, en_keywords in KEYWORD_MAP.items():
+        if jp_word in japanese_text:
+            keywords.append(en_keywords)
+
+    # If no keywords found, use general nostalgic terms
+    if not keywords:
+        keywords = ['vintage japan nostalgic', 'retro aesthetic']
+
+    # Combine and deduplicate
+    combined = ' '.join(keywords[:3])  # Limit to avoid overly complex queries
+    return combined
+
+def get_unsplash_images(query, count=10, category=''):
+    """Fetch images from Unsplash with English keyword translation."""
     api_key = os.environ.get('UNSPLASH_ACCESS_KEY')
-    url = f"https://api.unsplash.com/search/photos"
-    params = {
-        "query": query,
-        "per_page": count,
-        "orientation": "landscape"
-    }
+    url = "https://api.unsplash.com/search/photos"
     headers = {"Authorization": f"Client-ID {api_key}"}
-    
-    try:
-        response = requests.get(url, params=params, headers=headers)
-        result = response.json()
-        if 'results' in result:
-            return [img['urls']['regular'] for img in result['results']]
-    except Exception as e:
-        print(f"  ⚠️ 画像取得エラー: {e}")
-    return []
+
+    # Translate Japanese to English keywords
+    english_query = translate_to_english_keywords(query + ' ' + category)
+    print(f"    🔍 検索キーワード: {english_query}")
+
+    # Try multiple search strategies
+    search_queries = [
+        english_query,
+        'vintage japan nostalgic',
+        'retro aesthetic background',
+    ]
+
+    all_urls = []
+    for search_query in search_queries:
+        if len(all_urls) >= count:
+            break
+
+        params = {
+            "query": search_query,
+            "per_page": min(count - len(all_urls) + 5, 30),  # Get extra in case of duplicates
+            "orientation": "landscape"
+        }
+
+        try:
+            response = requests.get(url, params=params, headers=headers)
+            result = response.json()
+            if 'results' in result:
+                for img in result['results']:
+                    img_url = img['urls']['regular']
+                    if img_url not in all_urls:
+                        all_urls.append(img_url)
+                        if len(all_urls) >= count:
+                            break
+        except Exception as e:
+            print(f"    ⚠️ 検索エラー ({search_query}): {e}")
+
+    return all_urls[:count]
+
+def generate_gradient_background(output_path, width=1280, height=720, style='showa'):
+    """Generate a nostalgic gradient background image."""
+    from PIL import Image, ImageDraw, ImageFilter
+    import random
+
+    # Color palettes for different styles
+    palettes = {
+        'showa': [
+            [(139, 90, 43), (205, 133, 63)],      # Sepia brown
+            [(70, 50, 30), (150, 100, 50)],       # Dark brown to tan
+            [(80, 60, 40), (180, 140, 90)],       # Earthy tones
+            [(100, 70, 50), (200, 160, 100)],     # Warm vintage
+        ],
+        'sunset': [
+            [(255, 94, 77), (255, 154, 139)],     # Coral sunset
+            [(255, 123, 84), (255, 184, 140)],    # Orange sunset
+            [(180, 80, 100), (255, 150, 120)],    # Pink sunset
+        ],
+        'nostalgic': [
+            [(60, 60, 80), (120, 100, 140)],      # Muted purple
+            [(50, 70, 90), (100, 130, 150)],      # Dusty blue
+            [(80, 70, 60), (160, 140, 120)],      # Faded vintage
+        ]
+    }
+
+    # Select palette
+    palette_list = palettes.get(style, palettes['showa'])
+    colors = random.choice(palette_list)
+
+    # Create gradient image
+    img = Image.new('RGB', (width, height))
+    draw = ImageDraw.Draw(img)
+
+    # Vertical gradient
+    for y in range(height):
+        ratio = y / height
+        r = int(colors[0][0] + (colors[1][0] - colors[0][0]) * ratio)
+        g = int(colors[0][1] + (colors[1][1] - colors[0][1]) * ratio)
+        b = int(colors[0][2] + (colors[1][2] - colors[0][2]) * ratio)
+        draw.line([(0, y), (width, y)], fill=(r, g, b))
+
+    # Add subtle noise/grain for vintage effect
+    noise_img = Image.new('RGB', (width, height))
+    noise_draw = ImageDraw.Draw(noise_img)
+    for _ in range(5000):
+        x = random.randint(0, width - 1)
+        y = random.randint(0, height - 1)
+        gray = random.randint(0, 30)
+        noise_draw.point((x, y), fill=(gray, gray, gray))
+
+    # Blend noise with gradient
+    img = Image.blend(img, noise_img, 0.05)
+
+    # Add vignette effect
+    vignette = Image.new('L', (width, height), 255)
+    vignette_draw = ImageDraw.Draw(vignette)
+    for i in range(min(width, height) // 2):
+        alpha = int(255 * (1 - (i / (min(width, height) / 2)) ** 2))
+        vignette_draw.ellipse(
+            [i, i, width - i, height - i],
+            outline=alpha
+        )
+    vignette = vignette.filter(ImageFilter.GaussianBlur(50))
+
+    # Apply vignette
+    img_array = list(img.getdata())
+    vignette_array = list(vignette.getdata())
+    result_data = []
+    for i, (pixel, v) in enumerate(zip(img_array, vignette_array)):
+        factor = v / 255
+        result_data.append((
+            int(pixel[0] * factor),
+            int(pixel[1] * factor),
+            int(pixel[2] * factor)
+        ))
+    img.putdata(result_data)
+
+    img.save(output_path, 'JPEG', quality=90)
+    return True
+
+def get_images_with_fallback(title, category, count, tmpdir):
+    """Get images from Unsplash with fallback to generated backgrounds."""
+    images = []
+
+    # Try to get images from Unsplash
+    search_query = f"{title} {category}"
+    image_urls = get_unsplash_images(search_query, count, category)
+
+    # Download Unsplash images
+    for i, url in enumerate(image_urls):
+        img_path = os.path.join(tmpdir, f"img_{i}.jpg")
+        if download_image(url, img_path):
+            images.append(img_path)
+
+    # If we don't have enough images, generate fallback backgrounds
+    if len(images) < count:
+        print(f"    🎨 フォールバック背景を生成中...")
+        styles = ['showa', 'sunset', 'nostalgic']
+        for i in range(len(images), count):
+            img_path = os.path.join(tmpdir, f"fallback_{i}.jpg")
+            style = styles[i % len(styles)]
+            if generate_gradient_background(img_path, style=style):
+                images.append(img_path)
+
+    return images
 
 def download_image(url, output_path):
     try:
@@ -170,63 +373,114 @@ def download_image(url, output_path):
     return False
 
 def create_video_with_moviepy(audio_path, images, title, output_path):
-    from moviepy.editor import (
-        AudioFileClip, ImageClip, CompositeVideoClip, 
+    from moviepy import (
+        AudioFileClip, ImageClip,
         concatenate_videoclips, ColorClip
     )
-    
+
     audio = AudioFileClip(audio_path)
     duration = audio.duration
-    
+
     img_duration = duration / len(images) if images else duration
-    
+
     clips = []
     for img_path in images:
         try:
-            img_clip = ImageClip(img_path).set_duration(img_duration)
-            img_clip = img_clip.resize(height=720)
+            img_clip = ImageClip(img_path, duration=img_duration)
+            img_clip = img_clip.resized(height=720)
             clips.append(img_clip)
         except Exception as e:
             print(f"  ⚠️ 画像読み込みエラー: {e}")
-    
+
     if not clips:
-        clips = [ColorClip(size=(1280, 720), color=(0,0,0)).set_duration(duration)]
-    
+        clips = [ColorClip(size=(1280, 720), color=(0,0,0), duration=duration)]
+
     video = concatenate_videoclips(clips, method="compose")
-    video = video.set_audio(audio)
-    
+    video = video.with_audio(audio)
+
     video.write_videofile(
         output_path,
         fps=24,
         codec='libx264',
         audio_codec='aac'
     )
-    
+
     audio.close()
     return True
 
-def upload_to_drive(file_path, file_name, creds):
-    service = build('drive', 'v3', credentials=creds)
-    
-    file_metadata = {
-        'name': file_name,
-        'parents': [DRIVE_FOLDER_ID]
-    }
-    media = MediaFileUpload(file_path, mimetype='video/mp4')
-    
-    file = service.files().create(
-        body=file_metadata,
-        media_body=media,
-        fields='id,webViewLink'
-    ).execute()
-    
-    return file.get('webViewLink')
+def get_youtube_credentials(channel_id):
+    """Get YouTube OAuth credentials for the channel."""
+    # Determine which token to use (1-9: TOKEN_1, 10-18: TOKEN_2, 19-27: TOKEN_3)
+    token_num = ((channel_id - 1) // 9) + 1
+    token_env_name = YOUTUBE_TOKENS.get(token_num, 'TOKEN_1')
 
-def update_sheet_status(sh, row_num, status, drive_link=''):
+    # For testing, use TOKEN_1 only
+    token_json = os.environ.get('TOKEN_1')
+    if not token_json:
+        raise ValueError("TOKEN_1 not found in environment variables")
+
+    token_data = json.loads(token_json)
+
+    creds = OAuthCredentials(
+        token=token_data.get('access_token'),
+        refresh_token=token_data.get('refresh_token'),
+        token_uri='https://oauth2.googleapis.com/token',
+        client_id=token_data.get('client_id'),
+        client_secret=token_data.get('client_secret'),
+        scopes=['https://www.googleapis.com/auth/youtube.upload']
+    )
+
+    return creds
+
+def upload_to_youtube(file_path, title, description, channel_id, privacy='private'):
+    """Upload video to YouTube and return the video URL."""
+    creds = get_youtube_credentials(channel_id)
+    youtube = build('youtube', 'v3', credentials=creds)
+
+    # Prepare video metadata
+    body = {
+        'snippet': {
+            'title': title,
+            'description': description,
+            'tags': ['昭和', '懐かしい', 'ランキング', '思い出'],
+            'categoryId': '22'  # People & Blogs
+        },
+        'status': {
+            'privacyStatus': privacy,  # 'private', 'unlisted', or 'public'
+            'selfDeclaredMadeForKids': False
+        }
+    }
+
+    media = MediaFileUpload(
+        file_path,
+        mimetype='video/mp4',
+        resumable=True,
+        chunksize=1024*1024  # 1MB chunks
+    )
+
+    request = youtube.videos().insert(
+        part='snippet,status',
+        body=body,
+        media_body=media
+    )
+
+    response = None
+    while response is None:
+        status, response = request.next_chunk()
+        if status:
+            print(f"    📤 {int(status.progress() * 100)}%")
+
+    video_id = response.get('id')
+    video_url = f"https://www.youtube.com/watch?v={video_id}"
+
+    return video_url
+
+def update_sheet_status(sh, row_num, status, video_url=''):
+    """Update status and YouTube URL in spreadsheet."""
     ws = sh.worksheet('ネタ管理')
     ws.update_cell(row_num, 6, status)
-    if drive_link:
-        ws.update_cell(row_num, 9, drive_link)
+    if video_url:
+        ws.update_cell(row_num, 9, video_url)
 
 def main():
     print("🎬 動画生成開始...")
@@ -260,14 +514,12 @@ def main():
         print("  ✅ 音声生成完了")
         
         print("  🖼️ 画像取得中...")
-        search_query = f"昭和 日本 {neta['category']}"
-        image_urls = get_unsplash_images(search_query, neta['ranking_num'])
-        
-        images = []
-        for i, url in enumerate(image_urls):
-            img_path = os.path.join(tmpdir, f"img_{i}.jpg")
-            if download_image(url, img_path):
-                images.append(img_path)
+        images = get_images_with_fallback(
+            title=neta['title'],
+            category=neta['category'],
+            count=neta['ranking_num'],
+            tmpdir=tmpdir
+        )
         print(f"  ✅ 画像取得完了（{len(images)}枚）")
         
         print("  🎥 動画生成中...")
@@ -277,33 +529,21 @@ def main():
             return
         print("  ✅ 動画生成完了")
         
-        print("  ☁️ アップロード中...")
-        file_name = f"ch{neta['channel_id']}_{neta['title']}.mp4"
-        drive_link = upload_to_drive(video_path, file_name, creds)
+        print("  📺 YouTubeアップロード中...")
+        # Create description: first 100 chars of script + hashtags
+        description = script[:100] + "...\n\n#昭和 #懐かしい #ランキング #思い出 #レトロ"
+        video_url = upload_to_youtube(
+            file_path=video_path,
+            title=neta['title'],
+            description=description,
+            channel_id=neta['channel_id'],
+            privacy='private'  # Test with private
+        )
         print(f"  ✅ アップロード完了")
-        
-        update_sheet_status(sh, neta['row_num'], '完成', drive_link)
-    
-    print(f"🎉 動画生成完了！ {drive_link}")
+
+        update_sheet_status(sh, neta['row_num'], '完成', video_url)
+
+    print(f"🎉 動画生成完了！ {video_url}")
 
 if __name__ == "__main__":
     main()
-```
-
----
-
-## ステップ4：保存
-
-1. 緑の「**Commit changes**」ボタンをクリック
-2. そのまま「**Commit changes**」
-
----
-
-## ステップ5：フォルダ共有（まだなら）
-
-**👉 [このフォルダを開く](https://drive.google.com/drive/folders/1J6hA04BXtpxaveq9i5eic3tfnGGT8miY)**
-
-1. フォルダ名の横 → **「共有」**
-2. このメールを追加：
-```
-bakenami-robot@unique-terminus-440002-k4.iam.gserviceaccount.com
