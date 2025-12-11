@@ -417,10 +417,53 @@ def download_image(url, output_path):
         pass
     return False
 
-def create_video_with_moviepy(audio_path, images, title, output_path):
+def split_script_into_subtitles(script, chars_per_segment=30):
+    """Split script into subtitle segments."""
+    import re
+
+    # Remove section headers like [オープニング], [第10位] etc.
+    script = re.sub(r'\[.*?\]', '', script)
+    # Remove empty lines and trim
+    lines = [line.strip() for line in script.split('\n') if line.strip()]
+    full_text = ' '.join(lines)
+
+    # Split by sentence endings
+    sentences = re.split(r'([。！？])', full_text)
+
+    subtitles = []
+    current = ""
+
+    for i in range(0, len(sentences) - 1, 2):
+        sentence = sentences[i] + (sentences[i + 1] if i + 1 < len(sentences) else "")
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+
+        # If sentence is too long, split by chars_per_segment
+        if len(sentence) > chars_per_segment * 2:
+            words = list(sentence)
+            for j in range(0, len(words), chars_per_segment):
+                segment = ''.join(words[j:j + chars_per_segment])
+                if segment:
+                    subtitles.append(segment)
+        else:
+            if len(current) + len(sentence) > chars_per_segment:
+                if current:
+                    subtitles.append(current)
+                current = sentence
+            else:
+                current = (current + " " + sentence).strip() if current else sentence
+
+    if current:
+        subtitles.append(current)
+
+    return subtitles
+
+
+def create_video_with_moviepy(audio_path, images, title, output_path, script=None):
     from moviepy import (
         AudioFileClip, ImageClip,
-        concatenate_videoclips, ColorClip
+        concatenate_videoclips, ColorClip, TextClip, CompositeVideoClip
     )
 
     audio = AudioFileClip(audio_path)
@@ -441,6 +484,39 @@ def create_video_with_moviepy(audio_path, images, title, output_path):
         clips = [ColorClip(size=(1280, 720), color=(0,0,0), duration=duration)]
 
     video = concatenate_videoclips(clips, method="compose")
+
+    # Add subtitles if script is provided
+    if script:
+        subtitles = split_script_into_subtitles(script)
+        if subtitles:
+            subtitle_duration = duration / len(subtitles)
+            subtitle_clips = []
+
+            for i, text in enumerate(subtitles):
+                start_time = i * subtitle_duration
+
+                try:
+                    # Create text clip with Japanese font
+                    txt_clip = TextClip(
+                        text=text,
+                        font='/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+                        font_size=36,
+                        color='white',
+                        bg_color='rgba(0,0,0,0.6)',
+                        size=(1200, None),
+                        method='caption',
+                        text_align='center'
+                    )
+                    txt_clip = txt_clip.with_duration(subtitle_duration)
+                    txt_clip = txt_clip.with_start(start_time)
+                    txt_clip = txt_clip.with_position(('center', 620))
+                    subtitle_clips.append(txt_clip)
+                except Exception as e:
+                    print(f"  ⚠️ 字幕作成エラー: {e}")
+
+            if subtitle_clips:
+                video = CompositeVideoClip([video] + subtitle_clips)
+
     video = video.with_audio(audio)
 
     video.write_videofile(
@@ -600,9 +676,9 @@ def main():
         )
         print(f"  ✅ 画像取得完了（{len(images)}枚）")
 
-        print("  🎥 動画生成中...")
+        print("  🎥 動画生成中（字幕付き）...")
         video_path = os.path.join(tmpdir, "output.mp4")
-        if not create_video_with_moviepy(audio_path, images, neta['title'], video_path):
+        if not create_video_with_moviepy(audio_path, images, neta['title'], video_path, script=script):
             update_sheet_status(sh, neta['row_num'], 'エラー')
             return
         print("  ✅ 動画生成完了")
