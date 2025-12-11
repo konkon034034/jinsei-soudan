@@ -23,8 +23,8 @@ jobs:
       
       - name: Install Python dependencies
         run: |
-          pip install gspread google-auth google-auth-oauthlib google-auth-httplib2
-          pip install google-api-python-client requests gtts
+          pip install python-dotenv gspread google-auth google-auth-oauthlib google-auth-httplib2
+          pip install google-api-python-client requests gtts Pillow
           pip install moviepy==1.0.3
       
       - name: Generate video
