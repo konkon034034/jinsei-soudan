@@ -32,4 +32,8 @@ jobs:
           GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
           UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
+          TOKEN_1: ${{ secrets.TOKEN_1 }}
+          TOKEN_2: ${{ secrets.TOKEN_2 }}
+          TOKEN_3: ${{ secrets.TOKEN_3 }}
+          CHANNEL_NUMBER: ${{ vars.CHANNEL_NUMBER || '1' }}
         run: python scripts/generate_video.py
