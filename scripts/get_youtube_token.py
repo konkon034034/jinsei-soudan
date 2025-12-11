@@ -41,9 +41,6 @@ def main():
     print("YouTube OAuth Token Generator")
     print("=" * 60)
     print()
-    print("This will open a browser window for Google authentication.")
-    print("Please log in with your YouTube channel account.")
-    print()
 
     # Get client config from environment
     client_config = get_client_config()
@@ -51,12 +48,23 @@ def main():
     # Create flow from client config
     flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
 
-    # Run local server for OAuth callback
-    credentials = flow.run_local_server(
-        port=8080,
-        prompt='consent',
-        access_type='offline'
+    # Generate authorization URL without opening browser
+    auth_url, _ = flow.authorization_url(
+        access_type='offline',
+        prompt='consent'
     )
+
+    print("以下のURLをブラウザにコピペしてください：")
+    print()
+    print(auth_url)
+    print()
+    print("認証後、リダイレクトURLをここに貼り付けてください：")
+
+    redirect_response = input().strip()
+
+    # Fetch token from redirect response
+    flow.fetch_token(authorization_response=redirect_response)
+    credentials = flow.credentials
 
     # Create token JSON for .env file
     token_data = {
