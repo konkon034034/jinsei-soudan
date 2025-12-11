@@ -25,7 +25,7 @@ jobs:
         run: |
           pip install python-dotenv gspread google-auth google-auth-oauthlib google-auth-httplib2
           pip install google-api-python-client requests gtts Pillow
-          pip install moviepy==1.0.3
+          pip install moviepy>=2.0.0
       
       - name: Generate video
         env:
