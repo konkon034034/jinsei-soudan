@@ -1,39 +1,39 @@
-name: Daily Ningen (人間関係相談)
+name: Daily Showa (昭和の宝箱)
 
 on:
   schedule:
-    - cron: '20 0 * * *'
+    - cron: '10 0 * * *'
   workflow_dispatch:
 
 jobs:
   generate:
     runs-on: ubuntu-latest
-    
+
     env:
-      CHANNEL_KEY: ningen
+      CHANNEL_KEY: showa
       SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
       GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN_3 }}
-    
+      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN_2 }}
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
+
       - name: Install ffmpeg and Japanese fonts
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg fonts-noto-cjk fonts-noto-cjk-extra
-      
+
       - name: Install dependencies
         run: pip install -r requirements.txt
-      
+
       - name: Run generator
         run: python jinsei_generator_auto.py

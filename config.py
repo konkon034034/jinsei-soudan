@@ -22,9 +22,9 @@ def get_random_consulter_name():
 
 # 3チャンネルの設定
 CHANNEL_CONFIGS = {
-    "jinsei": {
-        "name": "人生相談",
-        "sheet_name": "人生相談",
+    "omoide": {
+        "name": "思い出ランキング",
+        "sheet_name": "思い出ランキング",
         "advisor_name": "マダム・ミレーヌ",
         "advisor_voice": "ja-JP-Wavenet-A",  # 女性・落ち着いた
         "advisor_pitch": -2.0,
@@ -34,11 +34,11 @@ CHANNEL_CONFIGS = {
         "consulter_rate": 1.1,
         "reference_channel": "https://www.youtube.com/@wdemetrius62",
         "youtube_token_secret": "YOUTUBE_REFRESH_TOKEN_1",
-        "upload_channel": "ザ昭和シリーズ",
+        "upload_channel": "思い出ランキング",
     },
-    "denwa": {
-        "name": "電話相談",
-        "sheet_name": "電話相談",
+    "showa": {
+        "name": "昭和の宝箱",
+        "sheet_name": "昭和の宝箱",
         "advisor_name": "ヴェルヴェーヌ",
         "advisor_voice": "ja-JP-Wavenet-A",  # 女性・優しい
         "advisor_pitch": 0.0,
@@ -48,11 +48,11 @@ CHANNEL_CONFIGS = {
         "consulter_rate": 1.1,
         "reference_channel": "https://www.youtube.com/@skaterkid0324",
         "youtube_token_secret": "YOUTUBE_REFRESH_TOKEN_2",
-        "upload_channel": "たかし☕️朝ドラ喫茶🎩マスター",
+        "upload_channel": "昭和の宝箱",
     },
-    "ningen": {
-        "name": "人間関係相談",
-        "sheet_name": "人間関係相談",
+    "kayokyoku": {
+        "name": "懐かしの歌謡曲ch",
+        "sheet_name": "懐かしの歌謡曲ch",
         "advisor_name": "加東先生",
         "advisor_voice": "ja-JP-Wavenet-C",  # 男性・渋い
         "advisor_pitch": -4.0,
@@ -62,7 +62,7 @@ CHANNEL_CONFIGS = {
         "consulter_rate": 1.1,
         "reference_channel": "https://www.youtube.com/@marzell_jones",
         "youtube_token_secret": "YOUTUBE_REFRESH_TOKEN_3",
-        "upload_channel": "元お水店長のゲーム部屋Ⅱ",
+        "upload_channel": "懐かしの歌謡曲ch",
     },
 }
 
