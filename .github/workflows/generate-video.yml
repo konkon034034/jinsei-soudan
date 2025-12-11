@@ -32,6 +32,8 @@ jobs:
           GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
           UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           TOKEN_1: ${{ secrets.YOUTUBE_REFRESH_TOKEN_1 }}
           TOKEN_2: ${{ secrets.YOUTUBE_REFRESH_TOKEN_2 }}
           TOKEN_3: ${{ secrets.YOUTUBE_REFRESH_TOKEN_3 }}
