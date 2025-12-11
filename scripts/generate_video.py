@@ -454,24 +454,47 @@ def create_video_with_moviepy(audio_path, images, title, output_path):
     return True
 
 def get_youtube_credentials(channel_id):
-    """Get YouTube OAuth credentials for the channel."""
+    """Get YouTube OAuth credentials for the channel.
+
+    Supports two token formats:
+    1. JSON format: {"refresh_token": "...", "client_id": "...", "client_secret": "..."}
+    2. Simple string: 1//0e... (refresh_token only, uses YOUTUBE_CLIENT_ID/SECRET env vars)
+    """
     # Determine which token to use (1-9: TOKEN_1, 10-18: TOKEN_2, 19-27: TOKEN_3)
     token_num = ((channel_id - 1) // 9) + 1
-    token_env_name = YOUTUBE_TOKENS.get(token_num, 'TOKEN_1')
+    token_env_name = f'TOKEN_{token_num}'
 
-    # For testing, use TOKEN_1 only
-    token_json = os.environ.get('TOKEN_1')
-    if not token_json:
-        raise ValueError("TOKEN_1 not found in environment variables")
+    token_value = os.environ.get(token_env_name) or os.environ.get('TOKEN_1')
+    if not token_value:
+        raise ValueError(f"{token_env_name} not found in environment variables")
 
-    token_data = json.loads(token_json)
+    # Default credentials from environment
+    default_client_id = os.environ.get('YOUTUBE_CLIENT_ID', '')
+    default_client_secret = os.environ.get('YOUTUBE_CLIENT_SECRET', '')
+
+    # Check if token is JSON format or simple string
+    token_value = token_value.strip()
+    if token_value.startswith('{'):
+        # JSON format
+        token_data = json.loads(token_value)
+        refresh_token = token_data.get('refresh_token')
+        client_id = token_data.get('client_id') or default_client_id
+        client_secret = token_data.get('client_secret') or default_client_secret
+    else:
+        # Simple string format (refresh_token only)
+        refresh_token = token_value
+        client_id = default_client_id
+        client_secret = default_client_secret
+
+    if not client_id or not client_secret:
+        raise ValueError("YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET must be set")
 
     creds = OAuthCredentials(
-        token=token_data.get('access_token'),
-        refresh_token=token_data.get('refresh_token'),
+        token=None,
+        refresh_token=refresh_token,
         token_uri='https://oauth2.googleapis.com/token',
-        client_id=token_data.get('client_id'),
-        client_secret=token_data.get('client_secret'),
+        client_id=client_id,
+        client_secret=client_secret,
         scopes=['https://www.googleapis.com/auth/youtube.upload']
     )
 
