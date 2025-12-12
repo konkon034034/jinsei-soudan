@@ -55,29 +55,53 @@ def create_test_video(channel_num, output_path):
     return True
 
 def get_youtube_credentials(channel_id):
-    """YouTube OAuth認証情報を取得"""
+    """YouTube OAuth認証情報を取得
+
+    トークン形式:
+    1. JSON形式: {"refresh_token": "...", "client_id": "...", "client_secret": "..."}
+    2. 単純文字列: リフレッシュトークンのみ（YOUTUBE_CLIENT_ID/SECRETを使用）
+    """
     token_env_name = f'TOKEN_{channel_id}'
     token_value = os.environ.get(token_env_name)
 
     if not token_value:
         return None, f"TOKEN_{channel_id}が未設定"
 
+    # デフォルトのクライアント情報（環境変数から）
     default_client_id = os.environ.get('YOUTUBE_CLIENT_ID', '')
     default_client_secret = os.environ.get('YOUTUBE_CLIENT_SECRET', '')
 
     token_value = token_value.strip()
+
+    # トークン形式を判定
     if token_value.startswith('{'):
-        token_data = json.loads(token_value)
-        refresh_token = token_data.get('refresh_token')
-        client_id = token_data.get('client_id') or default_client_id
-        client_secret = token_data.get('client_secret') or default_client_secret
+        # JSON形式
+        try:
+            token_data = json.loads(token_value)
+            refresh_token = token_data.get('refresh_token')
+            client_id = token_data.get('client_id') or default_client_id
+            client_secret = token_data.get('client_secret') or default_client_secret
+            token_format = "JSON"
+        except json.JSONDecodeError as e:
+            return None, f"JSON解析エラー: {e}"
     else:
+        # 単純文字列形式（リフレッシュトークンのみ）
         refresh_token = token_value
         client_id = default_client_id
         client_secret = default_client_secret
+        token_format = "単純文字列"
+
+    # デバッグ情報
+    print(f"    [DEBUG] TOKEN形式: {token_format}")
+    print(f"    [DEBUG] refresh_token: {refresh_token[:20]}..." if refresh_token else "    [DEBUG] refresh_token: なし")
+    print(f"    [DEBUG] client_id: {client_id[:20]}..." if client_id else "    [DEBUG] client_id: 未設定")
+    print(f"    [DEBUG] client_secret: {'設定済み' if client_secret else '未設定'}")
+
+    if not refresh_token:
+        return None, "refresh_tokenが取得できません"
 
     if not client_id or not client_secret:
-        return None, "CLIENT_ID/SECRETが未設定"
+        return None, f"CLIENT_ID/SECRETが未設定（YOUTUBE_CLIENT_ID={bool(default_client_id)}, YOUTUBE_CLIENT_SECRET={bool(default_client_secret)}）"
 
     creds = Credentials(
         token=None,
@@ -142,6 +166,23 @@ def main():
     print("=" * 60)
     print(f"対象: {target_channels}")
     print(f"開始時刻: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+    # 環境変数確認
+    print("\n[環境変数確認]")
+    client_id = os.environ.get('YOUTUBE_CLIENT_ID', '')
+    client_secret = os.environ.get('YOUTUBE_CLIENT_SECRET', '')
+    print(f"  YOUTUBE_CLIENT_ID: {'設定済み (' + client_id[:20] + '...)' if client_id else '未設定'}")
+    print(f"  YOUTUBE_CLIENT_SECRET: {'設定済み' if client_secret else '未設定'}")
+
+    # 各TOKENの状態確認
+    print("\n[TOKEN状態]")
+    for ch in target_channels:
+        token = os.environ.get(f'TOKEN_{ch}', '')
+        if token:
+            is_json = token.strip().startswith('{')
+            print(f"  TOKEN_{ch}: {'JSON形式' if is_json else '単純文字列'} ({len(token)}文字)")
+        else:
+            print(f"  TOKEN_{ch}: 未設定")
 
     results = {
         'success': [],
