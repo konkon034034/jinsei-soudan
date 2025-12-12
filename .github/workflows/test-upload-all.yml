@@ -34,29 +34,15 @@ jobs:
           TOKEN_2: ${{ secrets.YOUTUBE_REFRESH_TOKEN_2 }}
           TOKEN_3: ${{ secrets.YOUTUBE_REFRESH_TOKEN_3 }}
           TOKEN_4: ${{ secrets.YOUTUBE_REFRESH_TOKEN_4 }}
-          TOKEN_5: ${{ secrets.YOUTUBE_REFRESH_TOKEN_5 }}
-          TOKEN_6: ${{ secrets.YOUTUBE_REFRESH_TOKEN_6 }}
-          TOKEN_7: ${{ secrets.YOUTUBE_REFRESH_TOKEN_7 }}
           TOKEN_8: ${{ secrets.YOUTUBE_REFRESH_TOKEN_8 }}
-          TOKEN_9: ${{ secrets.YOUTUBE_REFRESH_TOKEN_9 }}
           TOKEN_10: ${{ secrets.YOUTUBE_REFRESH_TOKEN_10 }}
-          TOKEN_11: ${{ secrets.YOUTUBE_REFRESH_TOKEN_11 }}
-          TOKEN_12: ${{ secrets.YOUTUBE_REFRESH_TOKEN_12 }}
-          TOKEN_13: ${{ secrets.YOUTUBE_REFRESH_TOKEN_13 }}
           TOKEN_14: ${{ secrets.YOUTUBE_REFRESH_TOKEN_14 }}
-          TOKEN_15: ${{ secrets.YOUTUBE_REFRESH_TOKEN_15 }}
-          TOKEN_16: ${{ secrets.YOUTUBE_REFRESH_TOKEN_16 }}
-          TOKEN_17: ${{ secrets.YOUTUBE_REFRESH_TOKEN_17 }}
-          TOKEN_18: ${{ secrets.YOUTUBE_REFRESH_TOKEN_18 }}
-          TOKEN_19: ${{ secrets.YOUTUBE_REFRESH_TOKEN_19 }}
-          TOKEN_20: ${{ secrets.YOUTUBE_REFRESH_TOKEN_20 }}
-          TOKEN_21: ${{ secrets.YOUTUBE_REFRESH_TOKEN_21 }}
-          TOKEN_22: ${{ secrets.YOUTUBE_REFRESH_TOKEN_22 }}
           TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
           TOKEN_24: ${{ secrets.YOUTUBE_REFRESH_TOKEN_24 }}
           TOKEN_25: ${{ secrets.YOUTUBE_REFRESH_TOKEN_25 }}
           TOKEN_26: ${{ secrets.YOUTUBE_REFRESH_TOKEN_26 }}
           TOKEN_27: ${{ secrets.YOUTUBE_REFRESH_TOKEN_27 }}
+          TARGET_CHANNELS: "1,2,3,4,8,10,14,23,24,25,26,27"
         run: |
           python scripts/test_upload_27ch.py 2>&1 | tee upload_result.txt
           echo "result<<EOF" >> $GITHUB_OUTPUT
@@ -93,7 +79,7 @@ jobs:
               \"attachments\": [{
                 \"color\": \"$COLOR\",
                 \"title\": \"27チャンネル テストアップロード結果\",
-                \"text\": \"$STATUS\n成功: ${SUCCESS_COUNT}件 / 失敗: ${FAILED_COUNT}件 / 合計: 27件\",
+                \"text\": \"$STATUS\n成功: ${SUCCESS_COUNT}件 / 失敗: ${FAILED_COUNT}件 / 合計: 12件\",
                 \"footer\": \"GitHub Actions\",
                 \"ts\": $(date +%s)
               }]

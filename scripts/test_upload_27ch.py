@@ -12,8 +12,12 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# 総チャンネル数
-TOTAL_CHANNELS = 27
+# 対象チャンネル（環境変数で指定可能）
+def get_target_channels():
+    target = os.environ.get('TARGET_CHANNELS', '')
+    if target:
+        return [int(ch.strip()) for ch in target.split(',')]
+    return list(range(1, 28))  # デフォルトは1〜27
 
 def create_test_video(channel_num, output_path):
     """テスト動画を生成（10秒、黒背景に白文字でチャンネル番号）"""
@@ -130,9 +134,13 @@ def upload_to_youtube(video_path, channel_id):
         return None, str(e)
 
 def main():
+    target_channels = get_target_channels()
+    total = len(target_channels)
+
     print("=" * 60)
-    print("27チャンネル テストアップロード")
+    print(f"テストアップロード（{total}チャンネル）")
     print("=" * 60)
+    print(f"対象: {target_channels}")
     print(f"開始時刻: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     results = {
@@ -141,7 +149,7 @@ def main():
     }
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        for ch in range(1, TOTAL_CHANNELS + 1):
+        for ch in target_channels:
             print(f"\nch{ch} 処理中...")
 
             # テスト動画生成
@@ -190,7 +198,7 @@ def main():
         print(f"   ch{r['channel']}: {r['error']}")
 
     print("\n" + "=" * 60)
-    print(f"完了！ 成功:{len(results['success'])} / 失敗:{len(results['failed'])} / 合計:{TOTAL_CHANNELS}")
+    print(f"完了！ 成功:{len(results['success'])} / 失敗:{len(results['failed'])} / 合計:{total}")
     print("=" * 60)
 
 if __name__ == '__main__':
