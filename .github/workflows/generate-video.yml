@@ -10,23 +10,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-      
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg fonts-noto-cjk
-      
+
       - name: Install Python dependencies
         run: |
           pip install python-dotenv gspread google-auth google-auth-oauthlib google-auth-httplib2
           pip install google-api-python-client requests gtts Pillow
           pip install moviepy>=2.0.0
-      
+
       - name: Generate video
         env:
           GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
@@ -37,5 +37,28 @@ jobs:
           TOKEN_1: ${{ secrets.YOUTUBE_REFRESH_TOKEN_1 }}
           TOKEN_2: ${{ secrets.YOUTUBE_REFRESH_TOKEN_2 }}
           TOKEN_3: ${{ secrets.YOUTUBE_REFRESH_TOKEN_3 }}
-          CHANNEL_NUMBER: ${{ vars.CHANNEL_NUMBER || '1' }}
+          TOKEN_4: ${{ secrets.YOUTUBE_REFRESH_TOKEN_4 }}
+          TOKEN_5: ${{ secrets.YOUTUBE_REFRESH_TOKEN_5 }}
+          TOKEN_6: ${{ secrets.YOUTUBE_REFRESH_TOKEN_6 }}
+          TOKEN_7: ${{ secrets.YOUTUBE_REFRESH_TOKEN_7 }}
+          TOKEN_8: ${{ secrets.YOUTUBE_REFRESH_TOKEN_8 }}
+          TOKEN_9: ${{ secrets.YOUTUBE_REFRESH_TOKEN_9 }}
+          TOKEN_10: ${{ secrets.YOUTUBE_REFRESH_TOKEN_10 }}
+          TOKEN_11: ${{ secrets.YOUTUBE_REFRESH_TOKEN_11 }}
+          TOKEN_12: ${{ secrets.YOUTUBE_REFRESH_TOKEN_12 }}
+          TOKEN_13: ${{ secrets.YOUTUBE_REFRESH_TOKEN_13 }}
+          TOKEN_14: ${{ secrets.YOUTUBE_REFRESH_TOKEN_14 }}
+          TOKEN_15: ${{ secrets.YOUTUBE_REFRESH_TOKEN_15 }}
+          TOKEN_16: ${{ secrets.YOUTUBE_REFRESH_TOKEN_16 }}
+          TOKEN_17: ${{ secrets.YOUTUBE_REFRESH_TOKEN_17 }}
+          TOKEN_18: ${{ secrets.YOUTUBE_REFRESH_TOKEN_18 }}
+          TOKEN_19: ${{ secrets.YOUTUBE_REFRESH_TOKEN_19 }}
+          TOKEN_20: ${{ secrets.YOUTUBE_REFRESH_TOKEN_20 }}
+          TOKEN_21: ${{ secrets.YOUTUBE_REFRESH_TOKEN_21 }}
+          TOKEN_22: ${{ secrets.YOUTUBE_REFRESH_TOKEN_22 }}
+          TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
+          TOKEN_24: ${{ secrets.YOUTUBE_REFRESH_TOKEN_24 }}
+          TOKEN_25: ${{ secrets.YOUTUBE_REFRESH_TOKEN_25 }}
+          TOKEN_26: ${{ secrets.YOUTUBE_REFRESH_TOKEN_26 }}
+          TOKEN_27: ${{ secrets.YOUTUBE_REFRESH_TOKEN_27 }}
         run: python scripts/generate_video.py

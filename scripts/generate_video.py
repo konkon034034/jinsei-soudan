@@ -19,12 +19,8 @@ SCOPES = [
 ]
 SPREADSHEET_ID = '15_ixYlyRp9sOlS0tdklhz6wQmwRxWlOL9cPndFWwOFo'
 
-# YouTube OAuth tokens (from GitHub Secrets)
-YOUTUBE_TOKENS = {
-    1: 'TOKEN_1',  # Channel 1-9
-    2: 'TOKEN_2',  # Channel 10-18
-    3: 'TOKEN_3',  # Channel 19-27
-}
+# Total number of channels
+TOTAL_CHANNELS = 27
 
 # Cache for channel info from spreadsheet
 _channel_info_cache = None
@@ -86,15 +82,28 @@ def get_credentials():
     creds_dict = json.loads(creds_json)
     return Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
 
-def get_pending_neta(sh):
+def get_pending_neta(sh, channel_id=None):
+    """Get pending neta from spreadsheet.
+
+    Args:
+        sh: Spreadsheet object
+        channel_id: Optional channel ID to filter by. If None, returns first pending neta.
+
+    Returns:
+        dict with neta info or None if no pending neta found
+    """
     ws = sh.worksheet('ネタ管理')
     all_data = ws.get_all_values()
     for i, row in enumerate(all_data[1:], start=2):
         if len(row) >= 6 and row[5] == '未作成':
+            row_channel_id = int(row[1]) if row[1].isdigit() else 0
+            # If channel_id specified, only return neta for that channel
+            if channel_id is not None and row_channel_id != channel_id:
+                continue
             return {
                 'row_num': i,
                 'neta_id': row[0],
-                'channel_id': int(row[1]),
+                'channel_id': row_channel_id,
                 'category': row[2],
                 'title': row[3],
                 'ranking_num': int(row[4]) if row[4].isdigit() else 15
@@ -535,12 +544,12 @@ def get_youtube_credentials(channel_id):
     Supports two token formats:
     1. JSON format: {"refresh_token": "...", "client_id": "...", "client_secret": "..."}
     2. Simple string: 1//0e... (refresh_token only, uses YOUTUBE_CLIENT_ID/SECRET env vars)
-    """
-    # Determine which token to use (1-9: TOKEN_1, 10-18: TOKEN_2, 19-27: TOKEN_3)
-    token_num = ((channel_id - 1) // 9) + 1
-    token_env_name = f'TOKEN_{token_num}'
 
-    token_value = os.environ.get(token_env_name) or os.environ.get('TOKEN_1')
+    Each channel (1-27) uses its own TOKEN_{channel_id} environment variable.
+    """
+    token_env_name = f'TOKEN_{channel_id}'
+
+    token_value = os.environ.get(token_env_name)
     if not token_value:
         raise ValueError(f"{token_env_name} not found in environment variables")
 
@@ -626,82 +635,165 @@ def update_sheet_status(sh, row_num, status, video_url=''):
     if video_url:
         ws.update_cell(row_num, 9, video_url)
 
+def process_channel(sh, channel_id, channel_info):
+    """Process a single channel: generate and upload video.
+
+    Args:
+        sh: Spreadsheet object
+        channel_id: Channel ID (1-27)
+        channel_info: Dict with channel info from spreadsheet
+
+    Returns:
+        tuple: (success: bool, video_url: str or None, error_msg: str or None)
+    """
+    channel_name = channel_info.get('name') or CHANNELS.get(channel_id, f"チャンネル{channel_id}")
+
+    # Check if token exists for this channel
+    token_env_name = f'TOKEN_{channel_id}'
+    if not os.environ.get(token_env_name):
+        return (False, None, f"TOKEN_{channel_id}が未設定")
+
+    # Get pending neta for this channel
+    neta = get_pending_neta(sh, channel_id)
+    if not neta:
+        return (False, None, "未作成のネタなし")
+
+    print(f"  📝 ネタ: {neta['title']}")
+    update_sheet_status(sh, neta['row_num'], '作成中')
+
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # 1. Generate script
+            print("    📝 原稿生成中...")
+            script = generate_ranking_content(neta)
+            if not script:
+                update_sheet_status(sh, neta['row_num'], 'エラー')
+                return (False, None, "原稿生成失敗")
+            print(f"    ✅ 原稿生成完了（{len(script)}文字）")
+
+            # 2. Generate audio
+            print("    🎤 音声生成中...")
+            audio_path = os.path.join(tmpdir, "audio.mp3")
+            if not generate_audio_google_tts(script, audio_path):
+                update_sheet_status(sh, neta['row_num'], 'エラー')
+                return (False, None, "音声生成失敗")
+            print("    ✅ 音声生成完了")
+
+            # 3. Get images
+            print("    🖼️ 画像取得中...")
+            images = get_images_with_fallback(
+                title=neta['title'],
+                category=neta['category'],
+                count=neta['ranking_num'],
+                tmpdir=tmpdir
+            )
+            print(f"    ✅ 画像取得完了（{len(images)}枚）")
+
+            # 4. Create video with subtitles
+            print("    🎥 動画生成中（字幕付き）...")
+            video_path = os.path.join(tmpdir, "output.mp4")
+            if not create_video_with_moviepy(audio_path, images, neta['title'], video_path, script=script):
+                update_sheet_status(sh, neta['row_num'], 'エラー')
+                return (False, None, "動画生成失敗")
+            print("    ✅ 動画生成完了")
+
+            # 5. Upload to YouTube
+            print("    📺 YouTubeアップロード中...")
+            description = f"{script[:100]}...\n\n"
+            description += f"【{channel_name}】\n"
+            description += "#昭和 #懐かしい #ランキング #思い出 #レトロ"
+
+            video_url = upload_to_youtube(
+                file_path=video_path,
+                title=neta['title'],
+                description=description,
+                channel_id=channel_id,
+                privacy='private'
+            )
+            print(f"    ✅ アップロード完了: {video_url}")
+
+            update_sheet_status(sh, neta['row_num'], '完成', video_url)
+            return (True, video_url, None)
+
+    except Exception as e:
+        error_msg = str(e)
+        print(f"    ❌ エラー: {error_msg}")
+        try:
+            update_sheet_status(sh, neta['row_num'], 'エラー')
+        except:
+            pass
+        return (False, None, error_msg)
+
+
 def main():
-    print("🎬 動画生成開始...")
+    print("=" * 60)
+    print("🎬 27チャンネル動画一括生成")
+    print("=" * 60)
 
     creds = get_credentials()
     gc = gspread.authorize(creds)
     sh = gc.open_by_key(SPREADSHEET_ID)
 
     # Get channel info from spreadsheet
-    channel_number = int(os.environ.get('CHANNEL_NUMBER', 1))
-    channel_name = get_channel_name(sh, channel_number)
-    if channel_name:
-        print(f"📺 チャンネル: {channel_name} (TOKEN_{channel_number})")
-    else:
-        # Fallback to hardcoded name
-        channel_name = CHANNELS.get(channel_number, f"チャンネル{channel_number}")
-        print(f"📺 チャンネル: {channel_name} (TOKEN_{channel_number}) [フォールバック]")
+    channel_info_map = get_channel_info_from_sheet(sh)
 
-    neta = get_pending_neta(sh)
-    if not neta:
-        print("📭 未作成のネタがありません")
-        return
+    # Track results
+    results = {
+        'success': [],
+        'failed': [],
+        'skipped': []
+    }
 
-    print(f"📝 ネタ: {neta['title']}")
+    # Process each channel
+    for channel_id in range(1, TOTAL_CHANNELS + 1):
+        channel_info = channel_info_map.get(channel_id, {})
+        channel_name = channel_info.get('name') or CHANNELS.get(channel_id, f"チャンネル{channel_id}")
 
-    update_sheet_status(sh, neta['row_num'], '作成中')
+        print(f"\n📺 [{channel_id}/27] {channel_name}")
+        print("-" * 40)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        print("  📝 原稿生成中...")
-        script = generate_ranking_content(neta)
-        if not script:
-            update_sheet_status(sh, neta['row_num'], 'エラー')
-            return
-        print(f"  ✅ 原稿生成完了（{len(script)}文字）")
+        success, video_url, error_msg = process_channel(sh, channel_id, channel_info)
 
-        print("  🎤 音声生成中...")
-        audio_path = os.path.join(tmpdir, "audio.mp3")
-        if not generate_audio_google_tts(script, audio_path):
-            update_sheet_status(sh, neta['row_num'], 'エラー')
-            return
-        print("  ✅ 音声生成完了")
+        if success:
+            results['success'].append({
+                'channel_id': channel_id,
+                'name': channel_name,
+                'url': video_url
+            })
+        elif error_msg == "未作成のネタなし" or "TOKEN" in (error_msg or ""):
+            results['skipped'].append({
+                'channel_id': channel_id,
+                'name': channel_name,
+                'reason': error_msg
+            })
+        else:
+            results['failed'].append({
+                'channel_id': channel_id,
+                'name': channel_name,
+                'error': error_msg
+            })
 
-        print("  🖼️ 画像取得中...")
-        images = get_images_with_fallback(
-            title=neta['title'],
-            category=neta['category'],
-            count=neta['ranking_num'],
-            tmpdir=tmpdir
-        )
-        print(f"  ✅ 画像取得完了（{len(images)}枚）")
+    # Print summary
+    print("\n" + "=" * 60)
+    print("📊 処理結果サマリー")
+    print("=" * 60)
 
-        print("  🎥 動画生成中（字幕付き）...")
-        video_path = os.path.join(tmpdir, "output.mp4")
-        if not create_video_with_moviepy(audio_path, images, neta['title'], video_path, script=script):
-            update_sheet_status(sh, neta['row_num'], 'エラー')
-            return
-        print("  ✅ 動画生成完了")
+    print(f"\n✅ 成功: {len(results['success'])}件")
+    for r in results['success']:
+        print(f"   - [{r['channel_id']}] {r['name']}: {r['url']}")
 
-        print("  📺 YouTubeアップロード中...")
-        # Create description with channel name
-        description = f"{script[:100]}...\n\n"
-        if channel_name:
-            description += f"【{channel_name}】\n"
-        description += "#昭和 #懐かしい #ランキング #思い出 #レトロ"
+    print(f"\n⏭️ スキップ: {len(results['skipped'])}件")
+    for r in results['skipped']:
+        print(f"   - [{r['channel_id']}] {r['name']}: {r['reason']}")
 
-        video_url = upload_to_youtube(
-            file_path=video_path,
-            title=neta['title'],
-            description=description,
-            channel_id=neta['channel_id'],
-            privacy='private'  # Test with private
-        )
-        print(f"  ✅ アップロード完了")
+    print(f"\n❌ 失敗: {len(results['failed'])}件")
+    for r in results['failed']:
+        print(f"   - [{r['channel_id']}] {r['name']}: {r['error']}")
 
-        update_sheet_status(sh, neta['row_num'], '完成', video_url)
-
-    print(f"🎉 動画生成完了！ {video_url}")
+    print("\n" + "=" * 60)
+    total = len(results['success']) + len(results['failed']) + len(results['skipped'])
+    print(f"🎉 処理完了！ 成功:{len(results['success'])} / スキップ:{len(results['skipped'])} / 失敗:{len(results['failed'])} / 合計:{total}")
+    print("=" * 60)
 
 if __name__ == "__main__":
     main()
