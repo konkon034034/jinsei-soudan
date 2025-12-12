@@ -48,6 +48,9 @@ def main():
     # Create flow from client config
     flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
 
+    # Set redirect URI explicitly
+    flow.redirect_uri = 'http://localhost:8080/'
+
     # Generate authorization URL without opening browser
     auth_url, _ = flow.authorization_url(
         access_type='offline',
