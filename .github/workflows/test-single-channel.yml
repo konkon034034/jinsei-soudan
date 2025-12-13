@@ -1,0 +1,179 @@
+name: Test Single Channel Upload
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Channel number to test (default: 1)'
+        required: false
+        default: '1'
+
+jobs:
+  test-upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-cjk
+          pip install google-auth google-auth-oauthlib google-api-python-client
+          pip install gspread requests moviepy>=2.0.0
+
+      - name: Test upload and update spreadsheet
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          TOKEN_1: ${{ secrets.YOUTUBE_REFRESH_TOKEN_1 }}
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+          CHANNEL_NUM: ${{ github.event.inputs.channel || '1' }}
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import os
+          import json
+          import tempfile
+          from datetime import datetime
+          from google.oauth2.credentials import Credentials
+          from google.oauth2.service_account import Credentials as SACredentials
+          from googleapiclient.discovery import build
+          from googleapiclient.http import MediaFileUpload
+          import gspread
+
+          SPREADSHEET_ID = '15_ixYlyRp9sOlS0tdklhz6wQmwRxWlOL9cPndFWwOFo'
+          CHANNEL_NUM = int(os.environ.get('CHANNEL_NUM', '1'))
+
+          print("=" * 60)
+          print(f"テストアップロード ch{CHANNEL_NUM}")
+          print("=" * 60)
+
+          # 1. テスト動画生成
+          print("\n1. テスト動画生成中...")
+          from moviepy import ColorClip, TextClip, CompositeVideoClip
+
+          with tempfile.TemporaryDirectory() as tmpdir:
+              video_path = f"{tmpdir}/test.mp4"
+              duration = 10
+
+              bg = ColorClip(size=(1280, 720), color=(0, 0, 0), duration=duration)
+              try:
+                  txt = TextClip(
+                      text=f"テスト ch{CHANNEL_NUM}",
+                      font='/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+                      font_size=72,
+                      color='white',
+                      size=(1280, 720),
+                      method='caption',
+                      text_align='center'
+                  )
+                  txt = txt.with_duration(duration).with_position('center')
+                  video = CompositeVideoClip([bg, txt])
+              except:
+                  video = bg
+
+              video.write_videofile(video_path, fps=24, codec='libx264', audio=False)
+              print("   動画生成完了")
+
+              # 2. YouTubeアップロード
+              print("\n2. YouTubeアップロード中...")
+              client_id = os.environ.get('YOUTUBE_CLIENT_ID')
+              client_secret = os.environ.get('YOUTUBE_CLIENT_SECRET')
+              token_value = os.environ.get(f'TOKEN_{CHANNEL_NUM}')
+
+              if not token_value:
+                  print(f"   エラー: TOKEN_{CHANNEL_NUM}が未設定")
+                  exit(1)
+
+              token_value = token_value.strip()
+              if token_value.startswith('{'):
+                  token_data = json.loads(token_value)
+                  refresh_token = token_data.get('refresh_token')
+                  client_id = token_data.get('client_id') or client_id
+                  client_secret = token_data.get('client_secret') or client_secret
+              else:
+                  refresh_token = token_value
+
+              creds = Credentials(
+                  token=None,
+                  refresh_token=refresh_token,
+                  token_uri='https://oauth2.googleapis.com/token',
+                  client_id=client_id,
+                  client_secret=client_secret,
+                  scopes=['https://www.googleapis.com/auth/youtube.upload']
+              )
+
+              youtube = build('youtube', 'v3', credentials=creds)
+
+              now = datetime.now()
+              title = f"テスト動画 {now.strftime('%Y-%m-%d %H:%M')}"
+
+              body = {
+                  'snippet': {
+                      'title': title,
+                      'description': '自動アップロードテスト',
+                      'tags': ['テスト'],
+                      'categoryId': '22'
+                  },
+                  'status': {
+                      'privacyStatus': 'private',
+                      'selfDeclaredMadeForKids': False
+                  }
+              }
+
+              media = MediaFileUpload(video_path, mimetype='video/mp4', resumable=True)
+              request = youtube.videos().insert(part='snippet,status', body=body, media_body=media)
+
+              response = None
+              while response is None:
+                  status, response = request.next_chunk()
+
+              video_id = response.get('id')
+              video_url = f"https://www.youtube.com/watch?v={video_id}"
+              print(f"   アップロード成功: {video_url}")
+
+              # 3. スプレッドシート更新
+              print("\n3. スプレッドシート更新中...")
+              sa_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
+              sa_creds = SACredentials.from_service_account_info(
+                  json.loads(sa_json),
+                  scopes=['https://www.googleapis.com/auth/spreadsheets']
+              )
+              gc = gspread.authorize(sa_creds)
+              spreadsheet = gc.open_by_key(SPREADSHEET_ID)
+
+              # チャンネル管理シート更新
+              ws_channel = spreadsheet.worksheet('チャンネル管理')
+              all_data = ws_channel.get_all_values()
+              for i, row in enumerate(all_data[1:], start=2):
+                  if row and int(row[0]) == CHANNEL_NUM:
+                      channel_name = row[1]
+                      current_count = int(row[6]) if row[6] else 0
+                      ws_channel.update_cell(i, 6, now.strftime('%Y-%m-%d %H:%M'))
+                      ws_channel.update_cell(i, 7, current_count + 1)
+                      print(f"   チャンネル管理更新: {channel_name}")
+                      break
+
+              # 投稿履歴シート更新
+              ws_history = spreadsheet.worksheet('投稿履歴')
+              new_row = [
+                  now.strftime('%Y-%m-%d %H:%M:%S'),
+                  CHANNEL_NUM,
+                  channel_name,
+                  title,
+                  video_url,
+                  '成功'
+              ]
+              ws_history.append_row(new_row)
+              print(f"   投稿履歴追加完了")
+
+              print("\n" + "=" * 60)
+              print("完了!")
+              print(f"動画URL: {video_url}")
+              print(f"スプレッドシート: https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}")
+              print("=" * 60)
+          PYTHON_SCRIPT
