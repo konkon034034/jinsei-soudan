@@ -1,5 +1,5 @@
 /**
- * Slack → GitHub Actions トリガー + 画像選択状態管理
+ * Slack → GitHub Actions トリガー + 画像/台本行 選択状態管理
  *
  * GAS URL: https://script.google.com/macros/s/AKfycbwvKV-ZXP9ecJAIwD-qdi6K7XF8HtZvK4X8JEEdNqqTijkAX2gMNWeYN3j9CuqUX8XI/exec
  */
@@ -17,28 +17,28 @@ function getGitHubToken() {
   return token;
 }
 
-// ========== 画像選択状態管理 ==========
+// ========== 選択状態管理（画像・台本行共通） ==========
 
-function getSelections(channelNum) {
+function getSelections(key) {
   const props = PropertiesService.getScriptProperties();
-  const data = props.getProperty('sel_' + channelNum);
+  const data = props.getProperty(key);
   return data ? JSON.parse(data) : {};
 }
 
-function setSelection(channelNum, imgNum, selected) {
+function setSelection(key, num, selected) {
   const props = PropertiesService.getScriptProperties();
-  const sels = getSelections(channelNum);
-  sels[imgNum] = selected;
-  props.setProperty('sel_' + channelNum, JSON.stringify(sels));
+  const sels = getSelections(key);
+  sels[num] = selected;
+  props.setProperty(key, JSON.stringify(sels));
   return sels;
 }
 
-function clearSelections(channelNum) {
-  PropertiesService.getScriptProperties().deleteProperty('sel_' + channelNum);
+function clearSelections(key) {
+  PropertiesService.getScriptProperties().deleteProperty(key);
 }
 
-function countSelected(channelNum, total) {
-  const sels = getSelections(channelNum);
+function countSelected(key, total) {
+  const sels = getSelections(key);
   let count = 0;
   for (let i = 1; i <= total; i++) {
     if (sels[i] !== false) count++;
@@ -46,11 +46,25 @@ function countSelected(channelNum, total) {
   return count;
 }
 
+// チャンネルごとの総数を保存
+function setTotals(ch, totalImages, totalLines) {
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty('total_img_' + ch, String(totalImages));
+  props.setProperty('total_line_' + ch, String(totalLines));
+}
+
+function getTotals(ch) {
+  const props = PropertiesService.getScriptProperties();
+  return {
+    images: parseInt(props.getProperty('total_img_' + ch) || '10'),
+    lines: parseInt(props.getProperty('total_line_' + ch) || '20')
+  };
+}
+
 // ========== メイン処理 ==========
 
 function doPost(e) {
   try {
-    // Slackからのpayloadを解析
     let payload;
     if (e.parameter && e.parameter.payload) {
       payload = JSON.parse(e.parameter.payload);
@@ -84,51 +98,79 @@ function handleAction(payload) {
 
   console.log('Action:', actionId);
 
-  // 画像選択: use_img_{ch}_{num} または skip_img_{ch}_{num}
+  // === 画像選択: use_img_{ch}_{num} / skip_img_{ch}_{num} ===
   if (actionId.startsWith('use_img_') || actionId.startsWith('skip_img_')) {
     const parts = actionId.split('_');
     const ch = parts[2];
     const num = parseInt(parts[3]);
     const selected = actionId.startsWith('use_img_');
 
-    setSelection(ch, num, selected);
-    const count = countSelected(ch, 30);
+    setSelection('img_' + ch, num, selected);
+    const totals = getTotals(ch);
+    const imgCount = countSelected('img_' + ch, totals.images);
+    const lineCount = countSelected('line_' + ch, totals.lines);
 
     const msg = selected
-      ? `✅ 画像${num}を選択（${count}/30枚）`
-      : `❌ 画像${num}を除外（${count}/30枚）`;
+      ? `✅ 画像${num}を選択\n📊 画像: ${imgCount}/${totals.images}枚 | 台本: ${lineCount}/${totals.lines}行`
+      : `❌ 画像${num}を除外\n📊 画像: ${imgCount}/${totals.images}枚 | 台本: ${lineCount}/${totals.lines}行`;
 
     return respond(msg);
   }
 
-  // 動画生成: generate_{ch}
-  if (actionId.startsWith('generate_')) {
-    const ch = actionId.replace('generate_', '');
-    const count = countSelected(ch, 30);
+  // === 台本行選択: use_line_{ch}_{num} / skip_line_{ch}_{num} ===
+  if (actionId.startsWith('use_line_') || actionId.startsWith('skip_line_')) {
+    const parts = actionId.split('_');
+    const ch = parts[2];
+    const num = parseInt(parts[3]);
+    const selected = actionId.startsWith('use_line_');
 
-    if (count === 0) {
-      return respond('⚠️ 画像を1枚以上選択してください');
-    }
+    setSelection('line_' + ch, num, selected);
+    const totals = getTotals(ch);
+    const imgCount = countSelected('img_' + ch, totals.images);
+    const lineCount = countSelected('line_' + ch, totals.lines);
 
-    // GitHub Actions トリガー（非同期）
-    triggerWorkflow(ch, count, responseUrl);
-    clearSelections(ch);
+    const msg = selected
+      ? `✅ 台本${num}行目を選択\n📊 画像: ${imgCount}/${totals.images}枚 | 台本: ${lineCount}/${totals.lines}行`
+      : `❌ 台本${num}行目を除外\n📊 画像: ${imgCount}/${totals.images}枚 | 台本: ${lineCount}/${totals.lines}行`;
 
-    return respond(`🎬 ch${ch}の動画生成を開始！（${count}枚選択）`);
+    return respond(msg);
   }
 
-  // 再生成: regenerate_{ch}
+  // === 動画生成: generate_{ch} ===
+  if (actionId.startsWith('generate_')) {
+    const ch = actionId.replace('generate_', '');
+    const totals = getTotals(ch);
+    const imgCount = countSelected('img_' + ch, totals.images);
+    const lineCount = countSelected('line_' + ch, totals.lines);
+
+    if (imgCount === 0 || lineCount === 0) {
+      return respond(`⚠️ 画像と台本を選択してください\n現在: 画像${imgCount}枚, 台本${lineCount}行`);
+    }
+
+    // GitHub Actions トリガー
+    triggerWorkflow(ch, imgCount, lineCount, responseUrl);
+
+    // 選択状態をクリア
+    clearSelections('img_' + ch);
+    clearSelections('line_' + ch);
+
+    return respond(`🎬 ch${ch}の動画生成を開始！\n画像: ${imgCount}枚 | 台本: ${lineCount}行`);
+  }
+
+  // === 再生成: regenerate_{ch} ===
   if (actionId.startsWith('regenerate_')) {
     const ch = actionId.replace('regenerate_', '');
-    clearSelections(ch);
+    clearSelections('img_' + ch);
+    clearSelections('line_' + ch);
     triggerPrepare(ch, responseUrl);
     return respond('🔄 再生成中...');
   }
 
-  // スキップ: skip_{ch}
+  // === スキップ: skip_{ch} ===
   if (actionId.startsWith('skip_')) {
     const ch = actionId.replace('skip_', '');
-    clearSelections(ch);
+    clearSelections('img_' + ch);
+    clearSelections('line_' + ch);
     return respond('⏭️ スキップしました');
   }
 
@@ -144,7 +186,7 @@ function respond(text) {
 
 // ========== GitHub Actions ==========
 
-function triggerWorkflow(channelNum, selectedCount, responseUrl) {
+function triggerWorkflow(channelNum, imgCount, lineCount, responseUrl) {
   const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/workflows/generate-video.yml/dispatches`;
 
   try {
@@ -164,7 +206,7 @@ function triggerWorkflow(channelNum, selectedCount, responseUrl) {
 
     const code = resp.getResponseCode();
     if (code === 204) {
-      sendToSlack(responseUrl, `✅ ch${channelNum}の動画生成を開始しました！\n選択画像: ${selectedCount}枚`);
+      sendToSlack(responseUrl, `✅ ch${channelNum}の動画生成を開始しました！\n画像: ${imgCount}枚 | 台本: ${lineCount}行`);
     } else {
       sendToSlack(responseUrl, `❌ GitHub エラー(${code}): ${resp.getContentText()}`);
     }
@@ -215,10 +257,24 @@ function sendToSlack(url, text) {
 // ========== テスト ==========
 
 function testSelection() {
-  setSelection('27', 1, true);
-  setSelection('27', 2, false);
-  console.log('Count:', countSelected('27', 30));
-  clearSelections('27');
+  // 総数を設定
+  setTotals('27', 10, 20);
+
+  // 画像選択
+  setSelection('img_27', 1, true);
+  setSelection('img_27', 2, false);
+
+  // 台本選択
+  setSelection('line_27', 1, true);
+  setSelection('line_27', 5, false);
+
+  const totals = getTotals('27');
+  console.log('画像選択:', countSelected('img_27', totals.images), '/', totals.images);
+  console.log('台本選択:', countSelected('line_27', totals.lines), '/', totals.lines);
+
+  // クリア
+  clearSelections('img_27');
+  clearSelections('line_27');
 }
 
 function doGet(e) {
