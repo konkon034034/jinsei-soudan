@@ -37,7 +37,18 @@ function countSelected(key, total) {
   const sels = getSelections(key);
   let count = 0;
   for (let i = 1; i <= total; i++) {
-    if (sels[i] !== false) count++;
+    // 明示的にtrue（✅選択）のものだけカウント
+    if (sels[i] === true) count++;
+  }
+  return count;
+}
+
+function countExcluded(key, total) {
+  const sels = getSelections(key);
+  let count = 0;
+  for (let i = 1; i <= total; i++) {
+    // 明示的にfalse（❌除外）のものだけカウント
+    if (sels[i] === false) count++;
   }
   return count;
 }
@@ -128,11 +139,12 @@ function processAction(actionId, responseUrl) {
       const selected = actionId.startsWith('use_img_');
 
       setSelection('img_' + ch, num, selected);
-      const count = countSelected('img_' + ch, 10);
+      const selectedCount = countSelected('img_' + ch, 10);
+      const excludedCount = countExcluded('img_' + ch, 10);
 
       message = selected
-        ? `✅ 画像${num}を選択 (${count}/10枚)`
-        : `❌ 画像${num}を除外 (${count}/10枚)`;
+        ? `✅ 画像${num}を選択\n選択: ${selectedCount}枚 | 除外: ${excludedCount}枚`
+        : `❌ 画像${num}を除外\n選択: ${selectedCount}枚 | 除外: ${excludedCount}枚`;
     }
 
     // 動画生成: generate_{ch}
