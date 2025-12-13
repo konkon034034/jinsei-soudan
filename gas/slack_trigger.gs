@@ -2,12 +2,15 @@
  * Slack → GitHub Actions トリガー + 画像/台本行 選択状態管理
  *
  * GAS URL: https://script.google.com/macros/s/AKfycbwvKV-ZXP9ecJAIwD-qdi6K7XF8HtZvK4X8JEEdNqqTijkAX2gMNWeYN3j9CuqUX8XI/exec
+ *
+ * 【重要】Slackインタラクティブコンポーネントの仕様:
+ * - リクエストは application/x-www-form-urlencoded 形式
+ * - payloadパラメータにJSON文字列が入っている
+ * - 3秒以内にレスポンスを返す必要がある
  */
 
 const GITHUB_OWNER = 'konkon034034';
 const GITHUB_REPO = 'jinsei-soudan';
-// GITHUB_TOKEN は Script Properties に設定してください
-// GASエディタ → プロジェクトの設定 → スクリプトプロパティ → GITHUB_TOKEN を追加
 
 function getGitHubToken() {
   const token = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN');
@@ -17,7 +20,7 @@ function getGitHubToken() {
   return token;
 }
 
-// ========== 選択状態管理（画像・台本行共通） ==========
+// ========== 選択状態管理 ==========
 
 function getSelections(key) {
   const props = PropertiesService.getScriptProperties();
@@ -46,13 +49,6 @@ function countSelected(key, total) {
   return count;
 }
 
-// チャンネルごとの総数を保存
-function setTotals(ch, totalImages, totalLines) {
-  const props = PropertiesService.getScriptProperties();
-  props.setProperty('total_img_' + ch, String(totalImages));
-  props.setProperty('total_line_' + ch, String(totalLines));
-}
-
 function getTotals(ch) {
   const props = PropertiesService.getScriptProperties();
   return {
@@ -65,29 +61,59 @@ function getTotals(ch) {
 
 function doPost(e) {
   try {
+    // Slackからのリクエストをパース
+    // application/x-www-form-urlencoded形式でpayloadパラメータにJSONが入っている
     let payload;
+
     if (e.parameter && e.parameter.payload) {
+      // Slackインタラクティブコンポーネントからのリクエスト
       payload = JSON.parse(e.parameter.payload);
+      console.log('Slack payload received:', JSON.stringify(payload).substring(0, 500));
     } else if (e.postData && e.postData.contents) {
-      payload = JSON.parse(e.postData.contents);
-    } else {
-      return respond('Error: No payload');
+      // JSON形式のリクエスト（URL検証など）
+      const contentType = e.postData.type || '';
+      if (contentType.includes('application/json')) {
+        payload = JSON.parse(e.postData.contents);
+      } else if (contentType.includes('application/x-www-form-urlencoded')) {
+        // フォームデータからpayloadを取得
+        const params = {};
+        e.postData.contents.split('&').forEach(pair => {
+          const [key, value] = pair.split('=');
+          params[decodeURIComponent(key)] = decodeURIComponent(value || '');
+        });
+        if (params.payload) {
+          payload = JSON.parse(params.payload);
+        }
+      }
     }
 
-    // URL検証（Slack設定時）
+    if (!payload) {
+      console.error('No payload found in request');
+      return ContentService.createTextOutput('No payload');
+    }
+
+    // URL検証（Slack App設定時）
     if (payload.type === 'url_verification') {
       return ContentService.createTextOutput(payload.challenge);
     }
 
     // ボタンクリック処理
     if (payload.type === 'block_actions') {
-      return handleAction(payload);
+      const result = handleAction(payload);
+      // Slackには即座にJSON形式でレスポンスを返す
+      return ContentService.createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
     }
 
-    return respond('OK');
+    return ContentService.createTextOutput('OK');
+
   } catch (err) {
-    console.error('doPost error:', err);
-    return respond('Error: ' + err.message);
+    console.error('doPost error:', err.message, err.stack);
+    // エラー時も200 OKを返す（Slackがリトライしないように）
+    return ContentService.createTextOutput(JSON.stringify({
+      response_type: 'ephemeral',
+      text: '❌ エラー: ' + err.message
+    })).setMimeType(ContentService.MimeType.JSON);
   }
 }
 
@@ -96,7 +122,7 @@ function handleAction(payload) {
   const actionId = action.action_id;
   const responseUrl = payload.response_url;
 
-  console.log('Action:', actionId);
+  console.log('Action ID:', actionId);
 
   // === 画像選択: use_img_{ch}_{num} / skip_img_{ch}_{num} ===
   if (actionId.startsWith('use_img_') || actionId.startsWith('skip_img_')) {
@@ -114,7 +140,7 @@ function handleAction(payload) {
       ? `✅ 画像${num}を選択\n📊 画像: ${imgCount}/${totals.images}枚 | 台本: ${lineCount}/${totals.lines}行`
       : `❌ 画像${num}を除外\n📊 画像: ${imgCount}/${totals.images}枚 | 台本: ${lineCount}/${totals.lines}行`;
 
-    return respond(msg);
+    return { response_type: 'ephemeral', text: msg };
   }
 
   // === 台本行選択: use_line_{ch}_{num} / skip_line_{ch}_{num} ===
@@ -133,7 +159,7 @@ function handleAction(payload) {
       ? `✅ 台本${num}行目を選択\n📊 画像: ${imgCount}/${totals.images}枚 | 台本: ${lineCount}/${totals.lines}行`
       : `❌ 台本${num}行目を除外\n📊 画像: ${imgCount}/${totals.images}枚 | 台本: ${lineCount}/${totals.lines}行`;
 
-    return respond(msg);
+    return { response_type: 'ephemeral', text: msg };
   }
 
   // === 動画生成: generate_{ch} ===
@@ -144,17 +170,23 @@ function handleAction(payload) {
     const lineCount = countSelected('line_' + ch, totals.lines);
 
     if (imgCount === 0 || lineCount === 0) {
-      return respond(`⚠️ 画像と台本を選択してください\n現在: 画像${imgCount}枚, 台本${lineCount}行`);
+      return {
+        response_type: 'ephemeral',
+        text: `⚠️ 画像と台本を選択してください\n現在: 画像${imgCount}枚, 台本${lineCount}行`
+      };
     }
 
-    // GitHub Actions トリガー
-    triggerWorkflow(ch, imgCount, lineCount, responseUrl);
+    // GitHub Actions トリガー（非同期で実行）
+    triggerWorkflowAsync(ch, imgCount, lineCount, responseUrl);
 
     // 選択状態をクリア
     clearSelections('img_' + ch);
     clearSelections('line_' + ch);
 
-    return respond(`🎬 ch${ch}の動画生成を開始！\n画像: ${imgCount}枚 | 台本: ${lineCount}行`);
+    return {
+      response_type: 'ephemeral',
+      text: `🎬 ch${ch}の動画生成を開始！\n画像: ${imgCount}枚 | 台本: ${lineCount}行`
+    };
   }
 
   // === 再生成: regenerate_{ch} ===
@@ -162,8 +194,8 @@ function handleAction(payload) {
     const ch = actionId.replace('regenerate_', '');
     clearSelections('img_' + ch);
     clearSelections('line_' + ch);
-    triggerPrepare(ch, responseUrl);
-    return respond('🔄 再生成中...');
+    triggerPrepareAsync(ch, responseUrl);
+    return { response_type: 'ephemeral', text: '🔄 再生成中...' };
   }
 
   // === スキップ: skip_{ch} ===
@@ -171,22 +203,15 @@ function handleAction(payload) {
     const ch = actionId.replace('skip_', '');
     clearSelections('img_' + ch);
     clearSelections('line_' + ch);
-    return respond('⏭️ スキップしました');
+    return { response_type: 'ephemeral', text: '⏭️ スキップしました' };
   }
 
-  return respond('OK');
+  return { response_type: 'ephemeral', text: 'OK' };
 }
 
-function respond(text) {
-  return ContentService.createTextOutput(JSON.stringify({
-    response_type: 'ephemeral',
-    text: text
-  })).setMimeType(ContentService.MimeType.JSON);
-}
+// ========== GitHub Actions（非同期） ==========
 
-// ========== GitHub Actions ==========
-
-function triggerWorkflow(channelNum, imgCount, lineCount, responseUrl) {
+function triggerWorkflowAsync(channelNum, imgCount, lineCount, responseUrl) {
   const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/workflows/generate-video.yml/dispatches`;
 
   try {
@@ -199,23 +224,30 @@ function triggerWorkflow(channelNum, imgCount, lineCount, responseUrl) {
       },
       payload: JSON.stringify({
         ref: 'main',
-        inputs: { channel: channelNum }
+        inputs: { channel: String(channelNum) }
       }),
       muteHttpExceptions: true
     });
 
     const code = resp.getResponseCode();
-    if (code === 204) {
-      sendToSlack(responseUrl, `✅ ch${channelNum}の動画生成を開始しました！\n画像: ${imgCount}枚 | 台本: ${lineCount}行`);
-    } else {
-      sendToSlack(responseUrl, `❌ GitHub エラー(${code}): ${resp.getContentText()}`);
+    console.log('GitHub API response:', code);
+
+    if (responseUrl) {
+      if (code === 204) {
+        sendToSlack(responseUrl, `✅ ch${channelNum}の動画生成をGitHub Actionsで開始しました！\n画像: ${imgCount}枚 | 台本: ${lineCount}行`);
+      } else {
+        sendToSlack(responseUrl, `❌ GitHub エラー(${code}): ${resp.getContentText()}`);
+      }
     }
   } catch (e) {
-    sendToSlack(responseUrl, '❌ エラー: ' + e.message);
+    console.error('triggerWorkflow error:', e);
+    if (responseUrl) {
+      sendToSlack(responseUrl, '❌ エラー: ' + e.message);
+    }
   }
 }
 
-function triggerPrepare(channelNum, responseUrl) {
+function triggerPrepareAsync(channelNum, responseUrl) {
   const chIndex = { '27': '1', '24': '2', '23': '3' }[channelNum] || '0';
   const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/workflows/syouwa-morning-prepare.yml/dispatches`;
 
@@ -235,48 +267,62 @@ function triggerPrepare(channelNum, responseUrl) {
     });
 
     const code = resp.getResponseCode();
-    if (code === 204) {
-      sendToSlack(responseUrl, `🔄 ch${channelNum}の再生成を開始しました！`);
-    } else {
-      sendToSlack(responseUrl, `❌ GitHub エラー(${code})`);
+    console.log('GitHub API response:', code);
+
+    if (responseUrl) {
+      if (code === 204) {
+        sendToSlack(responseUrl, `🔄 ch${channelNum}の再生成を開始しました！`);
+      } else {
+        sendToSlack(responseUrl, `❌ GitHub エラー(${code})`);
+      }
     }
   } catch (e) {
-    sendToSlack(responseUrl, '❌ エラー: ' + e.message);
+    console.error('triggerPrepare error:', e);
+    if (responseUrl) {
+      sendToSlack(responseUrl, '❌ エラー: ' + e.message);
+    }
   }
 }
 
 function sendToSlack(url, text) {
   if (!url) return;
-  UrlFetchApp.fetch(url, {
-    method: 'post',
-    headers: { 'Content-Type': 'application/json' },
-    payload: JSON.stringify({ text: text, response_type: 'ephemeral' })
-  });
+  try {
+    UrlFetchApp.fetch(url, {
+      method: 'post',
+      headers: { 'Content-Type': 'application/json' },
+      payload: JSON.stringify({
+        response_type: 'ephemeral',
+        text: text
+      })
+    });
+  } catch (e) {
+    console.error('sendToSlack error:', e);
+  }
 }
 
-// ========== テスト ==========
+// ========== テスト・デバッグ ==========
 
-function testSelection() {
-  // 総数を設定
-  setTotals('27', 10, 20);
+function testDoPost() {
+  // Slackからのリクエストをシミュレート
+  const mockPayload = {
+    type: 'block_actions',
+    actions: [{
+      action_id: 'use_img_27_1',
+      value: '{"img_num": 1}'
+    }],
+    response_url: null
+  };
 
-  // 画像選択
-  setSelection('img_27', 1, true);
-  setSelection('img_27', 2, false);
+  const mockEvent = {
+    parameter: {
+      payload: JSON.stringify(mockPayload)
+    }
+  };
 
-  // 台本選択
-  setSelection('line_27', 1, true);
-  setSelection('line_27', 5, false);
-
-  const totals = getTotals('27');
-  console.log('画像選択:', countSelected('img_27', totals.images), '/', totals.images);
-  console.log('台本選択:', countSelected('line_27', totals.lines), '/', totals.lines);
-
-  // クリア
-  clearSelections('img_27');
-  clearSelections('line_27');
+  const result = doPost(mockEvent);
+  console.log('Result:', result.getContent());
 }
 
 function doGet(e) {
-  return ContentService.createTextOutput('GAS is running. Use POST for Slack interactions.');
+  return ContentService.createTextOutput('GAS Slack Trigger is running. POST only.');
 }
