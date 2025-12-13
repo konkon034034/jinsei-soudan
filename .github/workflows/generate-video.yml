@@ -1,9 +1,12 @@
 name: Generate Video
 
 on:
-  schedule:
-    - cron: '0 1 * * *'
   workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Channel number (23, 24, or 27)'
+        required: true
+        default: '23'
 
 jobs:
   generate:
@@ -16,49 +19,53 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install system dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg fonts-noto-cjk
+          pip install google-auth google-auth-oauthlib google-api-python-client
+          pip install gspread requests moviepy>=2.0.0 openai
 
-      - name: Install Python dependencies
-        run: |
-          pip install python-dotenv gspread google-auth google-auth-oauthlib google-auth-httplib2
-          pip install google-api-python-client requests gtts Pillow
-          pip install moviepy>=2.0.0
-
-      - name: Generate video
+      - name: Generate and upload video
         env:
-          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
-          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
-          UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          TOKEN_1: ${{ secrets.YOUTUBE_REFRESH_TOKEN_1 }}
-          TOKEN_2: ${{ secrets.YOUTUBE_REFRESH_TOKEN_2 }}
-          TOKEN_3: ${{ secrets.YOUTUBE_REFRESH_TOKEN_3 }}
-          TOKEN_4: ${{ secrets.YOUTUBE_REFRESH_TOKEN_4 }}
-          TOKEN_5: ${{ secrets.YOUTUBE_REFRESH_TOKEN_5 }}
-          TOKEN_6: ${{ secrets.YOUTUBE_REFRESH_TOKEN_6 }}
-          TOKEN_7: ${{ secrets.YOUTUBE_REFRESH_TOKEN_7 }}
-          TOKEN_8: ${{ secrets.YOUTUBE_REFRESH_TOKEN_8 }}
-          TOKEN_9: ${{ secrets.YOUTUBE_REFRESH_TOKEN_9 }}
-          TOKEN_10: ${{ secrets.YOUTUBE_REFRESH_TOKEN_10 }}
-          TOKEN_11: ${{ secrets.YOUTUBE_REFRESH_TOKEN_11 }}
-          TOKEN_12: ${{ secrets.YOUTUBE_REFRESH_TOKEN_12 }}
-          TOKEN_13: ${{ secrets.YOUTUBE_REFRESH_TOKEN_13 }}
-          TOKEN_14: ${{ secrets.YOUTUBE_REFRESH_TOKEN_14 }}
-          TOKEN_15: ${{ secrets.YOUTUBE_REFRESH_TOKEN_15 }}
-          TOKEN_16: ${{ secrets.YOUTUBE_REFRESH_TOKEN_16 }}
-          TOKEN_17: ${{ secrets.YOUTUBE_REFRESH_TOKEN_17 }}
-          TOKEN_18: ${{ secrets.YOUTUBE_REFRESH_TOKEN_18 }}
-          TOKEN_19: ${{ secrets.YOUTUBE_REFRESH_TOKEN_19 }}
-          TOKEN_20: ${{ secrets.YOUTUBE_REFRESH_TOKEN_20 }}
-          TOKEN_21: ${{ secrets.YOUTUBE_REFRESH_TOKEN_21 }}
-          TOKEN_22: ${{ secrets.YOUTUBE_REFRESH_TOKEN_22 }}
           TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
           TOKEN_24: ${{ secrets.YOUTUBE_REFRESH_TOKEN_24 }}
-          TOKEN_25: ${{ secrets.YOUTUBE_REFRESH_TOKEN_25 }}
-          TOKEN_26: ${{ secrets.YOUTUBE_REFRESH_TOKEN_26 }}
           TOKEN_27: ${{ secrets.YOUTUBE_REFRESH_TOKEN_27 }}
-        run: python scripts/generate_video.py
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CHANNEL_NUM: ${{ github.event.inputs.channel }}
+        run: |
+          python3 scripts/generate_and_upload.py
+
+      - name: Notify Slack
+        if: always()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          CHANNEL_NUM: ${{ github.event.inputs.channel }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL not set"
+            exit 0
+          fi
+
+          if [ "${{ job.status }}" = "success" ]; then
+            STATUS=":white_check_mark: 成功"
+            COLOR="good"
+          else
+            STATUS=":x: 失敗"
+            COLOR="danger"
+          fi
+
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{
+              \"attachments\": [{
+                \"color\": \"$COLOR\",
+                \"title\": \"ch${CHANNEL_NUM} 動画生成\",
+                \"text\": \"$STATUS\",
+                \"footer\": \"GitHub Actions\",
+                \"ts\": $(date +%s)
+              }]
+            }" \
+            "$SLACK_WEBHOOK_URL"
