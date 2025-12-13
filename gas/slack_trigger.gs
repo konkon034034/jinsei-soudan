@@ -139,17 +139,44 @@ function processAction(actionId, responseUrl, payload) {
       const isUse = actionId.startsWith('use_line_');
 
       setSelection('line_' + ch, num, isUse);
-      const lineSel = countSelected('line_' + ch, 50);
       const imgSel = countSelected('img_' + ch, 10);
+      const lineExcl = countExcluded('line_' + ch, 50);
 
       if (isUse) {
-        // ✅ 使う → メッセージを「選択済み」に置き換え
-        sendToResponseUrl(responseUrl, `✅ 台本${num}行目を選択（計${lineSel}行 / 画像${imgSel}枚）`, true, false);
+        // ✅ 残す → 確認メッセージに置き換え（削除しなかったものは全て使う）
+        sendToResponseUrl(responseUrl, `✅ 台本${num}行目（除外${lineExcl}行 / 画像${imgSel}枚選択）`, true, false);
       } else {
-        // ❌ 削除 → メッセージを削除
+        // ❌ 除外 → メッセージを削除（この行は動画に使わない）
         sendToResponseUrl(responseUrl, '', false, true);
       }
       return; // 処理完了、以降のsendToResponseUrlをスキップ
+    }
+
+    // 画像選択解除: unselect_img_{ch}_{num}
+    else if (actionId.startsWith('unselect_img_')) {
+      const parts = actionId.split('_');
+      const ch = parts[2];
+      const num = parseInt(parts[3]);
+
+      // 選択状態を削除（未選択に戻す、falseではなくundefinedに）
+      const props = PropertiesService.getScriptProperties();
+      const sels = getSelections('img_' + ch);
+      delete sels[num];
+      props.setProperty('img_' + ch, JSON.stringify(sels));
+
+      const imgSel = countSelected('img_' + ch, 10);
+      const lineExcl = countExcluded('line_' + ch, 50);
+
+      // 元のボタン表示に戻す
+      const action = payload.actions ? payload.actions[0] : null;
+      const imgInfo = action && action.value ? JSON.parse(action.value) : null;
+
+      if (imgInfo && imgInfo.url) {
+        sendImageUnselectedResponse(responseUrl, ch, num, imgSel, lineExcl, imgInfo);
+      } else {
+        sendToResponseUrl(responseUrl, `選択解除しました（計${imgSel}枚選択中）`, true, false);
+      }
+      return;
     }
 
     // 画像選択: use_img_{ch}_{num} / skip_img_{ch}_{num}
@@ -160,22 +187,21 @@ function processAction(actionId, responseUrl, payload) {
       const isUse = actionId.startsWith('use_img_');
 
       setSelection('img_' + ch, num, isUse);
-      const lineSel = countSelected('line_' + ch, 50);
       const imgSel = countSelected('img_' + ch, 10);
 
       if (isUse) {
-        // ✅ 使う → 画像を残して黄色ボタンで「選択済み」表示
-        // actionのvalueから画像情報を取得
+        // ✅ 選択 → 画像を残して黄色ボタンで「選択済み」表示（選択した画像だけ使う）
         const action = payload.actions ? payload.actions[0] : null;
         const imgInfo = action && action.value ? JSON.parse(action.value) : null;
+        const lineExcl = countExcluded('line_' + ch, 50);
 
         if (imgInfo && imgInfo.url) {
-          sendImageSelectedResponse(responseUrl, ch, num, imgSel, lineSel, imgInfo);
+          sendImageSelectedResponse(responseUrl, ch, num, imgSel, lineExcl, imgInfo);
         } else {
-          sendToResponseUrl(responseUrl, `✅ 画像${num}を選択（計${imgSel}枚 / 台本${lineSel}行）`, true, false);
+          sendToResponseUrl(responseUrl, `✅ 画像${num}を選択（計${imgSel}枚選択 / 台本${lineExcl}行除外）`, true, false);
         }
       } else {
-        // ❌ 削除 → メッセージを削除
+        // ❌ スキップ → メッセージを削除（この画像は使わない）
         sendToResponseUrl(responseUrl, '', false, true);
       }
       return; // 処理完了
@@ -184,16 +210,17 @@ function processAction(actionId, responseUrl, payload) {
     // 動画生成: generate_{ch}
     else if (actionId.startsWith('generate_')) {
       const ch = actionId.replace('generate_', '');
-      const imgCount = countSelected('img_' + ch, 10);
-      const lineCount = countSelected('line_' + ch, 50);
+      const imgCount = countSelected('img_' + ch, 10);  // 選択された画像のみ使用
+      const lineExcluded = countExcluded('line_' + ch, 50);  // 除外された行数
 
-      if (imgCount === 0 && lineCount === 0) {
-        message = '⚠️ 画像または台本を選択してください';
+      if (imgCount === 0) {
+        message = '⚠️ 画像を1枚以上選択してください';
       } else {
         // GitHub Actions起動
         const success = triggerGitHubAction(ch);
         if (success) {
-          message = `🎬 ch${ch}の動画生成を開始！\n画像: ${imgCount}枚 | 台本: ${lineCount}行`;
+          const lineMsg = lineExcluded > 0 ? `（${lineExcluded}行除外）` : '（全行使用）';
+          message = `🎬 ch${ch}の動画生成を開始！\n画像: ${imgCount}枚選択 | 台本: ${lineMsg}`;
           clearSelections('img_' + ch);
           clearSelections('line_' + ch);
         } else {
@@ -257,15 +284,17 @@ function sendToResponseUrl(url, text, replaceOriginal = false, deleteOriginal = 
   }
 }
 
-function sendImageSelectedResponse(url, ch, num, imgSel, lineSel, imgInfo) {
+function sendImageSelectedResponse(url, ch, num, imgSel, lineExcl, imgInfo) {
   console.log('Sending image selected response:', num, imgInfo.url);
 
   try {
-    // 画像を残して黄色ボタン（warning style）で選択済み表示
+    // 画像を残して「選択中」ボタンに変更
+    const imgValue = JSON.stringify({url: imgInfo.url, title: imgInfo.title});
+
     const blocks = [
       {
         "type": "section",
-        "text": {"type": "mrkdwn", "text": `*✅ 画像${num} 選択済み* （計${imgSel}枚）`}
+        "text": {"type": "mrkdwn", "text": `*画像${num}* ✅ 選択済み（計${imgSel}枚選択）`}
       },
       {
         "type": "image",
@@ -274,9 +303,15 @@ function sendImageSelectedResponse(url, ch, num, imgSel, lineSel, imgInfo) {
         "title": {"type": "plain_text", "text": imgInfo.title || `画像${num}`}
       },
       {
-        "type": "context",
+        "type": "actions",
+        "block_id": `img_${ch}_${num}`,
         "elements": [
-          {"type": "mrkdwn", "text": `📸 選択済み | 台本${lineSel}行`}
+          {
+            "type": "button",
+            "text": {"type": "plain_text", "text": "🟡 選択中"},
+            "action_id": `unselect_img_${ch}_${num}`,
+            "value": imgValue
+          }
         ]
       }
     ];
@@ -297,6 +332,65 @@ function sendImageSelectedResponse(url, ch, num, imgSel, lineSel, imgInfo) {
     console.log('Image selected response sent');
   } catch (e) {
     console.error('Send image selected error:', e);
+  }
+}
+
+function sendImageUnselectedResponse(url, ch, num, imgSel, lineSel, imgInfo) {
+  console.log('Sending image unselected response:', num, imgInfo.url);
+
+  try {
+    // 元の選択ボタンに戻す
+    const imgValue = JSON.stringify({url: imgInfo.url, title: imgInfo.title});
+
+    const blocks = [
+      {
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": `*画像${num}*`}
+      },
+      {
+        "type": "image",
+        "image_url": imgInfo.url,
+        "alt_text": imgInfo.title || `画像${num}`,
+        "title": {"type": "plain_text", "text": imgInfo.title || `画像${num}`}
+      },
+      {
+        "type": "actions",
+        "block_id": `img_${ch}_${num}`,
+        "elements": [
+          {
+            "type": "button",
+            "text": {"type": "plain_text", "text": "✅ 使う"},
+            "style": "primary",
+            "action_id": `use_img_${ch}_${num}`,
+            "value": imgValue
+          },
+          {
+            "type": "button",
+            "text": {"type": "plain_text", "text": "❌ 削除"},
+            "style": "danger",
+            "action_id": `skip_img_${ch}_${num}`,
+            "value": imgValue
+          }
+        ]
+      }
+    ];
+
+    const payload = {
+      response_type: 'ephemeral',
+      replace_original: true,
+      blocks: blocks,
+      text: `画像${num}`
+    };
+
+    UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+    console.log('Image unselected response sent');
+  } catch (e) {
+    console.error('Send image unselected error:', e);
   }
 }
 
