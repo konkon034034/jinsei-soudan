@@ -272,6 +272,10 @@ def send_to_slack(channel_info, topic, script, images):
             continue
 
         # 1枚につき: section + image + actions = 3ブロック
+        # valueにJSON形式で画像情報を含める（GASで復元用）
+        import json as json_module
+        img_value = json_module.dumps({"url": thumb_url, "title": img_title[:20]}, ensure_ascii=False)
+
         blocks_img = [
             {
                 "type": "section",
@@ -291,12 +295,14 @@ def send_to_slack(channel_info, topic, script, images):
                         "type": "button",
                         "text": {"type": "plain_text", "text": "✅ 使う"},
                         "style": "primary",
-                        "action_id": f"use_img_{ch_num}_{img_num}"
+                        "action_id": f"use_img_{ch_num}_{img_num}",
+                        "value": img_value
                     },
                     {
                         "type": "button",
                         "text": {"type": "plain_text", "text": "❌ 削除"},
-                        "action_id": f"skip_img_{ch_num}_{img_num}"
+                        "action_id": f"skip_img_{ch_num}_{img_num}",
+                        "value": img_value
                     }
                 ]
             }

@@ -110,8 +110,8 @@ function doPost(e) {
       console.log('Response URL:', responseUrl ? 'exists' : 'none');
 
       // 即座に空レスポンスを返す準備
-      // 処理結果はresponse_urlに送信
-      processAction(actionId, responseUrl);
+      // 処理結果はresponse_urlに送信（payloadも渡す）
+      processAction(actionId, responseUrl, payload);
 
       // 3秒以内に空の200 OKを返す（これが重要！）
       return ContentService.createTextOutput('');
@@ -125,7 +125,7 @@ function doPost(e) {
   }
 }
 
-function processAction(actionId, responseUrl) {
+function processAction(actionId, responseUrl, payload) {
   console.log('Processing:', actionId);
 
   let message = '';
@@ -164,8 +164,16 @@ function processAction(actionId, responseUrl) {
       const imgSel = countSelected('img_' + ch, 10);
 
       if (isUse) {
-        // ✅ 使う → メッセージを「選択済み」に置き換え
-        sendToResponseUrl(responseUrl, `✅ 画像${num}を選択（計${imgSel}枚 / 台本${lineSel}行）`, true, false);
+        // ✅ 使う → 画像を残して黄色ボタンで「選択済み」表示
+        // actionのvalueから画像情報を取得
+        const action = payload.actions ? payload.actions[0] : null;
+        const imgInfo = action && action.value ? JSON.parse(action.value) : null;
+
+        if (imgInfo && imgInfo.url) {
+          sendImageSelectedResponse(responseUrl, ch, num, imgSel, lineSel, imgInfo);
+        } else {
+          sendToResponseUrl(responseUrl, `✅ 画像${num}を選択（計${imgSel}枚 / 台本${lineSel}行）`, true, false);
+        }
       } else {
         // ❌ 削除 → メッセージを削除
         sendToResponseUrl(responseUrl, '', false, true);
@@ -246,6 +254,49 @@ function sendToResponseUrl(url, text, replaceOriginal = false, deleteOriginal = 
     console.log('Sent successfully');
   } catch (e) {
     console.error('Send error:', e);
+  }
+}
+
+function sendImageSelectedResponse(url, ch, num, imgSel, lineSel, imgInfo) {
+  console.log('Sending image selected response:', num, imgInfo.url);
+
+  try {
+    // 画像を残して黄色ボタン（warning style）で選択済み表示
+    const blocks = [
+      {
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": `*✅ 画像${num} 選択済み* （計${imgSel}枚）`}
+      },
+      {
+        "type": "image",
+        "image_url": imgInfo.url,
+        "alt_text": imgInfo.title || `画像${num}`,
+        "title": {"type": "plain_text", "text": imgInfo.title || `画像${num}`}
+      },
+      {
+        "type": "context",
+        "elements": [
+          {"type": "mrkdwn", "text": `📸 選択済み | 台本${lineSel}行`}
+        ]
+      }
+    ];
+
+    const payload = {
+      response_type: 'ephemeral',
+      replace_original: true,
+      blocks: blocks,
+      text: `画像${num}を選択済み`
+    };
+
+    UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+    console.log('Image selected response sent');
+  } catch (e) {
+    console.error('Send image selected error:', e);
   }
 }
 
