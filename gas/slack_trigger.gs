@@ -136,23 +136,20 @@ function processAction(actionId, responseUrl) {
       const parts = actionId.split('_');
       const ch = parts[2];
       const num = parseInt(parts[3]);
-      const selected = actionId.startsWith('use_line_');
+      const isUse = actionId.startsWith('use_line_');
 
-      setSelection('line_' + ch, num, selected);
+      setSelection('line_' + ch, num, isUse);
+      const lineSel = countSelected('line_' + ch, 50);
+      const imgSel = countSelected('img_' + ch, 10);
 
-      // 現在の全選択状態を取得
-      const lineKey = 'line_' + ch;
-      const imgKey = 'img_' + ch;
-      const lineSel = countSelected(lineKey, 50);
-      const lineExc = countExcluded(lineKey, 50);
-      const imgSel = countSelected(imgKey, 10);
-      const imgExc = countExcluded(imgKey, 10);
-
-      console.log(`Line ${num} -> ${selected}, Total: line=${lineSel}/${lineExc}, img=${imgSel}/${imgExc}`);
-
-      message = selected
-        ? `✅ 台本${num}行目を使用\n\n📊 現在の選択状況:\n台本: ✅${lineSel} / ❌${lineExc}\n画像: ✅${imgSel} / ❌${imgExc}`
-        : `❌ 台本${num}行目を削除\n\n📊 現在の選択状況:\n台本: ✅${lineSel} / ❌${lineExc}\n画像: ✅${imgSel} / ❌${imgExc}`;
+      if (isUse) {
+        // ✅ 使う → メッセージを「選択済み」に置き換え
+        sendToResponseUrl(responseUrl, `✅ 台本${num}行目を選択（計${lineSel}行 / 画像${imgSel}枚）`, true, false);
+      } else {
+        // ❌ 削除 → メッセージを削除
+        sendToResponseUrl(responseUrl, '', false, true);
+      }
+      return; // 処理完了、以降のsendToResponseUrlをスキップ
     }
 
     // 画像選択: use_img_{ch}_{num} / skip_img_{ch}_{num}
@@ -160,23 +157,20 @@ function processAction(actionId, responseUrl) {
       const parts = actionId.split('_');
       const ch = parts[2];
       const num = parseInt(parts[3]);
-      const selected = actionId.startsWith('use_img_');
+      const isUse = actionId.startsWith('use_img_');
 
-      setSelection('img_' + ch, num, selected);
+      setSelection('img_' + ch, num, isUse);
+      const lineSel = countSelected('line_' + ch, 50);
+      const imgSel = countSelected('img_' + ch, 10);
 
-      // 現在の全選択状態を取得
-      const lineKey = 'line_' + ch;
-      const imgKey = 'img_' + ch;
-      const lineSel = countSelected(lineKey, 50);
-      const lineExc = countExcluded(lineKey, 50);
-      const imgSel = countSelected(imgKey, 10);
-      const imgExc = countExcluded(imgKey, 10);
-
-      console.log(`Img ${num} -> ${selected}, Total: line=${lineSel}/${lineExc}, img=${imgSel}/${imgExc}`);
-
-      message = selected
-        ? `✅ 画像${num}を使用\n\n📊 現在の選択状況:\n台本: ✅${lineSel} / ❌${lineExc}\n画像: ✅${imgSel} / ❌${imgExc}`
-        : `❌ 画像${num}を削除\n\n📊 現在の選択状況:\n台本: ✅${lineSel} / ❌${lineExc}\n画像: ✅${imgSel} / ❌${imgExc}`;
+      if (isUse) {
+        // ✅ 使う → メッセージを「選択済み」に置き換え
+        sendToResponseUrl(responseUrl, `✅ 画像${num}を選択（計${imgSel}枚 / 台本${lineSel}行）`, true, false);
+      } else {
+        // ❌ 削除 → メッセージを削除
+        sendToResponseUrl(responseUrl, '', false, true);
+      }
+      return; // 処理完了
     }
 
     // 動画生成: generate_{ch}
@@ -232,18 +226,21 @@ function processAction(actionId, responseUrl) {
   }
 }
 
-function sendToResponseUrl(url, text) {
-  console.log('Sending to response_url:', text);
+function sendToResponseUrl(url, text, replaceOriginal = false, deleteOriginal = false) {
+  console.log('Sending to response_url:', text, 'replace:', replaceOriginal, 'delete:', deleteOriginal);
 
   try {
+    const payload = {
+      response_type: 'ephemeral',
+      replace_original: replaceOriginal,
+      delete_original: deleteOriginal,
+      text: text
+    };
+
     UrlFetchApp.fetch(url, {
       method: 'post',
       contentType: 'application/json',
-      payload: JSON.stringify({
-        response_type: 'ephemeral',
-        replace_original: false,
-        text: text
-      }),
+      payload: JSON.stringify(payload),
       muteHttpExceptions: true
     });
     console.log('Sent successfully');
