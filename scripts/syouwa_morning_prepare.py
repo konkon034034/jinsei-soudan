@@ -233,7 +233,7 @@ def send_to_slack(channel_info, topic, script, images):
         blocks_line = [
             {
                 "type": "section",
-                "text": {"type": "mrkdwn", "text": f"`{line_num}` {display_line}"}
+                "text": {"type": "mrkdwn", "text": f"*台本 {line_num}/{total_lines}*\n{display_line}"}
             },
             {
                 "type": "actions",
@@ -241,13 +241,13 @@ def send_to_slack(channel_info, topic, script, images):
                 "elements": [
                     {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": "✅"},
+                        "text": {"type": "plain_text", "text": "✅ 使う"},
                         "style": "primary",
                         "action_id": f"use_line_{ch_num}_{line_num}"
                     },
                     {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": "❌"},
+                        "text": {"type": "plain_text", "text": "❌ 削除"},
                         "action_id": f"skip_line_{ch_num}_{line_num}"
                     }
                 ]
@@ -271,17 +271,17 @@ def send_to_slack(channel_info, topic, script, images):
         if not thumb_url:
             continue
 
-        # 1枚につき: image + context + actions = 3ブロック
+        # 1枚につき: section + image + actions = 3ブロック
         blocks_img = [
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*画像 {img_num}/{total_images}*"}
+            },
             {
                 "type": "image",
                 "image_url": thumb_url,
                 "alt_text": img_title,
-                "title": {"type": "plain_text", "text": f"#{img_num} {img_title}"}
-            },
-            {
-                "type": "context",
-                "elements": [{"type": "mrkdwn", "text": f"<{img_url}|URL>"}]
+                "title": {"type": "plain_text", "text": img_title[:20]}
             },
             {
                 "type": "actions",
@@ -289,13 +289,13 @@ def send_to_slack(channel_info, topic, script, images):
                 "elements": [
                     {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": "✅"},
+                        "text": {"type": "plain_text", "text": "✅ 使う"},
                         "style": "primary",
                         "action_id": f"use_img_{ch_num}_{img_num}"
                     },
                     {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": "❌"},
+                        "text": {"type": "plain_text", "text": "❌ 削除"},
                         "action_id": f"skip_img_{ch_num}_{img_num}"
                     }
                 ]

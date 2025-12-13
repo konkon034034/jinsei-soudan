@@ -139,12 +139,20 @@ function processAction(actionId, responseUrl) {
       const selected = actionId.startsWith('use_line_');
 
       setSelection('line_' + ch, num, selected);
-      const selectedCount = countSelected('line_' + ch, 50);
-      const excludedCount = countExcluded('line_' + ch, 50);
+
+      // 現在の全選択状態を取得
+      const lineKey = 'line_' + ch;
+      const imgKey = 'img_' + ch;
+      const lineSel = countSelected(lineKey, 50);
+      const lineExc = countExcluded(lineKey, 50);
+      const imgSel = countSelected(imgKey, 10);
+      const imgExc = countExcluded(imgKey, 10);
+
+      console.log(`Line ${num} -> ${selected}, Total: line=${lineSel}/${lineExc}, img=${imgSel}/${imgExc}`);
 
       message = selected
-        ? `✅ 台本${num}行目を選択\n選択: ${selectedCount}行 | 除外: ${excludedCount}行`
-        : `❌ 台本${num}行目を除外\n選択: ${selectedCount}行 | 除外: ${excludedCount}行`;
+        ? `✅ 台本${num}行目を使用\n\n📊 現在の選択状況:\n台本: ✅${lineSel} / ❌${lineExc}\n画像: ✅${imgSel} / ❌${imgExc}`
+        : `❌ 台本${num}行目を削除\n\n📊 現在の選択状況:\n台本: ✅${lineSel} / ❌${lineExc}\n画像: ✅${imgSel} / ❌${imgExc}`;
     }
 
     // 画像選択: use_img_{ch}_{num} / skip_img_{ch}_{num}
@@ -155,12 +163,20 @@ function processAction(actionId, responseUrl) {
       const selected = actionId.startsWith('use_img_');
 
       setSelection('img_' + ch, num, selected);
-      const selectedCount = countSelected('img_' + ch, 10);
-      const excludedCount = countExcluded('img_' + ch, 10);
+
+      // 現在の全選択状態を取得
+      const lineKey = 'line_' + ch;
+      const imgKey = 'img_' + ch;
+      const lineSel = countSelected(lineKey, 50);
+      const lineExc = countExcluded(lineKey, 50);
+      const imgSel = countSelected(imgKey, 10);
+      const imgExc = countExcluded(imgKey, 10);
+
+      console.log(`Img ${num} -> ${selected}, Total: line=${lineSel}/${lineExc}, img=${imgSel}/${imgExc}`);
 
       message = selected
-        ? `✅ 画像${num}を選択\n選択: ${selectedCount}枚 | 除外: ${excludedCount}枚`
-        : `❌ 画像${num}を除外\n選択: ${selectedCount}枚 | 除外: ${excludedCount}枚`;
+        ? `✅ 画像${num}を使用\n\n📊 現在の選択状況:\n台本: ✅${lineSel} / ❌${lineExc}\n画像: ✅${imgSel} / ❌${imgExc}`
+        : `❌ 画像${num}を削除\n\n📊 現在の選択状況:\n台本: ✅${lineSel} / ❌${lineExc}\n画像: ✅${imgSel} / ❌${imgExc}`;
     }
 
     // 動画生成: generate_{ch}
