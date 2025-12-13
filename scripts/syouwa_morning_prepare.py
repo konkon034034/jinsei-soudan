@@ -204,32 +204,59 @@ def send_to_slack(channel_info, topic, script, images):
 
     ch_num = channel_info['token_num']
 
-    # === メッセージ1: ヘッダー + 台本全文 ===
-    script_preview = script[:2000] if len(script) > 2000 else script
+    # === メッセージ1: ヘッダー ===
     script_lines = [line.strip() for line in script.split('\n') if line.strip()]
     total_lines = len(script_lines)
 
-    blocks_main = [
+    blocks_header = [
         {
             "type": "header",
             "text": {"type": "plain_text", "text": f"🎬 {channel_info['name']}"}
         },
         {
             "type": "section",
-            "text": {"type": "mrkdwn", "text": f"*テーマ:* {topic}"}
-        },
-        {"type": "divider"},
-        {
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": f"*📝 台本* ({total_lines}行)\n```{script_preview[:1500]}```"}
+            "text": {"type": "mrkdwn", "text": f"*テーマ:* {topic}\n*台本:* {total_lines}行 | *画像:* 10枚"}
         }
     ]
 
-    ok, err = post_message(blocks_main, f"{channel_info['name']} - {topic}")
+    ok, err = post_message(blocks_header, f"{channel_info['name']} - {topic}")
     if not ok:
-        print(f"  ❌ メイン送信失敗: {err}")
+        print(f"  ❌ ヘッダー送信失敗: {err}")
         return False
+
+    # === 台本を1行ずつ送信（✅/❌ボタン付き） ===
     print(f"  台本行数: {total_lines}行")
+
+    for line_num, line in enumerate(script_lines, 1):
+        display_line = line[:60] + "..." if len(line) > 60 else line
+
+        blocks_line = [
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"`{line_num}` {display_line}"}
+            },
+            {
+                "type": "actions",
+                "block_id": f"line_{ch_num}_{line_num}",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "✅"},
+                        "style": "primary",
+                        "action_id": f"use_line_{ch_num}_{line_num}"
+                    },
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "❌"},
+                        "action_id": f"skip_line_{ch_num}_{line_num}"
+                    }
+                ]
+            }
+        ]
+
+        ok, err = post_message(blocks_line, f"台本{line_num}")
+        if not ok:
+            print(f"  ⚠️ 台本{line_num}送信失敗: {err}")
 
     # === 画像を1枚ずつ送信（モバイル対応） ===
     display_images = images[:10]

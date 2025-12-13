@@ -131,8 +131,24 @@ function processAction(actionId, responseUrl) {
   let message = '';
 
   try {
+    // 台本行選択: use_line_{ch}_{num} / skip_line_{ch}_{num}
+    if (actionId.startsWith('use_line_') || actionId.startsWith('skip_line_')) {
+      const parts = actionId.split('_');
+      const ch = parts[2];
+      const num = parseInt(parts[3]);
+      const selected = actionId.startsWith('use_line_');
+
+      setSelection('line_' + ch, num, selected);
+      const selectedCount = countSelected('line_' + ch, 50);
+      const excludedCount = countExcluded('line_' + ch, 50);
+
+      message = selected
+        ? `✅ 台本${num}行目を選択\n選択: ${selectedCount}行 | 除外: ${excludedCount}行`
+        : `❌ 台本${num}行目を除外\n選択: ${selectedCount}行 | 除外: ${excludedCount}行`;
+    }
+
     // 画像選択: use_img_{ch}_{num} / skip_img_{ch}_{num}
-    if (actionId.startsWith('use_img_') || actionId.startsWith('skip_img_')) {
+    else if (actionId.startsWith('use_img_') || actionId.startsWith('skip_img_')) {
       const parts = actionId.split('_');
       const ch = parts[2];
       const num = parseInt(parts[3]);
@@ -151,15 +167,17 @@ function processAction(actionId, responseUrl) {
     else if (actionId.startsWith('generate_')) {
       const ch = actionId.replace('generate_', '');
       const imgCount = countSelected('img_' + ch, 10);
+      const lineCount = countSelected('line_' + ch, 50);
 
-      if (imgCount === 0) {
-        message = '⚠️ 画像を1枚以上選択してください';
+      if (imgCount === 0 && lineCount === 0) {
+        message = '⚠️ 画像または台本を選択してください';
       } else {
         // GitHub Actions起動
         const success = triggerGitHubAction(ch);
         if (success) {
-          message = `🎬 ch${ch}の動画生成を開始！(${imgCount}枚)`;
+          message = `🎬 ch${ch}の動画生成を開始！\n画像: ${imgCount}枚 | 台本: ${lineCount}行`;
           clearSelections('img_' + ch);
+          clearSelections('line_' + ch);
         } else {
           message = '❌ GitHub Actions起動失敗';
         }
@@ -170,6 +188,7 @@ function processAction(actionId, responseUrl) {
     else if (actionId.startsWith('regenerate_')) {
       const ch = actionId.replace('regenerate_', '');
       clearSelections('img_' + ch);
+      clearSelections('line_' + ch);
       triggerPrepare(ch);
       message = '🔄 再生成を開始しました';
     }
@@ -178,6 +197,7 @@ function processAction(actionId, responseUrl) {
     else if (actionId.startsWith('skip_')) {
       const ch = actionId.replace('skip_', '');
       clearSelections('img_' + ch);
+      clearSelections('line_' + ch);
       message = '⏭️ スキップしました';
     }
 
