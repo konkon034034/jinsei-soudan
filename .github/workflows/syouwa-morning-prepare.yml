@@ -1,0 +1,44 @@
+name: Syouwa Morning Prepare
+
+on:
+  schedule:
+    # 毎朝9時（日本時間）= UTC 0時
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      channel_index:
+        description: 'Channel (0=全部, 1=銀幕スター, 2=アイドル伝説, 3=朝ドラヒロイン)'
+        required: false
+        default: '0'
+        type: choice
+        options:
+          - '0'
+          - '1'
+          - '2'
+          - '3'
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install google-generativeai requests
+
+      - name: Prepare content and send to Slack
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_SEARCH_API_KEY: ${{ secrets.GOOGLE_CSE_API_KEY }}
+          GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_CSE_ID }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL: '#all-こんこん'
+          CHANNEL_INDEX: ${{ github.event.inputs.channel_index || '0' }}
+        run: |
+          python3 scripts/syouwa_morning_prepare.py
