@@ -179,7 +179,7 @@ def search_images(query, num_images=10):
 
 
 def send_to_slack(channel_info, topic, script, images):
-    """Slackに台本と画像を送信（行ごと選択+画像URL表示）"""
+    """Slackに台本と画像を送信（モバイル対応・シンプル版）"""
     bot_token = os.environ.get('SLACK_BOT_TOKEN')
     slack_channel = os.environ.get('SLACK_CHANNEL', '#all-こんこん')
 
@@ -204,193 +204,118 @@ def send_to_slack(channel_info, topic, script, images):
 
     ch_num = channel_info['token_num']
 
-    # === メッセージ1: ヘッダー ===
-    blocks_header = [
+    # === メッセージ1: ヘッダー + 台本全文 ===
+    script_preview = script[:2000] if len(script) > 2000 else script
+    script_lines = [line.strip() for line in script.split('\n') if line.strip()]
+    total_lines = len(script_lines)
+
+    blocks_main = [
         {
             "type": "header",
-            "text": {"type": "plain_text", "text": f"🎬 {channel_info['name']} - 本日の動画準備"}
+            "text": {"type": "plain_text", "text": f"🎬 {channel_info['name']}"}
         },
         {
             "type": "section",
-            "text": {"type": "mrkdwn", "text": f"*📋 テーマ:* {topic}"}
+            "text": {"type": "mrkdwn", "text": f"*テーマ:* {topic}"}
         },
-        {"type": "divider"}
+        {"type": "divider"},
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"*📝 台本* ({total_lines}行)\n```{script_preview[:1500]}```"}
+        }
     ]
 
-    ok, err = post_message(blocks_header, f"{channel_info['name']} - 準備開始")
+    ok, err = post_message(blocks_main, f"{channel_info['name']} - {topic}")
     if not ok:
-        print(f"  ❌ ヘッダー送信失敗: {err}")
+        print(f"  ❌ メイン送信失敗: {err}")
         return False
-
-    # === 台本を行ごとに分割して送信 ===
-    script_lines = [line.strip() for line in script.split('\n') if line.strip()]
-    total_lines = len(script_lines)
     print(f"  台本行数: {total_lines}行")
 
-    # 5行ずつバッチ送信
-    for batch_idx, batch_start in enumerate(range(0, len(script_lines), 5)):
-        batch_lines = script_lines[batch_start:batch_start + 5]
+    # === 画像を1枚ずつ送信（モバイル対応） ===
+    display_images = images[:10]
+    total_images = len(display_images)
+    print(f"  画像数: {total_images}枚")
 
-        blocks_script = [
+    for img_num, img in enumerate(display_images, 1):
+        img_url = img.get('url', '')
+        thumb_url = img.get('thumbnail') or img_url
+        img_title = img.get('title', f'画像{img_num}')[:30]
+
+        if not thumb_url:
+            continue
+
+        # 1枚につき: image + context + actions = 3ブロック
+        blocks_img = [
             {
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": f"*📝 台本 {batch_start + 1}〜{batch_start + len(batch_lines)}行目* (全{total_lines}行)"}
-            }
-        ]
-
-        for i, line in enumerate(batch_lines):
-            line_num = batch_start + i + 1
-            # 行を短く表示（40文字まで）
-            display_line = line[:80] + "..." if len(line) > 80 else line
-
-            # テキスト表示
-            blocks_script.append({
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": f"`{line_num}` {display_line}"}
-            })
-
-            # 各行の下に「使う/使わない」ボタン
-            blocks_script.append({
+                "type": "image",
+                "image_url": thumb_url,
+                "alt_text": img_title,
+                "title": {"type": "plain_text", "text": f"#{img_num} {img_title}"}
+            },
+            {
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": f"<{img_url}|URL>"}]
+            },
+            {
                 "type": "actions",
-                "block_id": f"line_action_{ch_num}_{line_num}",
+                "block_id": f"img_{ch_num}_{img_num}",
                 "elements": [
                     {
                         "type": "button",
                         "text": {"type": "plain_text", "text": "✅"},
                         "style": "primary",
-                        "action_id": f"use_line_{ch_num}_{line_num}",
-                        "value": json.dumps({"line_num": line_num, "text": line[:100]})
+                        "action_id": f"use_img_{ch_num}_{img_num}"
                     },
                     {
                         "type": "button",
                         "text": {"type": "plain_text", "text": "❌"},
-                        "action_id": f"skip_line_{ch_num}_{line_num}",
-                        "value": json.dumps({"line_num": line_num})
+                        "action_id": f"skip_img_{ch_num}_{img_num}"
                     }
                 ]
-            })
-
-        ok, err = post_message(blocks_script, f"台本 {batch_start + 1}〜{batch_start + len(batch_lines)}行目")
-        if not ok:
-            print(f"  ⚠️ 台本バッチ{batch_idx + 1}送信失敗: {err}")
-
-    # === 画像を送信（URL表示付き） ===
-    display_images = images[:10]  # テスト用: 10枚
-    total_images = len(display_images)
-    print(f"  画像数: {total_images}枚")
-
-    # 3枚ずつバッチ送信（URL表示のためブロック数が増える）
-    for batch_idx, batch_start in enumerate(range(0, len(display_images), 3)):
-        batch_images = display_images[batch_start:batch_start + 3]
-
-        blocks_images = [
-            {
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": f"*🖼️ 画像 {batch_start + 1}〜{batch_start + len(batch_images)}枚目* (全{total_images}枚)"}
             }
         ]
 
-        for i, img in enumerate(batch_images):
-            img_num = batch_start + i + 1
-            img_url = img.get('url', '')
-            thumb_url = img.get('thumbnail') or img_url
-            img_title = img.get('title', f'画像{img_num}')[:40]
-
-            if thumb_url:
-                # 画像ブロック
-                blocks_images.append({
-                    "type": "image",
-                    "image_url": thumb_url,
-                    "alt_text": img_title,
-                    "title": {"type": "plain_text", "text": f"#{img_num}: {img_title}"}
-                })
-
-                # URL表示
-                short_url = img_url[:60] + "..." if len(img_url) > 60 else img_url
-                blocks_images.append({
-                    "type": "context",
-                    "elements": [{"type": "mrkdwn", "text": f"🔗 <{img_url}|{short_url}>"}]
-                })
-
-                # 「使う/使わない」ボタン
-                blocks_images.append({
-                    "type": "actions",
-                    "block_id": f"img_action_{ch_num}_{img_num}",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {"type": "plain_text", "text": "✅ 使う"},
-                            "style": "primary",
-                            "action_id": f"use_img_{ch_num}_{img_num}",
-                            "value": json.dumps({"img_num": img_num, "url": img_url})
-                        },
-                        {
-                            "type": "button",
-                            "text": {"type": "plain_text", "text": "❌ 使わない"},
-                            "action_id": f"skip_img_{ch_num}_{img_num}",
-                            "value": json.dumps({"img_num": img_num, "url": img_url})
-                        }
-                    ]
-                })
-
-        ok, err = post_message(blocks_images, f"画像 {batch_start + 1}〜{batch_start + len(batch_images)}")
+        ok, err = post_message(blocks_img, f"画像{img_num}")
         if not ok:
-            print(f"  ⚠️ 画像バッチ{batch_idx + 1}送信失敗: {err}")
+            print(f"  ⚠️ 画像{img_num}送信失敗: {err}")
 
-    # === 最終メッセージ: 選択状況とアクションボタン ===
+    # === 最終メッセージ: アクションボタン ===
     blocks_actions = [
         {"type": "divider"},
         {
             "type": "section",
-            "text": {"type": "mrkdwn", "text": f"📊 *選択状況*\n• 画像: {total_images}/{total_images}枚\n• 台本: {total_lines}/{total_lines}行\n\n上のボタンで選択してください"}
+            "text": {"type": "mrkdwn", "text": f"*📊 ch{ch_num}*\n画像: {total_images}枚 | 台本: {total_lines}行"}
         },
-        {
-            "type": "context",
-            "elements": [
-                {"type": "mrkdwn", "text": f"📋 テーマ: {topic}"},
-                {"type": "mrkdwn", "text": f"📺 ch{ch_num}"}
-            ]
-        },
-        {"type": "divider"},
         {
             "type": "actions",
-            "block_id": f"action_buttons_{ch_num}",
+            "block_id": f"action_{ch_num}",
             "elements": [
                 {
                     "type": "button",
-                    "text": {"type": "plain_text", "text": "🎬 動画生成"},
+                    "text": {"type": "plain_text", "text": "🎬 生成"},
                     "style": "primary",
-                    "action_id": f"generate_{ch_num}",
-                    "value": json.dumps({
-                        "channel_num": ch_num,
-                        "topic": topic,
-                        "total_images": total_images,
-                        "total_lines": total_lines
-                    })
+                    "action_id": f"generate_{ch_num}"
                 },
                 {
                     "type": "button",
                     "text": {"type": "plain_text", "text": "🔄 再生成"},
-                    "action_id": f"regenerate_{ch_num}",
-                    "value": json.dumps({"channel_num": ch_num})
+                    "action_id": f"regenerate_{ch_num}"
                 },
                 {
                     "type": "button",
-                    "text": {"type": "plain_text", "text": "⏭️ スキップ"},
-                    "style": "danger",
-                    "action_id": f"skip_{ch_num}",
-                    "value": json.dumps({"channel_num": ch_num})
+                    "text": {"type": "plain_text", "text": "⏭️"},
+                    "action_id": f"skip_{ch_num}"
                 }
             ]
         }
     ]
 
-    ok, err = post_message(blocks_actions, "アクション選択")
+    ok, err = post_message(blocks_actions, "アクション")
     if ok:
-        print(f"  ✅ Slack送信成功（台本{total_lines}行 + 画像{total_images}枚 + ボタン）")
+        print(f"  ✅ Slack送信成功")
         return True
     else:
-        print(f"  ❌ アクションボタン送信失敗: {err}")
+        print(f"  ❌ アクション送信失敗: {err}")
         return False
 
 
