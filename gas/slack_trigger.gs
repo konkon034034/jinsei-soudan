@@ -1,30 +1,24 @@
 /**
- * Slack → GitHub Actions トリガー + 画像/台本行 選択状態管理
- *
- * GAS URL: https://script.google.com/macros/s/AKfycbwvKV-ZXP9ecJAIwD-qdi6K7XF8HtZvK4X8JEEdNqqTijkAX2gMNWeYN3j9CuqUX8XI/exec
+ * Slack → GitHub Actions トリガー
  *
  * 【重要】Slackインタラクティブコンポーネントの仕様:
- * - リクエストは application/x-www-form-urlencoded 形式
- * - payloadパラメータにJSON文字列が入っている
- * - 3秒以内にレスポンスを返す必要がある
+ * 1. リクエストは application/x-www-form-urlencoded 形式
+ * 2. payloadパラメータにJSON文字列
+ * 3. 3秒以内に200 OKを返す必要あり
+ * 4. 追加メッセージはresponse_urlにPOST
  */
 
 const GITHUB_OWNER = 'konkon034034';
 const GITHUB_REPO = 'jinsei-soudan';
 
 function getGitHubToken() {
-  const token = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN');
-  if (!token) {
-    throw new Error('GITHUB_TOKEN not set in Script Properties');
-  }
-  return token;
+  return PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN') || '';
 }
 
 // ========== 選択状態管理 ==========
 
 function getSelections(key) {
-  const props = PropertiesService.getScriptProperties();
-  const data = props.getProperty(key);
+  const data = PropertiesService.getScriptProperties().getProperty(key);
   return data ? JSON.parse(data) : {};
 }
 
@@ -33,7 +27,6 @@ function setSelection(key, num, selected) {
   const sels = getSelections(key);
   sels[num] = selected;
   props.setProperty(key, JSON.stringify(sels));
-  return sels;
 }
 
 function clearSelections(key) {
@@ -49,38 +42,35 @@ function countSelected(key, total) {
   return count;
 }
 
-function getTotals(ch) {
-  const props = PropertiesService.getScriptProperties();
-  return {
-    images: parseInt(props.getProperty('total_img_' + ch) || '10'),
-    lines: parseInt(props.getProperty('total_line_' + ch) || '20')
-  };
-}
-
 // ========== メイン処理 ==========
 
 function doPost(e) {
-  try {
-    // Slackからのリクエストをパース
-    // application/x-www-form-urlencoded形式でpayloadパラメータにJSONが入っている
-    let payload;
+  console.log('=== doPost called ===');
 
+  try {
+    // Slackからのpayloadを取得
+    let payload = null;
+
+    // 方法1: e.parameter.payload (推奨)
     if (e.parameter && e.parameter.payload) {
-      // Slackインタラクティブコンポーネントからのリクエスト
+      console.log('Found e.parameter.payload');
       payload = JSON.parse(e.parameter.payload);
-      console.log('Slack payload received:', JSON.stringify(payload).substring(0, 500));
-    } else if (e.postData && e.postData.contents) {
-      // JSON形式のリクエスト（URL検証など）
-      const contentType = e.postData.type || '';
-      if (contentType.includes('application/json')) {
-        payload = JSON.parse(e.postData.contents);
-      } else if (contentType.includes('application/x-www-form-urlencoded')) {
-        // フォームデータからpayloadを取得
-        const params = {};
-        e.postData.contents.split('&').forEach(pair => {
-          const [key, value] = pair.split('=');
-          params[decodeURIComponent(key)] = decodeURIComponent(value || '');
-        });
+    }
+    // 方法2: postDataから取得
+    else if (e.postData && e.postData.contents) {
+      console.log('Trying postData.contents');
+      const contents = e.postData.contents;
+
+      if (contents.startsWith('{')) {
+        // JSON形式
+        payload = JSON.parse(contents);
+      } else {
+        // URL encoded形式
+        const params = contents.split('&').reduce((acc, pair) => {
+          const [key, val] = pair.split('=').map(decodeURIComponent);
+          acc[key] = val;
+          return acc;
+        }, {});
         if (params.payload) {
           payload = JSON.parse(params.payload);
         }
@@ -88,140 +78,151 @@ function doPost(e) {
     }
 
     if (!payload) {
-      console.error('No payload found in request');
+      console.log('No payload found');
       return ContentService.createTextOutput('No payload');
     }
 
-    // URL検証（Slack App設定時）
+    console.log('Payload type:', payload.type);
+
+    // URL検証
     if (payload.type === 'url_verification') {
       return ContentService.createTextOutput(payload.challenge);
     }
 
-    // ボタンクリック処理
+    // ボタンクリック
     if (payload.type === 'block_actions') {
-      const result = handleAction(payload);
-      // Slackには即座にJSON形式でレスポンスを返す
-      return ContentService.createTextOutput(JSON.stringify(result))
-        .setMimeType(ContentService.MimeType.JSON);
+      const action = payload.actions[0];
+      const actionId = action.action_id;
+      const responseUrl = payload.response_url;
+
+      console.log('Action:', actionId);
+      console.log('Response URL:', responseUrl ? 'exists' : 'none');
+
+      // 即座に空レスポンスを返す準備
+      // 処理結果はresponse_urlに送信
+      processAction(actionId, responseUrl);
+
+      // 3秒以内に空の200 OKを返す（これが重要！）
+      return ContentService.createTextOutput('');
     }
 
     return ContentService.createTextOutput('OK');
 
   } catch (err) {
-    console.error('doPost error:', err.message, err.stack);
-    // エラー時も200 OKを返す（Slackがリトライしないように）
-    return ContentService.createTextOutput(JSON.stringify({
-      response_type: 'ephemeral',
-      text: '❌ エラー: ' + err.message
-    })).setMimeType(ContentService.MimeType.JSON);
+    console.error('Error:', err.message);
+    return ContentService.createTextOutput('Error: ' + err.message);
   }
 }
 
-function handleAction(payload) {
-  const action = payload.actions[0];
-  const actionId = action.action_id;
-  const responseUrl = payload.response_url;
+function processAction(actionId, responseUrl) {
+  console.log('Processing:', actionId);
 
-  console.log('Action ID:', actionId);
+  let message = '';
 
-  // === 画像選択: use_img_{ch}_{num} / skip_img_{ch}_{num} ===
-  if (actionId.startsWith('use_img_') || actionId.startsWith('skip_img_')) {
-    const parts = actionId.split('_');
-    const ch = parts[2];
-    const num = parseInt(parts[3]);
-    const selected = actionId.startsWith('use_img_');
+  try {
+    // 画像選択: use_img_{ch}_{num} / skip_img_{ch}_{num}
+    if (actionId.startsWith('use_img_') || actionId.startsWith('skip_img_')) {
+      const parts = actionId.split('_');
+      const ch = parts[2];
+      const num = parseInt(parts[3]);
+      const selected = actionId.startsWith('use_img_');
 
-    setSelection('img_' + ch, num, selected);
-    const totals = getTotals(ch);
-    const imgCount = countSelected('img_' + ch, totals.images);
-    const lineCount = countSelected('line_' + ch, totals.lines);
+      setSelection('img_' + ch, num, selected);
+      const count = countSelected('img_' + ch, 10);
 
-    const msg = selected
-      ? `✅ 画像${num}を選択\n📊 画像: ${imgCount}/${totals.images}枚 | 台本: ${lineCount}/${totals.lines}行`
-      : `❌ 画像${num}を除外\n📊 画像: ${imgCount}/${totals.images}枚 | 台本: ${lineCount}/${totals.lines}行`;
-
-    return { response_type: 'ephemeral', text: msg };
-  }
-
-  // === 台本行選択: use_line_{ch}_{num} / skip_line_{ch}_{num} ===
-  if (actionId.startsWith('use_line_') || actionId.startsWith('skip_line_')) {
-    const parts = actionId.split('_');
-    const ch = parts[2];
-    const num = parseInt(parts[3]);
-    const selected = actionId.startsWith('use_line_');
-
-    setSelection('line_' + ch, num, selected);
-    const totals = getTotals(ch);
-    const imgCount = countSelected('img_' + ch, totals.images);
-    const lineCount = countSelected('line_' + ch, totals.lines);
-
-    const msg = selected
-      ? `✅ 台本${num}行目を選択\n📊 画像: ${imgCount}/${totals.images}枚 | 台本: ${lineCount}/${totals.lines}行`
-      : `❌ 台本${num}行目を除外\n📊 画像: ${imgCount}/${totals.images}枚 | 台本: ${lineCount}/${totals.lines}行`;
-
-    return { response_type: 'ephemeral', text: msg };
-  }
-
-  // === 動画生成: generate_{ch} ===
-  if (actionId.startsWith('generate_')) {
-    const ch = actionId.replace('generate_', '');
-    const totals = getTotals(ch);
-    const imgCount = countSelected('img_' + ch, totals.images);
-    const lineCount = countSelected('line_' + ch, totals.lines);
-
-    if (imgCount === 0 || lineCount === 0) {
-      return {
-        response_type: 'ephemeral',
-        text: `⚠️ 画像と台本を選択してください\n現在: 画像${imgCount}枚, 台本${lineCount}行`
-      };
+      message = selected
+        ? `✅ 画像${num}を選択 (${count}/10枚)`
+        : `❌ 画像${num}を除外 (${count}/10枚)`;
     }
 
-    // GitHub Actions トリガー（非同期で実行）
-    triggerWorkflowAsync(ch, imgCount, lineCount, responseUrl);
+    // 動画生成: generate_{ch}
+    else if (actionId.startsWith('generate_')) {
+      const ch = actionId.replace('generate_', '');
+      const imgCount = countSelected('img_' + ch, 10);
 
-    // 選択状態をクリア
-    clearSelections('img_' + ch);
-    clearSelections('line_' + ch);
+      if (imgCount === 0) {
+        message = '⚠️ 画像を1枚以上選択してください';
+      } else {
+        // GitHub Actions起動
+        const success = triggerGitHubAction(ch);
+        if (success) {
+          message = `🎬 ch${ch}の動画生成を開始！(${imgCount}枚)`;
+          clearSelections('img_' + ch);
+        } else {
+          message = '❌ GitHub Actions起動失敗';
+        }
+      }
+    }
 
-    return {
-      response_type: 'ephemeral',
-      text: `🎬 ch${ch}の動画生成を開始！\n画像: ${imgCount}枚 | 台本: ${lineCount}行`
-    };
+    // 再生成: regenerate_{ch}
+    else if (actionId.startsWith('regenerate_')) {
+      const ch = actionId.replace('regenerate_', '');
+      clearSelections('img_' + ch);
+      triggerPrepare(ch);
+      message = '🔄 再生成を開始しました';
+    }
+
+    // スキップ: skip_{ch}
+    else if (actionId.startsWith('skip_')) {
+      const ch = actionId.replace('skip_', '');
+      clearSelections('img_' + ch);
+      message = '⏭️ スキップしました';
+    }
+
+    else {
+      message = 'Unknown action: ' + actionId;
+    }
+
+  } catch (err) {
+    console.error('Process error:', err);
+    message = '❌ エラー: ' + err.message;
   }
 
-  // === 再生成: regenerate_{ch} ===
-  if (actionId.startsWith('regenerate_')) {
-    const ch = actionId.replace('regenerate_', '');
-    clearSelections('img_' + ch);
-    clearSelections('line_' + ch);
-    triggerPrepareAsync(ch, responseUrl);
-    return { response_type: 'ephemeral', text: '🔄 再生成中...' };
+  // response_urlにメッセージを送信
+  if (responseUrl && message) {
+    sendToResponseUrl(responseUrl, message);
   }
-
-  // === スキップ: skip_{ch} ===
-  if (actionId.startsWith('skip_')) {
-    const ch = actionId.replace('skip_', '');
-    clearSelections('img_' + ch);
-    clearSelections('line_' + ch);
-    return { response_type: 'ephemeral', text: '⏭️ スキップしました' };
-  }
-
-  return { response_type: 'ephemeral', text: 'OK' };
 }
 
-// ========== GitHub Actions（非同期） ==========
+function sendToResponseUrl(url, text) {
+  console.log('Sending to response_url:', text);
 
-function triggerWorkflowAsync(channelNum, imgCount, lineCount, responseUrl) {
+  try {
+    UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify({
+        response_type: 'ephemeral',
+        replace_original: false,
+        text: text
+      }),
+      muteHttpExceptions: true
+    });
+    console.log('Sent successfully');
+  } catch (e) {
+    console.error('Send error:', e);
+  }
+}
+
+// ========== GitHub Actions ==========
+
+function triggerGitHubAction(channelNum) {
+  const token = getGitHubToken();
+  if (!token) {
+    console.error('GITHUB_TOKEN not set');
+    return false;
+  }
+
   const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/workflows/generate-video.yml/dispatches`;
 
   try {
     const resp = UrlFetchApp.fetch(url, {
       method: 'post',
       headers: {
-        'Authorization': 'Bearer ' + getGitHubToken(),
-        'Accept': 'application/vnd.github.v3+json',
-        'Content-Type': 'application/json'
+        'Authorization': 'Bearer ' + token,
+        'Accept': 'application/vnd.github.v3+json'
       },
+      contentType: 'application/json',
       payload: JSON.stringify({
         ref: 'main',
         inputs: { channel: String(channelNum) }
@@ -230,99 +231,50 @@ function triggerWorkflowAsync(channelNum, imgCount, lineCount, responseUrl) {
     });
 
     const code = resp.getResponseCode();
-    console.log('GitHub API response:', code);
-
-    if (responseUrl) {
-      if (code === 204) {
-        sendToSlack(responseUrl, `✅ ch${channelNum}の動画生成をGitHub Actionsで開始しました！\n画像: ${imgCount}枚 | 台本: ${lineCount}行`);
-      } else {
-        sendToSlack(responseUrl, `❌ GitHub エラー(${code}): ${resp.getContentText()}`);
-      }
-    }
+    console.log('GitHub response:', code);
+    return code === 204;
   } catch (e) {
-    console.error('triggerWorkflow error:', e);
-    if (responseUrl) {
-      sendToSlack(responseUrl, '❌ エラー: ' + e.message);
-    }
+    console.error('GitHub error:', e);
+    return false;
   }
 }
 
-function triggerPrepareAsync(channelNum, responseUrl) {
+function triggerPrepare(channelNum) {
+  const token = getGitHubToken();
+  if (!token) return false;
+
   const chIndex = { '27': '1', '24': '2', '23': '3' }[channelNum] || '0';
   const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/workflows/syouwa-morning-prepare.yml/dispatches`;
 
   try {
-    const resp = UrlFetchApp.fetch(url, {
+    UrlFetchApp.fetch(url, {
       method: 'post',
       headers: {
-        'Authorization': 'Bearer ' + getGitHubToken(),
-        'Accept': 'application/vnd.github.v3+json',
-        'Content-Type': 'application/json'
+        'Authorization': 'Bearer ' + token,
+        'Accept': 'application/vnd.github.v3+json'
       },
+      contentType: 'application/json',
       payload: JSON.stringify({
         ref: 'main',
         inputs: { channel_index: chIndex }
       }),
       muteHttpExceptions: true
     });
-
-    const code = resp.getResponseCode();
-    console.log('GitHub API response:', code);
-
-    if (responseUrl) {
-      if (code === 204) {
-        sendToSlack(responseUrl, `🔄 ch${channelNum}の再生成を開始しました！`);
-      } else {
-        sendToSlack(responseUrl, `❌ GitHub エラー(${code})`);
-      }
-    }
+    return true;
   } catch (e) {
-    console.error('triggerPrepare error:', e);
-    if (responseUrl) {
-      sendToSlack(responseUrl, '❌ エラー: ' + e.message);
-    }
+    console.error('Prepare error:', e);
+    return false;
   }
 }
 
-function sendToSlack(url, text) {
-  if (!url) return;
-  try {
-    UrlFetchApp.fetch(url, {
-      method: 'post',
-      headers: { 'Content-Type': 'application/json' },
-      payload: JSON.stringify({
-        response_type: 'ephemeral',
-        text: text
-      })
-    });
-  } catch (e) {
-    console.error('sendToSlack error:', e);
-  }
-}
+// ========== テスト ==========
 
-// ========== テスト・デバッグ ==========
-
-function testDoPost() {
-  // Slackからのリクエストをシミュレート
-  const mockPayload = {
-    type: 'block_actions',
-    actions: [{
-      action_id: 'use_img_27_1',
-      value: '{"img_num": 1}'
-    }],
-    response_url: null
-  };
-
-  const mockEvent = {
-    parameter: {
-      payload: JSON.stringify(mockPayload)
-    }
-  };
-
-  const result = doPost(mockEvent);
-  console.log('Result:', result.getContent());
+function testAction() {
+  processAction('use_img_27_1', null);
+  console.log('Count:', countSelected('img_27', 10));
+  clearSelections('img_27');
 }
 
 function doGet(e) {
-  return ContentService.createTextOutput('GAS Slack Trigger is running. POST only.');
+  return ContentService.createTextOutput('Slack Trigger GAS - POST only');
 }
