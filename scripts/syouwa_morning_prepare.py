@@ -178,7 +178,7 @@ def search_images(query, num_images=30):
 
 
 def send_to_slack(channel_info, topic, script, images):
-    """Slackに台本と画像を送信（承認ボタン付き）"""
+    """Slackに台本と画像を送信（サムネイル表示+チェックボックス+承認ボタン）"""
     bot_token = os.environ.get('SLACK_BOT_TOKEN')
     slack_channel = os.environ.get('SLACK_CHANNEL', '#all-こんこん')
 
@@ -191,91 +191,140 @@ def send_to_slack(channel_info, topic, script, images):
         'Content-Type': 'application/json'
     }
 
-    # 台本を適度な長さに
-    script_preview = script[:2000] + "..." if len(script) > 2000 else script
+    def post_message(blocks, text):
+        payload = {"channel": slack_channel, "blocks": blocks, "text": text}
+        try:
+            resp = requests.post('https://slack.com/api/chat.postMessage',
+                               headers=headers, json=payload, timeout=30)
+            result = resp.json()
+            return result.get('ok'), result.get('error')
+        except Exception as e:
+            return False, str(e)
 
-    # 画像URLリスト（最初の10枚）
-    image_list = "\n".join([f"• {img['url']}" for img in images[:10]])
+    # === メッセージ1: ヘッダーと台本 ===
+    script_preview = script[:1500] + "..." if len(script) > 1500 else script
 
-    # メッセージブロック
-    blocks = [
+    blocks_header = [
         {
             "type": "header",
             "text": {"type": "plain_text", "text": f"🎬 {channel_info['name']} - 本日の動画準備"}
         },
         {
             "type": "section",
-            "text": {"type": "mrkdwn", "text": f"*テーマ:* {topic}"}
+            "text": {"type": "mrkdwn", "text": f"*📋 テーマ:* {topic}"}
         },
-        {
-            "type": "divider"
-        },
+        {"type": "divider"},
         {
             "type": "section",
             "text": {"type": "mrkdwn", "text": f"*📝 台本プレビュー:*\n```{script_preview}```"}
-        },
-        {
-            "type": "divider"
-        },
+        }
+    ]
+
+    ok, err = post_message(blocks_header, f"{channel_info['name']} - 台本")
+    if not ok:
+        print(f"  ❌ 台本送信失敗: {err}")
+        return False
+
+    # === メッセージ2: 画像サムネイル（10枚ずつ、チェックボックス付き） ===
+    # Slackの制限: 1メッセージ50ブロック、checkboxは1つにつき最大10オプション
+
+    display_images = images[:30]  # 最大30枚
+
+    for batch_idx, batch_start in enumerate(range(0, len(display_images), 10)):
+        batch_images = display_images[batch_start:batch_start + 10]
+        batch_num = batch_idx + 1
+
+        blocks_images = [
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*🖼️ 画像 {batch_start + 1}〜{batch_start + len(batch_images)}枚目*"}
+            }
+        ]
+
+        # 各画像をサムネイル表示
+        for i, img in enumerate(batch_images):
+            img_num = batch_start + i + 1
+            img_url = img.get('thumbnail') or img.get('url', '')
+            img_title = img.get('title', f'画像{img_num}')[:50]
+
+            if img_url:
+                blocks_images.append({
+                    "type": "image",
+                    "image_url": img_url,
+                    "alt_text": img_title
+                })
+
+        # このバッチの画像選択チェックボックス
+        checkbox_options = []
+        for i, img in enumerate(batch_images):
+            img_num = batch_start + i + 1
+            checkbox_options.append({
+                "text": {"type": "plain_text", "text": f"画像{img_num}"},
+                "value": f"img_{img_num}"
+            })
+
+        blocks_images.append({
+            "type": "actions",
+            "block_id": f"image_select_{channel_info['token_num']}_{batch_num}",
+            "elements": [
+                {
+                    "type": "checkboxes",
+                    "action_id": f"select_images_{channel_info['token_num']}_{batch_num}",
+                    "options": checkbox_options,
+                    "initial_options": checkbox_options  # デフォルトで全選択
+                }
+            ]
+        })
+
+        ok, err = post_message(blocks_images, f"画像 {batch_start + 1}〜{batch_start + len(batch_images)}")
+        if not ok:
+            print(f"  ⚠️ 画像バッチ{batch_num}送信失敗: {err}")
+
+    # === メッセージ3: アクションボタン ===
+    blocks_actions = [
+        {"type": "divider"},
         {
             "type": "section",
-            "text": {"type": "mrkdwn", "text": f"*🖼️ 取得画像 ({len(images)}枚):*\n{image_list}\n\n（他 {len(images)-10}枚）"}
-        },
-        {
-            "type": "divider"
+            "text": {"type": "mrkdwn", "text": f"*選択した画像で動画を生成しますか？*\n取得画像: {len(images)}枚"}
         },
         {
             "type": "actions",
+            "block_id": f"action_buttons_{channel_info['token_num']}",
             "elements": [
                 {
                     "type": "button",
-                    "text": {"type": "plain_text", "text": "✅ 承認して動画生成"},
+                    "text": {"type": "plain_text", "text": "🎬 動画生成"},
                     "style": "primary",
-                    "action_id": f"approve_{channel_info['token_num']}",
+                    "action_id": f"generate_{channel_info['token_num']}",
                     "value": json.dumps({
                         "channel_num": channel_info['token_num'],
-                        "topic": topic
+                        "topic": topic,
+                        "image_count": len(images)
                     })
                 },
                 {
                     "type": "button",
-                    "text": {"type": "plain_text", "text": "🔄 別のテーマで再生成"},
-                    "action_id": f"regenerate_{channel_info['token_num']}"
+                    "text": {"type": "plain_text", "text": "🔄 再生成"},
+                    "action_id": f"regenerate_{channel_info['token_num']}",
+                    "value": json.dumps({"channel_num": channel_info['token_num']})
                 },
                 {
                     "type": "button",
                     "text": {"type": "plain_text", "text": "❌ スキップ"},
                     "style": "danger",
-                    "action_id": f"skip_{channel_info['token_num']}"
+                    "action_id": f"skip_{channel_info['token_num']}",
+                    "value": json.dumps({"channel_num": channel_info['token_num']})
                 }
             ]
         }
     ]
 
-    payload = {
-        "channel": slack_channel,
-        "blocks": blocks,
-        "text": f"{channel_info['name']} - 本日の動画準備"
-    }
-
-    try:
-        response = requests.post(
-            'https://slack.com/api/chat.postMessage',
-            headers=headers,
-            json=payload,
-            timeout=30
-        )
-
-        result = response.json()
-        if result.get('ok'):
-            print(f"  ✅ Slack送信成功")
-            return True
-        else:
-            print(f"  ❌ Slack送信失敗: {result.get('error')}")
-            return False
-
-    except Exception as e:
-        print(f"  ❌ Slack送信エラー: {e}")
+    ok, err = post_message(blocks_actions, "アクション選択")
+    if ok:
+        print(f"  ✅ Slack送信成功（台本 + 画像{len(display_images)}枚 + ボタン）")
+        return True
+    else:
+        print(f"  ❌ アクションボタン送信失敗: {err}")
         return False
 
 
