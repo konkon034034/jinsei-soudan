@@ -30,3 +30,6 @@ output/backgrounds/*
 *.json
 credentials/
 service_account.json
+service_account.txt
+*.mp4
+*.pptx

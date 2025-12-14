@@ -116,6 +116,13 @@ class GoogleService:
                 str(creds_path), scopes=scopes
             )
         
+        # Fallback to service_account.txt (as seen in repo)
+        creds_path_txt = BASE_DIR / "service_account.txt"
+        if creds_path_txt.exists():
+             return service_account.Credentials.from_service_account_file(
+                str(creds_path_txt), scopes=scopes
+            )
+
         # Fallback to existing logic in codebase
         creds_path_old = BASE_DIR / "credentials.json"
         if creds_path_old.exists():
@@ -123,7 +130,7 @@ class GoogleService:
                 str(creds_path_old), scopes=scopes
             )
             
-        raise ValueError("No Google Credentials found (Env or File).")
+        raise ValueError("No Google Credentials found (Env or File). Checked: service_account.json, service_account.txt, credentials.json")
 
 # ============================================================
 # Main Pipeline
@@ -136,7 +143,7 @@ class AutoVideoPipeline:
         
         # Setup Gemini
         genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
-        self.model = genai.GenerativeModel("gemini-1.5-flash") # Use a faster model for content
+        self.model = genai.GenerativeModel("gemini-2.0-flash") # Use a faster model for content
 
     def run(self):
         print_info("Starting Auto Video Pipeline...")
