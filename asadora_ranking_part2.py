@@ -26,10 +26,18 @@ from io import BytesIO
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
-from moviepy.editor import (
-    ImageClip, AudioFileClip, TextClip, CompositeVideoClip,
-    concatenate_videoclips
-)
+# moviepy 1.0.3 対応
+try:
+    from moviepy.editor import (
+        ImageClip, AudioFileClip, TextClip, CompositeVideoClip,
+        concatenate_videoclips
+    )
+except ImportError:
+    # moviepy 2.0 対応
+    from moviepy import (
+        ImageClip, AudioFileClip, TextClip, CompositeVideoClip,
+        concatenate_videoclips
+    )
 from PIL import Image, ImageDraw
 import numpy as np
 
