@@ -27,10 +27,18 @@ import google.generativeai as genai
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload
-from moviepy.editor import (
-    ImageClip, AudioFileClip, TextClip, CompositeVideoClip,
-    concatenate_videoclips, concatenate_audioclips
-)
+# moviepy 1.0.3 対応
+try:
+    from moviepy.editor import (
+        ImageClip, AudioFileClip, TextClip, CompositeVideoClip,
+        concatenate_videoclips, concatenate_audioclips
+    )
+except ImportError:
+    # moviepy 2.0 対応
+    from moviepy import (
+        ImageClip, AudioFileClip, TextClip, CompositeVideoClip,
+        concatenate_videoclips, concatenate_audioclips
+    )
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 
@@ -851,9 +859,21 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list,
     """YouTubeに動画をアップロード"""
     client_id = os.environ.get("YOUTUBE_CLIENT_ID")
     client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
-    refresh_token = os.environ.get(f"TOKEN_{channel_token}")
+
+    # TOKEN環境変数名を構築
+    token_env_name = f"TOKEN_{channel_token}"
+    refresh_token = os.environ.get(token_env_name)
+
+    # デバッグ情報
+    print(f"[DEBUG] TOKEN環境変数名: {token_env_name}")
+    print(f"[DEBUG] TOKEN取得結果: {'あり' if refresh_token else 'なし'}")
+    print(f"[DEBUG] CLIENT_ID: {'あり' if client_id else 'なし'}")
+    print(f"[DEBUG] CLIENT_SECRET: {'あり' if client_secret else 'なし'}")
 
     if not all([client_id, client_secret, refresh_token]):
+        # 利用可能な環境変数を表示
+        available_tokens = [k for k in os.environ.keys() if k.startswith("TOKEN_")]
+        print(f"[DEBUG] 利用可能なTOKEN環境変数: {available_tokens}")
         raise ValueError(f"YouTube認証情報が不足しています (TOKEN_{channel_token})")
 
     # アクセストークン取得

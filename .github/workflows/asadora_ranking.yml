@@ -55,10 +55,21 @@ jobs:
             google-api-python-client \
             google-auth \
             google-auth-oauthlib \
-            moviepy \
+            moviepy==1.0.3 \
             Pillow \
             requests \
             numpy
+
+      - name: 環境変数チェック
+        env:
+          TOKEN_17: ${{ secrets.TOKEN_17 }}
+        run: |
+          echo "=== 環境変数チェック ==="
+          if [ -n "$TOKEN_17" ]; then
+            echo "TOKEN_17: 設定済み (長さ: ${#TOKEN_17})"
+          else
+            echo "TOKEN_17: 未設定"
+          fi
 
       - name: 動画を生成・投稿
         env:

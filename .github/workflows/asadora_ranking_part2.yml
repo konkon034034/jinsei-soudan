@@ -45,7 +45,7 @@ jobs:
             google-api-python-client \
             google-auth \
             google-auth-oauthlib \
-            moviepy \
+            moviepy==1.0.3 \
             Pillow \
             requests \
             numpy
