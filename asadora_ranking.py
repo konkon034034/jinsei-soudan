@@ -94,9 +94,13 @@ class GeminiKeyManager:
         self.current_index = 0
         self.failed_keys = set()  # 失敗したキーのインデックス
 
-        print(f"Gemini APIキー: {len(self.keys)}個")
-        for name in self.key_names:
-            print(f"  - {name}: 設定済み")
+        print(f"\n{'='*50}")
+        print(f"Gemini APIキー: {len(self.keys)}個 検出")
+        print(f"{'='*50}")
+        for i, name in enumerate(self.key_names):
+            print(f"  [{i+1}] {name}: ✓")
+        print(f"フォールバック順: {' → '.join(self.key_names)}")
+        print(f"{'='*50}\n")
 
     def get_key(self):
         """次のAPIキーを取得（ラウンドロビン）"""
@@ -142,6 +146,7 @@ def call_gemini_with_retry(func, key_manager: GeminiKeyManager, max_retries: int
         try:
             genai.configure(api_key=api_key)
             result = func()
+            print(f"  [✓] {key_name}: 成功")
             return result
 
         except Exception as e:
@@ -149,15 +154,22 @@ def call_gemini_with_retry(func, key_manager: GeminiKeyManager, max_retries: int
             last_error = e
 
             if "429" in error_str or "quota" in error_str.lower():
-                print(f"  [!] {key_name}: クォータエラー")
+                print(f"  [✗] {key_name}: クォータエラー (429)")
                 key_manager.mark_failed(key_name)
+
+                # 残りのキー数を表示
+                remaining = len(key_manager.keys) - len(key_manager.failed_keys)
+                print(f"      → 残り {remaining} キーで再試行")
+
                 time.sleep(1)  # 少し待つ
                 continue
             else:
                 # 429以外のエラーは即座に raise
+                print(f"  [✗] {key_name}: その他のエラー - {str(e)[:100]}")
                 raise e
 
     # 全てのリトライが失敗
+    print(f"  [!!] 全キーがクォータ切れ。処理を中断します。")
     raise last_error
 
 
