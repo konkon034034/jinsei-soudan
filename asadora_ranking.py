@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 朝ドラランキング動画自動生成システム
-- モードA: 完全自動（Gemini TTS）
+- モードA: 完全自動（gTTS）
 - モードB: 高品質（NotebookLM）前半処理
 
 参考: https://zenn.dev/xtm_blog/articles/da1eba90525f91
@@ -41,6 +41,7 @@ except ImportError:
     )
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
+from gtts import gTTS
 
 
 # ===== 定数 =====
@@ -54,19 +55,16 @@ FPS = 24
 TEST_MODE = os.environ.get("TEST_MODE", "false").lower() == "true"
 RANKING_COUNT = 3 if TEST_MODE else 10  # テスト時はTOP3、本番はTOP10
 
-# Gemini TTS設定
-VOICE_YUMIKO = "Aoede"   # 女性声
-VOICE_KENJI = "Charon"   # 男性声
+# gTTS設定（日本語対応・無料）
+# gTTSは単一音声のみ（男女の区別なし）
 
 # キャラクター設定
 CHARACTERS = {
     "ユミコ": {
-        "voice": VOICE_YUMIKO,
         "color": "#FF69B4",
         "description": "50代女性、朝ドラ歴30年、感情豊か"
     },
     "ケンジ": {
-        "voice": VOICE_KENJI,
         "color": "#4169E1",
         "description": "40代男性、朝ドラ評論家、豆知識豊富"
     }
@@ -453,84 +451,33 @@ def upload_to_drive(content: str, filename: str, folder_id: str = None) -> str:
     return file.get('webViewLink', '')
 
 
-def generate_gemini_tts(text: str, voice: str, api_key: str, output_path: str) -> bool:
-    """Gemini TTSで音声生成"""
+def generate_gtts(text: str, output_path: str) -> bool:
+    """gTTSで音声生成（日本語対応・無料）"""
     try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key={api_key}"
-
-        headers = {"Content-Type": "application/json"}
-        data = {
-            "contents": [{"parts": [{"text": text}]}],
-            "generationConfig": {
-                "responseModalities": ["AUDIO"],
-                "speechConfig": {
-                    "voiceConfig": {
-                        "prebuiltVoiceConfig": {"voiceName": voice}
-                    }
-                }
-            }
-        }
-
-        response = requests.post(url, headers=headers, json=data, timeout=120)
-        response.raise_for_status()
-
-        result = response.json()
-
-        # 音声データを抽出
-        audio_data = result["candidates"][0]["content"]["parts"][0]["inlineData"]["data"]
-        audio_bytes = base64.b64decode(audio_data)
-
-        # WAVファイルとして保存
-        with open(output_path, 'wb') as f:
-            f.write(audio_bytes)
-
+        tts = gTTS(text=text, lang='ja')
+        tts.save(output_path)
         return True
-
     except Exception as e:
         print(f"TTS生成エラー: {e}")
         return False
 
 
-def generate_tts_with_retry(text: str, voice: str, output_path: str, key_manager: GeminiKeyManager) -> bool:
-    """TTSをリトライ付きで生成"""
-    max_retries = len(key_manager.keys)
-
-    for attempt in range(max_retries):
-        api_key, key_name = key_manager.get_working_key()
-
-        try:
-            success = generate_gemini_tts(text, voice, api_key, output_path)
-            if success:
-                return True
-            else:
-                # 生成失敗（429以外）
-                key_manager.mark_failed(key_name)
-
-        except Exception as e:
-            error_str = str(e)
-            if "429" in error_str or "quota" in error_str.lower():
-                key_manager.mark_failed(key_name)
-                time.sleep(0.5)
-                continue
-            else:
-                print(f"    TTS エラー: {e}")
-                return False
-
-    return False
+def generate_tts_simple(text: str, output_path: str) -> bool:
+    """gTTSで音声生成（シンプル版）"""
+    return generate_gtts(text, output_path)
 
 
-def generate_dialogue_audio_parallel(dialogue: list, temp_dir: Path, key_manager: GeminiKeyManager) -> tuple:
-    """対話の音声を並列生成（リトライ対応）"""
+def generate_dialogue_audio_parallel(dialogue: list, temp_dir: Path, key_manager: GeminiKeyManager = None) -> tuple:
+    """対話の音声を並列生成（gTTS版）"""
     audio_files = []
     segments = []
 
     def generate_single(index, line):
         speaker = line["speaker"]
         text = line["text"]
-        voice = CHARACTERS[speaker]["voice"]
 
-        output_path = str(temp_dir / f"line_{index:04d}.wav")
-        success = generate_tts_with_retry(text, voice, output_path, key_manager)
+        output_path = str(temp_dir / f"line_{index:04d}.mp3")
+        success = generate_tts_simple(text, output_path)
 
         return index, output_path, success, speaker, text
 
@@ -567,7 +514,7 @@ def generate_dialogue_audio_parallel(dialogue: list, temp_dir: Path, key_manager
                 print(f"音声ファイル読み込みエラー: {e}")
 
     # 音声を結合
-    combined_path = str(temp_dir / "combined.wav")
+    combined_path = str(temp_dir / "combined.mp3")
     if valid_files:
         clips = [AudioFileClip(f) for f in valid_files]
         combined = concatenate_audioclips(clips)
