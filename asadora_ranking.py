@@ -126,6 +126,10 @@ def get_drive_service():
     return build("drive", "v3", credentials=creds)
 
 
+# 使用可能なチャンネル（3チャンネルのみ）
+AVAILABLE_CHANNELS = ["23", "24", "27"]
+
+
 def get_pending_task():
     """スプレッドシートからPENDINGタスクを取得"""
     service = get_sheets_service()
@@ -142,12 +146,19 @@ def get_pending_task():
         # C列（ステータス）がPENDINGのものを探す
         status = row[2] if len(row) > 2 else ""
         if status == "PENDING":
+            # チャンネル番号を取得（有効な番号のみ使用）
+            channel = row[3] if len(row) > 3 else ""
+            if channel not in AVAILABLE_CHANNELS:
+                # 無効なチャンネルの場合はランダムに選択
+                channel = random.choice(AVAILABLE_CHANNELS)
+                print(f"  チャンネル自動選択: {channel}")
+
             task = {
                 "row": i,
                 "theme": row[0] if len(row) > 0 else "",
                 "mode": row[1] if len(row) > 1 else "AUTO",
                 "status": status,
-                "channel": row[3] if len(row) > 3 else "17",
+                "channel": channel,
             }
             return task
 
@@ -1069,7 +1080,7 @@ def main():
         print(f"\nタスク発見:")
         print(f"  テーマ: {task['theme']}")
         print(f"  モード: {task['mode']}")
-        print(f"  チャンネル: TOKEN_{task['channel']}")
+        print(f"  チャンネル: YOUTUBE_REFRESH_TOKEN_{task['channel']}")
 
         if task["mode"] == "NOTEBOOK":
             process_notebook_mode(task, key_manager)
