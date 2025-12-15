@@ -637,113 +637,291 @@ def get_font_path():
     return None
 
 
-def create_subtitle_clip(text: str, speaker: str, duration: float) -> TextClip:
-    """字幕クリップを作成"""
-    font = get_font_path()
-    color = CHARACTERS.get(speaker, {}).get("color", "white")
-    full_text = f"【{speaker}】{text}"
+# ===== FFmpegベース高速動画生成 =====
+
+import subprocess
+
+
+def combine_audio_ffmpeg(audio_files: list, output_path: str) -> bool:
+    """FFmpegで音声ファイルを結合"""
+    if not audio_files:
+        return False
+
+    if len(audio_files) == 1:
+        # 1ファイルの場合はコピー
+        import shutil
+        shutil.copy(audio_files[0], output_path)
+        return True
+
+    # concat用のファイルリストを作成
+    list_path = output_path + ".txt"
+    with open(list_path, 'w') as f:
+        for audio_file in audio_files:
+            f.write(f"file '{audio_file}'\n")
+
+    cmd = [
+        'ffmpeg', '-y', '-f', 'concat', '-safe', '0',
+        '-i', list_path,
+        '-c', 'copy',
+        output_path
+    ]
 
     try:
-        clip = TextClip(
-            full_text,
-            fontsize=44,
-            color=color,
-            font=font,
-            stroke_color='black',
-            stroke_width=2,
-            size=(VIDEO_WIDTH - 100, None),
-            method='caption'
-        )
-        clip = clip.set_duration(duration)
-        clip = clip.set_position(('center', VIDEO_HEIGHT - 180))
-        return clip
-    except Exception as e:
-        print(f"字幕作成エラー: {e}")
-        return None
+        subprocess.run(cmd, check=True, capture_output=True)
+        os.remove(list_path)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"音声結合エラー: {e.stderr.decode()}")
+        return False
 
 
-def create_rank_badge(rank: int, duration: float) -> TextClip:
-    """順位バッジを作成"""
-    font = get_font_path()
-    text = f"第{rank}位"
-    fontsize = 100 if rank == 1 else 80
-    color = 'gold' if rank <= 3 else 'white'
-
+def get_audio_duration_ffprobe(audio_path: str) -> float:
+    """FFprobeで音声の長さを取得"""
+    cmd = [
+        'ffprobe', '-v', 'error',
+        '-show_entries', 'format=duration',
+        '-of', 'default=noprint_wrappers=1:nokey=1',
+        audio_path
+    ]
     try:
-        clip = TextClip(
-            text,
-            fontsize=fontsize,
-            color=color,
-            font=font,
-            stroke_color='darkred' if rank == 1 else 'black',
-            stroke_width=3,
-        )
-        clip = clip.set_duration(duration)
-        clip = clip.set_position((50, 50))
-        return clip
-    except Exception:
-        return None
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        return float(result.stdout.strip())
+    except:
+        return 0.0
 
 
-def create_info_clip(work_title: str, year: str, cast: str, duration: float) -> TextClip:
-    """作品情報クリップを作成"""
-    font = get_font_path()
-    info_text = f"『{work_title}』（{year}年）\n主演: {cast}"
+def generate_ass_subtitles(segments: list, output_path: str, video_width: int, video_height: int):
+    """ASS形式の字幕ファイルを生成（スタイル付き）"""
 
-    try:
-        clip = TextClip(
-            info_text,
-            fontsize=48,
-            color='white',
-            font=font,
-            stroke_color='black',
-            stroke_width=2,
-            size=(VIDEO_WIDTH - 200, None),
-            method='caption'
-        )
-        clip = clip.set_duration(duration)
-        clip = clip.set_position((100, 150))
-        return clip
-    except Exception:
-        return None
+    # ASSヘッダー
+    header = f"""[Script Info]
+Title: 朝ドラランキング
+ScriptType: v4.00+
+PlayResX: {video_width}
+PlayResY: {video_height}
+ScaledBorderAndShadow: yes
 
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Yumiko,Noto Sans CJK JP,44,&H00B469FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,50,50,120,1
+Style: Kenji,Noto Sans CJK JP,44,&H00E16941,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,50,50,120,1
+Style: Default,Noto Sans CJK JP,44,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,50,50,120,1
+Style: Rank,Noto Sans CJK JP,80,&H0000D7FF,&H000000FF,&H00000080,&H80000000,-1,0,0,0,100,100,0,0,1,4,2,7,50,50,50,1
+Style: Info,Noto Sans CJK JP,48,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,7,100,50,150,1
 
-def create_section_clip(
-    image_path: str,
-    audio_path: str,
-    segments: list,
-    duration: float,
-    rank: int = None,
-    work_title: str = None,
-    year: str = None,
-    cast: str = None
-) -> CompositeVideoClip:
-    """セクションクリップを作成"""
-    audio = AudioFileClip(audio_path)
-    bg_clip = ImageClip(image_path).set_duration(duration)
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
 
-    clips = [bg_clip]
+    def format_ass_time(seconds: float) -> str:
+        """秒をASS形式に変換"""
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        centis = int((seconds % 1) * 100)
+        return f"{hours}:{minutes:02d}:{secs:02d}.{centis:02d}"
 
-    if rank:
-        badge = create_rank_badge(rank, duration)
-        if badge:
-            clips.append(badge)
-
-        if work_title:
-            info = create_info_clip(work_title, year or "", cast or "", duration)
-            if info:
-                clips.append(info)
+    lines = [header]
 
     for seg in segments:
-        subtitle = create_subtitle_clip(seg["text"], seg["speaker"], seg["end"] - seg["start"])
-        if subtitle:
-            subtitle = subtitle.set_start(seg["start"])
-            clips.append(subtitle)
+        start = format_ass_time(seg['start'])
+        end = format_ass_time(seg['end'])
+        speaker = seg.get('speaker', '')
+        text = seg.get('text', '')
 
-    video = CompositeVideoClip(clips, size=(VIDEO_WIDTH, VIDEO_HEIGHT))
-    video = video.set_audio(audio)
+        # スタイルを選択
+        if speaker == 'ユミコ':
+            style = 'Yumiko'
+        elif speaker == 'ケンジ':
+            style = 'Kenji'
+        else:
+            style = 'Default'
 
-    return video
+        # 話者名を付加
+        display_text = f"【{speaker}】{text}" if speaker else text
+
+        lines.append(f"Dialogue: 0,{start},{end},{style},,0,0,0,,{display_text}")
+
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(lines))
+
+
+def create_slideshow_input(sections: list, output_path: str):
+    """FFmpeg concat用の入力ファイルを作成"""
+    with open(output_path, 'w') as f:
+        for section in sections:
+            image_path = section['image']
+            duration = section['duration']
+            f.write(f"file '{image_path}'\n")
+            f.write(f"duration {duration}\n")
+        # 最後の画像を追加（FFmpegの仕様で必要）
+        if sections:
+            f.write(f"file '{sections[-1]['image']}'\n")
+
+
+def add_overlay_to_image(image_path: str, output_path: str, rank: int = None,
+                         work_title: str = None, year: str = None, cast: str = None):
+    """背景画像にオーバーレイテキストを焼き込む（Pillowで高速処理）"""
+    from PIL import ImageFont
+
+    img = Image.open(image_path).convert('RGB')
+    img = img.resize((VIDEO_WIDTH, VIDEO_HEIGHT), Image.LANCZOS)
+    draw = ImageDraw.Draw(img)
+
+    # フォントパスを取得
+    font_paths = [
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
+        "/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc",
+    ]
+
+    font_path = None
+    for fp in font_paths:
+        if os.path.exists(fp):
+            font_path = fp
+            break
+
+    if rank:
+        # 順位バッジを描画
+        try:
+            badge_font = ImageFont.truetype(font_path, 80) if font_path else ImageFont.load_default()
+        except:
+            badge_font = ImageFont.load_default()
+
+        badge_text = f"第{rank}位"
+        badge_color = (255, 215, 0) if rank <= 3 else (255, 255, 255)  # gold or white
+
+        # 影を描画
+        draw.text((52, 52), badge_text, font=badge_font, fill=(0, 0, 0))
+        draw.text((50, 50), badge_text, font=badge_font, fill=badge_color)
+
+        # 作品情報を描画
+        if work_title:
+            try:
+                info_font = ImageFont.truetype(font_path, 48) if font_path else ImageFont.load_default()
+            except:
+                info_font = ImageFont.load_default()
+
+            info_text = f"『{work_title}』（{year}年）"
+            draw.text((102, 152), info_text, font=info_font, fill=(0, 0, 0))
+            draw.text((100, 150), info_text, font=info_font, fill=(255, 255, 255))
+
+            if cast:
+                cast_text = f"主演: {cast}"
+                draw.text((102, 212), cast_text, font=info_font, fill=(0, 0, 0))
+                draw.text((100, 210), cast_text, font=info_font, fill=(255, 255, 255))
+
+    img.save(output_path, quality=95)
+
+
+def create_video_ffmpeg(sections: list, all_segments: list, temp_dir: Path) -> tuple:
+    """FFmpegで動画を高速生成"""
+    print("\n[FFmpeg] 動画生成開始...")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # 1. 音声ファイルを結合
+    print("  [1/4] 音声ファイルを結合中...")
+    audio_files = [s['audio'] for s in sections if s.get('audio') and os.path.exists(s['audio'])]
+    combined_audio = str(temp_dir / "combined_audio.wav")
+
+    if not combine_audio_ffmpeg(audio_files, combined_audio):
+        raise ValueError("音声結合に失敗しました")
+
+    total_duration = get_audio_duration_ffprobe(combined_audio)
+    print(f"    総再生時間: {total_duration:.1f}秒")
+
+    # 2. 背景画像にオーバーレイを焼き込み
+    print("  [2/4] 背景画像を処理中...")
+    processed_sections = []
+    current_time = 0.0
+
+    for i, section in enumerate(sections):
+        if not section.get('audio') or not os.path.exists(section['audio']):
+            continue
+
+        duration = get_audio_duration_ffprobe(section['audio'])
+        if duration <= 0:
+            continue
+
+        # 画像を処理
+        processed_image = str(temp_dir / f"processed_{i:03d}.jpg")
+        add_overlay_to_image(
+            section['image'],
+            processed_image,
+            rank=section.get('rank'),
+            work_title=section.get('work_title'),
+            year=section.get('year'),
+            cast=section.get('cast')
+        )
+
+        processed_sections.append({
+            'image': processed_image,
+            'duration': duration
+        })
+        current_time += duration
+
+    # 3. ASS字幕を生成
+    print("  [3/4] 字幕ファイルを生成中...")
+    ass_path = str(temp_dir / "subtitles.ass")
+    generate_ass_subtitles(all_segments, ass_path, VIDEO_WIDTH, VIDEO_HEIGHT)
+
+    # SRTも生成（互換性のため）
+    srt_path = str(temp_dir / f"asadora_ranking_{timestamp}.srt")
+    generate_srt(all_segments, srt_path)
+
+    # 4. FFmpegで動画を生成
+    print("  [4/4] FFmpegで動画を合成中...")
+
+    # concat入力ファイルを作成
+    concat_file = str(temp_dir / "concat.txt")
+    create_slideshow_input(processed_sections, concat_file)
+
+    output_path = str(temp_dir / f"asadora_ranking_{timestamp}.mp4")
+
+    # FFmpegコマンド
+    cmd = [
+        'ffmpeg', '-y',
+        # 画像スライドショー入力
+        '-f', 'concat', '-safe', '0', '-i', concat_file,
+        # 音声入力
+        '-i', combined_audio,
+        # フィルター: 字幕を焼き込み
+        '-vf', f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},ass={ass_path}",
+        # 出力設定
+        '-c:v', 'libx264',
+        '-preset', 'fast',  # ultrafastより少し遅いが画質向上
+        '-crf', '23',
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-pix_fmt', 'yuv420p',
+        '-shortest',
+        '-movflags', '+faststart',
+        output_path
+    ]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        print(f"    完了: {output_path}")
+    except subprocess.CalledProcessError as e:
+        print(f"FFmpegエラー: {e.stderr}")
+        # フォールバック: 字幕なしで再試行
+        print("  字幕なしで再試行...")
+        cmd_fallback = [
+            'ffmpeg', '-y',
+            '-f', 'concat', '-safe', '0', '-i', concat_file,
+            '-i', combined_audio,
+            '-vf', f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}",
+            '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+            '-c:a', 'aac', '-b:a', '128k',
+            '-pix_fmt', 'yuv420p', '-shortest',
+            '-movflags', '+faststart',
+            output_path
+        ]
+        subprocess.run(cmd_fallback, check=True, capture_output=True)
+
+    return output_path, srt_path
 
 
 def generate_srt(segments: list, output_path: str):
@@ -767,26 +945,34 @@ def format_srt_time(seconds: float) -> str:
 
 
 def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) -> tuple:
-    """動画を作成"""
-    clips = []
+    """動画を作成（FFmpegベース高速版）"""
+    sections = []  # FFmpeg用のセクション情報
     all_segments = []
     current_time = 0.0
 
-    print("動画作成開始...")
+    print("動画作成開始（FFmpeg高速モード）...")
 
     # オープニング
-    print("[1/12] オープニング作成中...")
+    print("[1/12] オープニング音声生成中...")
+    opening_dir = temp_dir / "opening"
+    opening_dir.mkdir(exist_ok=True)
+
     opening_audio, opening_segments, opening_duration = generate_dialogue_audio_parallel(
-        script["opening"], temp_dir / "opening", key_manager
+        script["opening"], opening_dir, key_manager
     )
-    (temp_dir / "opening").mkdir(exist_ok=True)
 
     opening_bg = str(temp_dir / "opening_bg.png")
     generate_gradient_background(opening_bg, rank=0)
 
     if opening_duration > 0:
-        opening_clip = create_section_clip(opening_bg, opening_audio, opening_segments, opening_duration)
-        clips.append(opening_clip)
+        sections.append({
+            'audio': opening_audio,
+            'image': opening_bg,
+            'rank': None,
+            'work_title': None,
+            'year': None,
+            'cast': None
+        })
 
         for seg in opening_segments:
             all_segments.append({**seg, "start": current_time + seg["start"], "end": current_time + seg["end"]})
@@ -795,7 +981,7 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     # ランキング
     for item in script["rankings"]:
         rank = item["rank"]
-        print(f"[{12 - rank}/12] 第{rank}位作成中...")
+        print(f"[{12 - rank}/12] 第{rank}位 音声生成中...")
 
         rank_dir = temp_dir / f"rank_{rank}"
         rank_dir.mkdir(exist_ok=True)
@@ -804,27 +990,28 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
             item["dialogue"], rank_dir, key_manager
         )
 
+        # 背景画像を取得
         image_path = str(temp_dir / f"rank_{rank}.jpg")
         if not fetch_unsplash_image(item.get("image_keyword", "japan drama"), image_path):
             image_path = str(temp_dir / f"rank_{rank}.png")
             generate_gradient_background(image_path, rank=rank)
 
         if duration > 0:
-            clip = create_section_clip(
-                image_path, audio_path, segments, duration,
-                rank=rank,
-                work_title=item.get("work_title"),
-                year=item.get("year"),
-                cast=item.get("cast")
-            )
-            clips.append(clip)
+            sections.append({
+                'audio': audio_path,
+                'image': image_path,
+                'rank': rank,
+                'work_title': item.get("work_title"),
+                'year': item.get("year"),
+                'cast': item.get("cast")
+            })
 
             for seg in segments:
                 all_segments.append({**seg, "start": current_time + seg["start"], "end": current_time + seg["end"]})
             current_time += duration
 
     # エンディング
-    print("[12/12] エンディング作成中...")
+    print("[12/12] エンディング音声生成中...")
     ending_dir = temp_dir / "ending"
     ending_dir.mkdir(exist_ok=True)
 
@@ -836,34 +1023,23 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     generate_gradient_background(ending_bg, rank=11)
 
     if ending_duration > 0:
-        ending_clip = create_section_clip(ending_bg, ending_audio, ending_segments, ending_duration)
-        clips.append(ending_clip)
+        sections.append({
+            'audio': ending_audio,
+            'image': ending_bg,
+            'rank': None,
+            'work_title': None,
+            'year': None,
+            'cast': None
+        })
 
         for seg in ending_segments:
             all_segments.append({**seg, "start": current_time + seg["start"], "end": current_time + seg["end"]})
 
-    # 結合
-    print("動画結合中...")
-    if not clips:
-        raise ValueError("有効なクリップがありません")
+    # FFmpegで動画生成
+    if not sections:
+        raise ValueError("有効なセクションがありません")
 
-    final_video = concatenate_videoclips(clips, method="compose")
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_path = str(temp_dir / f"asadora_ranking_{timestamp}.mp4")
-
-    final_video.write_videofile(output_path, fps=FPS, codec='libx264', audio_codec='aac', threads=4)
-
-    # SRT生成
-    srt_path = output_path.replace('.mp4', '.srt')
-    generate_srt(all_segments, srt_path)
-
-    # クリーンアップ
-    for clip in clips:
-        clip.close()
-    final_video.close()
-
-    return output_path, srt_path
+    return create_video_ffmpeg(sections, all_segments, temp_dir)
 
 
 def upload_to_youtube(video_path: str, title: str, description: str, tags: list, channel_token: str) -> str:
