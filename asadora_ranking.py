@@ -1391,8 +1391,12 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     return create_video_ffmpeg(sections, all_segments, temp_dir)
 
 
-def upload_to_youtube(video_path: str, title: str, description: str, tags: list, channel_token: str) -> str:
-    """YouTubeに動画をアップロード"""
+def upload_to_youtube(video_path: str, title: str, description: str, tags: list, channel_token: str, mode: str = "AUTO") -> str:
+    """YouTubeに動画をアップロード
+
+    Args:
+        mode: "TEST" → 限定公開(unlisted), "AUTO" → 公開(public)
+    """
     client_id = os.environ.get("YOUTUBE_CLIENT_ID")
     client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
 
@@ -1436,6 +1440,11 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list,
 
     hashtags = " ".join([f"#{tag}" for tag in tags[:5]])
 
+    # モードに応じて公開設定を切り替え
+    # TEST → 限定公開(unlisted), AUTO → 公開(public)
+    privacy_status = "unlisted" if mode == "TEST" else "public"
+    print(f"  公開設定: {privacy_status} (mode={mode})")
+
     body = {
         "snippet": {
             "title": title,
@@ -1444,7 +1453,7 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list,
             "categoryId": "24"
         },
         "status": {
-            "privacyStatus": "public",
+            "privacyStatus": privacy_status,
             "selfDeclaredMadeForKids": False
         }
     }
@@ -1483,6 +1492,7 @@ def process_auto_mode(task: dict, key_manager: GeminiKeyManager):
     row = task["row"]
     theme = task["theme"]
     channel = task["channel"]
+    mode = task.get("mode", "AUTO")  # TEST → 限定公開, AUTO → 公開
 
     # チャンネルに応じたボイス設定
     setup_channel_voices(channel)
@@ -1512,7 +1522,8 @@ def process_auto_mode(task: dict, key_manager: GeminiKeyManager):
             script["title"],
             script["description"],
             script.get("tags", ["朝ドラ", "NHK", "ランキング"]),
-            channel
+            channel,
+            mode  # TEST → 限定公開, AUTO → 公開
         )
 
         elapsed = int(time.time() - start_time)
