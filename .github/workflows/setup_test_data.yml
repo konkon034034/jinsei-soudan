@@ -26,10 +26,10 @@ jobs:
         run: |
           python add_test_data.py
 
-      - name: 朝ドラランキングワークフローをトリガー
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: 完了メッセージ
         run: |
-          echo "テストデータ追加完了。ワークフローをトリガーします..."
-          gh workflow run asadora_ranking.yml
-          echo "ワークフローがトリガーされました。"
+          echo "========================================"
+          echo "テストデータ追加完了!"
+          echo "asadora_ranking.yml を手動実行してください:"
+          echo "  gh workflow run asadora_ranking.yml"
+          echo "========================================"
