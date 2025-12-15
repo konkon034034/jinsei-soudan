@@ -201,8 +201,8 @@ def get_drive_service():
     return build("drive", "v3", credentials=creds)
 
 
-# 使用するチャンネル（jyb475rt@gmail.com = 自身がある）
-FIXED_CHANNEL = "27"
+# 使用可能なチャンネル
+AVAILABLE_CHANNELS = ["23", "27"]  # 23=昭和の曲, 27=朝ドラ
 
 
 def get_pending_task():
@@ -221,13 +221,17 @@ def get_pending_task():
         # C列（ステータス）がPENDINGのものを探す
         status = row[2] if len(row) > 2 else ""
         if status == "PENDING":
-            # チャンネルは固定（jyb475rt@gmail.com）
+            # D列からチャンネル番号を取得
+            channel = row[3] if len(row) > 3 else ""
+            if channel not in AVAILABLE_CHANNELS:
+                channel = "27"  # デフォルト
+
             task = {
                 "row": i,
                 "theme": row[0] if len(row) > 0 else "",
                 "mode": row[1] if len(row) > 1 else "AUTO",
                 "status": status,
-                "channel": FIXED_CHANNEL,
+                "channel": channel,
             }
             return task
 
