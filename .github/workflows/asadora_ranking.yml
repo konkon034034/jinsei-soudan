@@ -59,15 +59,7 @@ jobs:
       - name: Python依存関係をインストール
         run: |
           pip install --upgrade pip
-          pip install \
-            google-generativeai \
-            google-api-python-client \
-            google-auth \
-            google-auth-oauthlib \
-            moviepy==1.0.3 \
-            Pillow \
-            requests \
-            numpy
+          pip install -r requirements.txt
 
       - name: 環境変数チェック
         env:
