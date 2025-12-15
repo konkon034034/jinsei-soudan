@@ -715,18 +715,26 @@ def fetch_google_image(query: str, output_path: str) -> bool:
 
 def fetch_ranking_image(work_title: str, cast: str, output_path: str) -> bool:
     """ランキング項目用の画像を取得（複数クエリで試行）"""
-    # 検索クエリの優先順位
-    queries = [
-        f"{work_title} {cast}",           # 作品名 + 出演者
-        f"{cast}",                          # 出演者名のみ
-        f"{work_title} ドラマ",             # 作品名 + ドラマ
-        f"{work_title}",                    # 作品名のみ
-    ]
+    # 検索クエリの優先順位（芸能人名・作品名を直接検索）
+    queries = []
+
+    # 出演者名を優先（芸能人の顔写真）
+    if cast:
+        queries.append(cast)                        # 出演者名のみ（例：美空ひばり）
+        queries.append(f"{cast} {work_title}")      # 出演者 + 作品名
+
+    # 作品名での検索
+    if work_title:
+        queries.append(f"{work_title} NHK")         # 作品名 + NHK（朝ドラ用）
+        queries.append(work_title)                  # 作品名のみ
 
     for query in queries:
+        if not query or not query.strip():
+            continue
+        print(f"    検索中: {query}")
         if fetch_google_image(query, output_path):
             return True
-        time.sleep(0.5)  # レート制限対策
+        time.sleep(0.3)  # レート制限対策
 
     return False
 
