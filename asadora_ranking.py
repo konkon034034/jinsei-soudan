@@ -58,18 +58,24 @@ FPS = 24
 TEST_MODE = os.environ.get("TEST_MODE", "false").lower() == "true"
 RANKING_COUNT = 3 if TEST_MODE else 10  # テスト時はTOP3、本番はTOP10
 
-# gTTS設定（日本語対応・無料）
-# gTTSは単一音声のみ（男女の区別なし）
+# ElevenLabs TTS設定（2人の女性ボイス）
+# 日本語対応の女性ボイスを使用
+ELEVENLABS_VOICES = {
+    "アキ": "cgSgspJ2msm6clMCkdW9",      # 女性A: 明るいトーン（進行役）
+    "ミカ": "XrExE9yKIg1WjnnlVkGX",      # 女性B: 落ち着いたトーン（コメント役）
+}
 
-# キャラクター設定
+# キャラクター設定（2人の女性の掛け合い）
 CHARACTERS = {
-    "ユミコ": {
+    "アキ": {
+        "voice_id": ELEVENLABS_VOICES["アキ"],
         "color": "#FF69B4",
-        "description": "50代女性、朝ドラ歴30年、感情豊か"
+        "description": "明るい女性、進行役、テンション高め"
     },
-    "ケンジ": {
-        "color": "#4169E1",
-        "description": "40代男性、朝ドラ評論家、豆知識豊富"
+    "ミカ": {
+        "voice_id": ELEVENLABS_VOICES["ミカ"],
+        "color": "#9370DB",
+        "description": "落ち着いた女性、コメント役、共感上手"
     }
 }
 
@@ -305,8 +311,8 @@ def generate_dialogue_script(theme: str, search_results: str, key_manager: Gemin
     ending_turns = "2〜3往復" if TEST_MODE else "6〜8往復"
     ranking_example = RANKING_COUNT  # 3 or 10
 
-    prompt = f"""あなたはYouTubeの朝ドラ紹介チャンネルの台本作家です。
-以下の情報を基に、2人のキャラクターによる対談形式のランキング動画台本を作成してください。
+    prompt = f"""あなたはYouTubeのランキング紹介チャンネルの台本作家です。
+以下の情報を基に、2人の女性による掛け合い形式のランキング動画台本を作成してください。
 
 テーマ: {theme}
 
@@ -314,56 +320,65 @@ def generate_dialogue_script(theme: str, search_results: str, key_manager: Gemin
 {search_results}
 
 【キャラクター】
-👩 ユミコ（50代女性）
-- 朝ドラ歴30年のベテランファン
-- 感情豊か、共感力が高い
-- 「わかるわ〜」「泣けるのよね〜」が口癖
-- 「〜わね」「〜だわ」「〜のよ」などの口調
+👩 アキ（進行役・明るい女性）
+- 元気でテンション高め
+- 「〇〇ですね！」「すごい！」など明るいリアクション
+- ランキングの発表を担当
+- 「〜です！」「〜ですよね！」などの口調
 
-👨 ケンジ（40代男性）
-- 朝ドラ評論家、豆知識豊富
-- 落ち着いた語り口
-- 視聴率や裏話を挟む
-- 「〜ですね」「〜でしょう」「〜ですよ」などの口調
+👩 ミカ（コメント役・落ち着いた女性）
+- 共感上手で落ち着いたトーン
+- 「そうですね〜」「懐かしいですね」など相槌が得意
+- 補足情報や感想を担当
+- 「〜ですね」「〜ですよね」などの口調
+
+【掛け合いの流れ】
+1. アキ：「第〇位は『〇〇』です！」（発表）
+2. ミカ：「〇〇ですね〜」（共感）
+3. アキ：「この作品は〇〇で...」（説明）
+4. ミカ：「懐かしいですね」（コメント）
+5. 交互に続く...
 
 【出力形式】必ず以下のJSON形式で出力してください：
 {{
-    "title": "動画タイトル（60文字以内、【朝ドラ】を含める）",
+    "title": "動画タイトル（60文字以内）",
     "description": "動画説明文（500文字程度、改行含む）",
     "tags": ["タグ1", "タグ2", ...],
     "opening": [
-        {{"speaker": "ユミコ", "text": "皆さん、こんにちは！朝ドラのすべてへようこそ！"}},
-        {{"speaker": "ケンジ", "text": "こんにちは。今日も朝ドラの魅力をお届けしますよ。"}},
-        ...（{opening_turns}、自然な会話で）
+        {{"speaker": "アキ", "text": "皆さん、こんにちは！今日もランキングをお届けします！"}},
+        {{"speaker": "ミカ", "text": "こんにちは。楽しみですね。"}},
+        ...（{opening_turns}、自然な掛け合いで）
     ],
     "rankings": [
         {{
             "rank": {ranking_example},
             "work_title": "作品名",
             "year": "放送年",
-            "cast": "主演俳優名",
+            "cast": "主演・出演者名",
             "dialogue": [
-                {{"speaker": "ユミコ", "text": "さあ、第{ranking_example}位の発表よ！"}},
-                {{"speaker": "ケンジ", "text": "第{ranking_example}位は..."}},
-                ...（{dialogue_turns}、作品の魅力を語る）
+                {{"speaker": "アキ", "text": "第{ranking_example}位は『〇〇』です！"}},
+                {{"speaker": "ミカ", "text": "〇〇ですね〜、懐かしい！"}},
+                {{"speaker": "アキ", "text": "この作品は〇〇で有名ですよね！"}},
+                {{"speaker": "ミカ", "text": "そうですね、〇〇が印象的でした。"}},
+                ...（{dialogue_turns}、掛け合いで作品の魅力を語る）
             ],
-            "image_keyword": "作品イメージの英語キーワード（例: japanese countryside spring）"
+            "image_keyword": "作品イメージの英語キーワード（例: japanese drama scene）"
         }},
         ... ({ranking_example}位から1位まで{ranking_example}個)
     ],
     "ending": [
-        {{"speaker": "ユミコ", "text": "いかがでしたか？"}},
-        {{"speaker": "ケンジ", "text": "どれも名作ばかりでしたね。"}},
+        {{"speaker": "アキ", "text": "いかがでしたか？"}},
+        {{"speaker": "ミカ", "text": "どれも素敵な作品ばかりでしたね。"}},
         ...（{ending_turns}、まとめと次回予告）
     ]
 }}
 
 【重要】
 - ランキングは必ず{ranking_example}位から1位まで{ranking_example}個作成
-- 各セリフは25〜50文字程度
-- ユミコは感情的なリアクション、ケンジは客観的な情報提供
-- 作品名、放送年、主演は正確に
-- 視聴者が見たくなるような熱量のある会話に
+- 各セリフは20〜40文字程度（短めにテンポよく）
+- アキは発表と説明、ミカは共感とコメント
+- 2人の掛け合いが自然になるように
+- 作品名、放送年、出演者は正確に
 - 必ず有効なJSONを出力
 """
 
@@ -452,24 +467,69 @@ def upload_to_drive(content: str, filename: str, folder_id: str = None) -> str:
     return file.get('webViewLink', '')
 
 
+def generate_elevenlabs_tts(text: str, voice_id: str, output_path: str) -> bool:
+    """ElevenLabs TTSで音声生成"""
+    api_key = os.environ.get("ELEVENLABS_API_KEY")
+    if not api_key:
+        print("    ElevenLabs APIキーが設定されていません")
+        return False
+
+    try:
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+        headers = {
+            "xi-api-key": api_key,
+            "Content-Type": "application/json"
+        }
+        data = {
+            "text": text,
+            "model_id": "eleven_multilingual_v2",
+            "voice_settings": {
+                "stability": 0.5,
+                "similarity_boost": 0.75
+            }
+        }
+
+        response = requests.post(url, headers=headers, json=data, timeout=60)
+        response.raise_for_status()
+
+        with open(output_path, 'wb') as f:
+            f.write(response.content)
+
+        return True
+
+    except Exception as e:
+        print(f"    ElevenLabs TTSエラー: {e}")
+        return False
+
+
 def generate_gtts(text: str, output_path: str) -> bool:
-    """gTTSで音声生成（日本語対応・無料）"""
+    """gTTSで音声生成（フォールバック用）"""
     try:
         tts = gTTS(text=text, lang='ja')
         tts.save(output_path)
         return True
     except Exception as e:
-        print(f"TTS生成エラー: {e}")
+        print(f"    gTTS生成エラー: {e}")
         return False
 
 
-def generate_tts_simple(text: str, output_path: str) -> bool:
-    """gTTSで音声生成（シンプル版）"""
+def generate_tts_for_speaker(text: str, speaker: str, output_path: str) -> bool:
+    """話者に応じたTTSで音声生成（ElevenLabs優先、gTTSフォールバック）"""
+    # キャラクターの音声IDを取得
+    voice_id = CHARACTERS.get(speaker, {}).get("voice_id")
+
+    if voice_id:
+        # ElevenLabsで生成を試みる
+        if generate_elevenlabs_tts(text, voice_id, output_path):
+            return True
+
+    # フォールバック: gTTS
+    print(f"    → gTTSにフォールバック")
     return generate_gtts(text, output_path)
 
 
 def generate_dialogue_audio_parallel(dialogue: list, temp_dir: Path, key_manager: GeminiKeyManager = None) -> tuple:
-    """対話の音声を並列生成（gTTS版）"""
+    """対話の音声を並列生成（ElevenLabs版）"""
     audio_files = []
     segments = []
 
@@ -478,7 +538,7 @@ def generate_dialogue_audio_parallel(dialogue: list, temp_dir: Path, key_manager
         text = line["text"]
 
         output_path = str(temp_dir / f"line_{index:04d}.mp3")
-        success = generate_tts_simple(text, output_path)
+        success = generate_tts_for_speaker(text, speaker, output_path)
 
         return index, output_path, success, speaker, text
 
@@ -646,8 +706,9 @@ def fetch_ranking_image(work_title: str, cast: str, output_path: str) -> bool:
     return False
 
 
-def generate_gradient_background(output_path: str, rank: int = 0):
-    """昭和風グラデーション背景を生成"""
+def generate_gradient_background(output_path: str, rank: int = 0,
+                                  video_title: str = None, work_title: str = None):
+    """昭和風グラデーション背景を生成（テキスト付き）"""
     img = Image.new('RGB', (VIDEO_WIDTH, VIDEO_HEIGHT))
     draw = ImageDraw.Draw(img)
 
@@ -677,6 +738,48 @@ def generate_gradient_background(output_path: str, rank: int = 0):
         g = int(top_color[1] * (1 - ratio) + bottom_color[1] * ratio)
         b = int(top_color[2] * (1 - ratio) + bottom_color[2] * ratio)
         draw.line([(0, y), (VIDEO_WIDTH, y)], fill=(r, g, b))
+
+    # テキストを描画（フォールバック用）
+    if video_title or rank or work_title:
+        font_path = get_font_path()
+        try:
+            font_large = ImageFont.truetype(font_path, 80) if font_path else ImageFont.load_default()
+            font_xlarge = ImageFont.truetype(font_path, 120) if font_path else ImageFont.load_default()
+            font_medium = ImageFont.truetype(font_path, 60) if font_path else ImageFont.load_default()
+        except:
+            font_large = ImageFont.load_default()
+            font_xlarge = ImageFont.load_default()
+            font_medium = ImageFont.load_default()
+
+        # 上部: 動画タイトル
+        if video_title:
+            bbox = draw.textbbox((0, 0), video_title, font=font_medium)
+            text_width = bbox[2] - bbox[0]
+            x = (VIDEO_WIDTH - text_width) // 2
+            draw.text((x + 3, 103), video_title, font=font_medium, fill=(0, 0, 0))
+            draw.text((x, 100), video_title, font=font_medium, fill=(255, 255, 255))
+
+        # 中央: 順位
+        if rank and rank > 0:
+            rank_text = f"第{rank}位"
+            bbox = draw.textbbox((0, 0), rank_text, font=font_xlarge)
+            text_width = bbox[2] - bbox[0]
+            x = (VIDEO_WIDTH - text_width) // 2
+            y = VIDEO_HEIGHT // 2 - 60
+            # ゴールド色（1〜3位）またはシルバー色
+            rank_color = (255, 215, 0) if rank <= 3 else (255, 255, 255)
+            draw.text((x + 4, y + 4), rank_text, font=font_xlarge, fill=(0, 0, 0))
+            draw.text((x, y), rank_text, font=font_xlarge, fill=rank_color)
+
+        # 下部: 作品名
+        if work_title:
+            work_display = f"『{work_title}』"
+            bbox = draw.textbbox((0, 0), work_display, font=font_large)
+            text_width = bbox[2] - bbox[0]
+            x = (VIDEO_WIDTH - text_width) // 2
+            y = VIDEO_HEIGHT - 200
+            draw.text((x + 3, y + 3), work_display, font=font_large, fill=(0, 0, 0))
+            draw.text((x, y), work_display, font=font_large, fill=(255, 255, 255))
 
     img.save(output_path)
 
@@ -1119,6 +1222,7 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     sections = []  # FFmpeg用のセクション情報
     all_segments = []
     current_time = 0.0
+    video_title = script.get("title", "")  # 動画タイトル（フォールバック用）
 
     total_steps = RANKING_COUNT + 2  # オープニング + ランキング数 + エンディング
     print(f"動画作成開始（FFmpeg高速モード）... [全{total_steps}セクション]")
@@ -1133,7 +1237,7 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     )
 
     opening_bg = str(temp_dir / "opening_bg.png")
-    generate_gradient_background(opening_bg, rank=0)
+    generate_gradient_background(opening_bg, rank=0, video_title=video_title)
 
     if opening_duration > 0:
         sections.append({
@@ -1169,10 +1273,15 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
         print(f"    画像検索: {work_title} / {cast}")
 
         if not fetch_ranking_image(work_title, cast, image_path):
-            # フォールバック: グラデーション背景
+            # フォールバック: グラデーション背景（タイトル・順位・作品名付き）
             print(f"    → フォールバック: グラデーション背景")
             image_path = str(temp_dir / f"rank_{rank}.png")
-            generate_gradient_background(image_path, rank=rank)
+            generate_gradient_background(
+                image_path,
+                rank=rank,
+                video_title=video_title,
+                work_title=work_title
+            )
 
         if duration > 0:
             sections.append({
@@ -1198,7 +1307,7 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     )
 
     ending_bg = str(temp_dir / "ending_bg.png")
-    generate_gradient_background(ending_bg, rank=11)
+    generate_gradient_background(ending_bg, rank=11, video_title=video_title)
 
     if ending_duration > 0:
         sections.append({
