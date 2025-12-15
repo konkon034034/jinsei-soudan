@@ -259,15 +259,27 @@ def get_pending_task():
         # C列（ステータス）がPENDINGのものを探す
         status = row[2] if len(row) > 2 else ""
         if status == "PENDING":
-            # D列からチャンネル番号を取得
+            # 各列の値を取得
+            theme = row[0] if len(row) > 0 else ""
+            mode = row[1] if len(row) > 1 else "AUTO"
             channel = row[3] if len(row) > 3 else ""
+
+            # デバッグ: スプレッドシートから読み取った値を表示
+            print(f"\n[スプレッドシート読み取り] 行{i}")
+            print(f"  A列(テーマ): {theme[:30]}...")
+            print(f"  B列(モード): '{mode}'")
+            print(f"  C列(ステータス): '{status}'")
+            print(f"  D列(チャンネル): '{channel}'")
+
+            # チャンネル番号の検証
             if channel not in AVAILABLE_CHANNELS:
-                channel = "27"  # デフォルト
+                print(f"  → チャンネル '{channel}' は無効。デフォルト '27' を使用")
+                channel = "27"
 
             task = {
                 "row": i,
-                "theme": row[0] if len(row) > 0 else "",
-                "mode": row[1] if len(row) > 1 else "AUTO",
+                "theme": theme,
+                "mode": mode,
                 "status": status,
                 "channel": channel,
             }
@@ -1407,10 +1419,12 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list,
     refresh_token = os.environ.get(token_env_name)
 
     # デバッグ情報
-    print(f"[DEBUG] TOKEN環境変数名: {token_env_name}")
-    print(f"[DEBUG] TOKEN取得結果: {'あり' if refresh_token else 'なし'}")
-    print(f"[DEBUG] CLIENT_ID: {'あり' if client_id else 'なし'}")
-    print(f"[DEBUG] CLIENT_SECRET: {'あり' if client_secret else 'なし'}")
+    print(f"\n[YouTubeアップロード]")
+    print(f"  チャンネル: {channel_token}")
+    print(f"  TOKEN環境変数: {token_env_name}")
+    print(f"  TOKEN: {'✓ あり' if refresh_token else '✗ なし'}")
+    print(f"  CLIENT_ID: {'✓ あり' if client_id else '✗ なし'}")
+    print(f"  CLIENT_SECRET: {'✓ あり' if client_secret else '✗ なし'}")
 
     if not all([client_id, client_secret, refresh_token]):
         # 利用可能な環境変数を表示
@@ -1445,7 +1459,13 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list,
     # モードに応じて公開設定を切り替え
     # TEST → 限定公開(unlisted), AUTO → 公開(public)
     privacy_status = "unlisted" if mode == "TEST" else "public"
-    print(f"  公開設定: {privacy_status} (mode={mode})")
+    print(f"\n[公開設定]")
+    print(f"  mode: {mode}")
+    print(f"  privacyStatus: {privacy_status}")
+    if mode == "TEST":
+        print(f"  → 限定公開（URLを知っている人だけ視聴可能）")
+    else:
+        print(f"  → 公開（誰でも視聴可能）")
 
     body = {
         "snippet": {
@@ -1495,6 +1515,14 @@ def process_auto_mode(task: dict, key_manager: GeminiKeyManager):
     theme = task["theme"]
     channel = task["channel"]
     mode = task.get("mode", "AUTO")  # TEST → 限定公開, AUTO → 公開
+
+    # デバッグ: タスク情報を表示
+    print(f"\n{'='*50}")
+    print(f"[タスク情報]")
+    print(f"  テーマ: {theme}")
+    print(f"  チャンネル: {channel} (TOKEN_{channel})")
+    print(f"  モード: {mode} → {'限定公開' if mode == 'TEST' else '公開'}")
+    print(f"{'='*50}\n")
 
     # チャンネルに応じたボイス設定
     setup_channel_voices(channel)
