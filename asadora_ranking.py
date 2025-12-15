@@ -70,34 +70,95 @@ CHARACTERS = {
 
 
 class GeminiKeyManager:
-    """複数のGemini APIキーを管理"""
+    """複数のGemini APIキーを管理（429エラー時のフォールバック対応）"""
 
     def __init__(self):
         self.keys = []
+        self.key_names = []  # デバッグ用にキー名を保持
+
         # GEMINI_API_KEY, GEMINI_API_KEY_1, _2, _3... を収集
         base_key = os.environ.get("GEMINI_API_KEY")
         if base_key:
             self.keys.append(base_key)
+            self.key_names.append("GEMINI_API_KEY")
 
         for i in range(1, 10):
             key = os.environ.get(f"GEMINI_API_KEY_{i}")
             if key:
                 self.keys.append(key)
+                self.key_names.append(f"GEMINI_API_KEY_{i}")
 
         if not self.keys:
             raise ValueError("GEMINI_API_KEY が設定されていません")
 
         self.current_index = 0
+        self.failed_keys = set()  # 失敗したキーのインデックス
+
+        print(f"Gemini APIキー: {len(self.keys)}個")
+        for name in self.key_names:
+            print(f"  - {name}: 設定済み")
 
     def get_key(self):
         """次のAPIキーを取得（ラウンドロビン）"""
         key = self.keys[self.current_index]
+        name = self.key_names[self.current_index]
         self.current_index = (self.current_index + 1) % len(self.keys)
-        return key
+        return key, name
 
     def get_random_key(self):
         """ランダムなAPIキーを取得"""
-        return random.choice(self.keys)
+        idx = random.randint(0, len(self.keys) - 1)
+        return self.keys[idx], self.key_names[idx]
+
+    def mark_failed(self, key_name: str):
+        """キーを失敗としてマーク"""
+        if key_name in self.key_names:
+            idx = self.key_names.index(key_name)
+            self.failed_keys.add(idx)
+            print(f"  [!] {key_name} をスキップ対象に追加")
+
+    def get_working_key(self):
+        """動作するキーを取得（失敗したキーをスキップ）"""
+        for i in range(len(self.keys)):
+            if i not in self.failed_keys:
+                return self.keys[i], self.key_names[i]
+        # 全て失敗している場合はリセットして最初から
+        print("  [!] 全キーが失敗。リセットして再試行...")
+        self.failed_keys.clear()
+        return self.keys[0], self.key_names[0]
+
+
+def call_gemini_with_retry(func, key_manager: GeminiKeyManager, max_retries: int = None):
+    """Gemini APIを呼び出し、429エラー時は別のキーでリトライ"""
+    if max_retries is None:
+        max_retries = len(key_manager.keys)
+
+    last_error = None
+
+    for attempt in range(max_retries):
+        api_key, key_name = key_manager.get_working_key()
+        print(f"  [API] {key_name} を使用 (試行 {attempt + 1}/{max_retries})")
+
+        try:
+            genai.configure(api_key=api_key)
+            result = func()
+            return result
+
+        except Exception as e:
+            error_str = str(e)
+            last_error = e
+
+            if "429" in error_str or "quota" in error_str.lower():
+                print(f"  [!] {key_name}: クォータエラー")
+                key_manager.mark_failed(key_name)
+                time.sleep(1)  # 少し待つ
+                continue
+            else:
+                # 429以外のエラーは即座に raise
+                raise e
+
+    # 全てのリトライが失敗
+    raise last_error
 
 
 def get_google_credentials():
@@ -192,11 +253,7 @@ def update_spreadsheet(row: int, updates: dict):
 
 
 def search_asadora_info(theme: str, key_manager: GeminiKeyManager) -> str:
-    """Geminiでウェブ検索して朝ドラ情報を収集"""
-    api_key = key_manager.get_key()
-    genai.configure(api_key=api_key)
-
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    """Geminiでウェブ検索して朝ドラ情報を収集（429エラー時リトライ対応）"""
 
     prompt = f"""あなたは朝ドラ（NHK連続テレビ小説）の専門家です。
 以下のテーマについて、正確な情報を調査してください。
@@ -216,16 +273,16 @@ def search_asadora_info(theme: str, key_manager: GeminiKeyManager) -> str:
 各作品について、できるだけ多くの情報を含めてください。
 """
 
-    response = model.generate_content(prompt)
-    return response.text
+    def api_call():
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        response = model.generate_content(prompt)
+        return response.text
+
+    return call_gemini_with_retry(api_call, key_manager)
 
 
 def generate_dialogue_script(theme: str, search_results: str, key_manager: GeminiKeyManager) -> dict:
-    """対談形式の台本を生成"""
-    api_key = key_manager.get_key()
-    genai.configure(api_key=api_key)
-
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    """対談形式の台本を生成（429エラー時リトライ対応）"""
 
     prompt = f"""あなたはYouTubeの朝ドラ紹介チャンネルの台本作家です。
 以下の情報を基に、2人のキャラクターによる対談形式のランキング動画台本を作成してください。
@@ -288,8 +345,12 @@ def generate_dialogue_script(theme: str, search_results: str, key_manager: Gemin
 - 必ず有効なJSONを出力
 """
 
-    response = model.generate_content(prompt)
-    text = response.text
+    def api_call():
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        response = model.generate_content(prompt)
+        return response.text
+
+    text = call_gemini_with_retry(api_call, key_manager)
 
     # JSONを抽出
     json_match = re.search(r'\{[\s\S]*\}', text)
@@ -407,8 +468,36 @@ def generate_gemini_tts(text: str, voice: str, api_key: str, output_path: str) -
         return False
 
 
+def generate_tts_with_retry(text: str, voice: str, output_path: str, key_manager: GeminiKeyManager) -> bool:
+    """TTSをリトライ付きで生成"""
+    max_retries = len(key_manager.keys)
+
+    for attempt in range(max_retries):
+        api_key, key_name = key_manager.get_working_key()
+
+        try:
+            success = generate_gemini_tts(text, voice, api_key, output_path)
+            if success:
+                return True
+            else:
+                # 生成失敗（429以外）
+                key_manager.mark_failed(key_name)
+
+        except Exception as e:
+            error_str = str(e)
+            if "429" in error_str or "quota" in error_str.lower():
+                key_manager.mark_failed(key_name)
+                time.sleep(0.5)
+                continue
+            else:
+                print(f"    TTS エラー: {e}")
+                return False
+
+    return False
+
+
 def generate_dialogue_audio_parallel(dialogue: list, temp_dir: Path, key_manager: GeminiKeyManager) -> tuple:
-    """対話の音声を並列生成"""
+    """対話の音声を並列生成（リトライ対応）"""
     audio_files = []
     segments = []
 
@@ -416,10 +505,9 @@ def generate_dialogue_audio_parallel(dialogue: list, temp_dir: Path, key_manager
         speaker = line["speaker"]
         text = line["text"]
         voice = CHARACTERS[speaker]["voice"]
-        api_key = key_manager.get_random_key()
 
         output_path = str(temp_dir / f"line_{index:04d}.wav")
-        success = generate_gemini_tts(text, voice, api_key, output_path)
+        success = generate_tts_with_retry(text, voice, output_path, key_manager)
 
         return index, output_path, success, speaker, text
 
