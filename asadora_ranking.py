@@ -58,26 +58,42 @@ FPS = 24
 TEST_MODE = os.environ.get("TEST_MODE", "false").lower() == "true"
 RANKING_COUNT = 3 if TEST_MODE else 10  # テスト時はTOP3、本番はTOP10
 
-# ElevenLabs TTS設定（男女ペア）
+# ElevenLabs TTS設定
 # 日本語対応ボイスを使用（eleven_multilingual_v2）
-ELEVENLABS_VOICES = {
-    "カツオ": "pNInz6obpgDQGcFmaJgB",     # 男性: Adam - 落ち着いた知的な声（勝間タイプ）
-    "ヒロミ": "21m00Tcm4TlvDq8ikWAM",     # 女性: Rachel - クールでドライな声（ひろゆきタイプ）
+ELEVENLABS_VOICE_MALE = "pNInz6obpgDQGcFmaJgB"    # 男性: Adam
+ELEVENLABS_VOICE_FEMALE = "21m00Tcm4TlvDq8ikWAM"  # 女性: Rachel
+
+# チャンネルごとのボイス設定
+# channel: (カツミのボイス, ヒロシのボイス)
+CHANNEL_VOICE_CONFIG = {
+    "27": (ELEVENLABS_VOICE_FEMALE, ELEVENLABS_VOICE_MALE),   # 朝ドラ: カツミ=女性, ヒロシ=男性
+    "23": (ELEVENLABS_VOICE_MALE, ELEVENLABS_VOICE_FEMALE),   # 昭和の曲: カツミ=男性, ヒロシ=女性
+    "24": (ELEVENLABS_VOICE_MALE, ELEVENLABS_VOICE_MALE),     # 瀬戸内寂聴: カツミ=男性, ヒロシ=男性
 }
 
-# キャラクター設定（勝間タイプ × ひろゆきタイプ）
+# デフォルトのキャラクター設定（チャンネルに応じて voice_id を動的に設定）
 CHARACTERS = {
-    "カツオ": {
-        "voice_id": ELEVENLABS_VOICES["カツオ"],
+    "カツミ": {
+        "voice_id": ELEVENLABS_VOICE_FEMALE,  # デフォルト（動的に変更される）
         "color": "#4169E1",  # 青（知的）
-        "description": "インテリ男性、論理的、世間の総意を代弁、丁寧語"
+        "description": "インテリ、論理的、世間の総意を代弁、丁寧語"
     },
-    "ヒロミ": {
-        "voice_id": ELEVENLABS_VOICES["ヒロミ"],
+    "ヒロシ": {
+        "voice_id": ELEVENLABS_VOICE_MALE,  # デフォルト（動的に変更される）
         "color": "#FF6347",  # 赤（毒舌）
-        "description": "毒舌女性、ズバッと言う、言いにくいことをハッキリ"
+        "description": "毒舌、ズバッと言う、言いにくいことをハッキリ"
     }
 }
+
+
+def setup_channel_voices(channel: str):
+    """チャンネルに応じてキャラクターのボイスIDを設定"""
+    if channel in CHANNEL_VOICE_CONFIG:
+        katsumi_voice, hiroshi_voice = CHANNEL_VOICE_CONFIG[channel]
+        CHARACTERS["カツミ"]["voice_id"] = katsumi_voice
+        CHARACTERS["ヒロシ"]["voice_id"] = hiroshi_voice
+        print(f"  ボイス設定: カツミ={'女性' if katsumi_voice == ELEVENLABS_VOICE_FEMALE else '男性'}, "
+              f"ヒロシ={'女性' if hiroshi_voice == ELEVENLABS_VOICE_FEMALE else '男性'}")
 
 
 class GeminiKeyManager:
@@ -211,7 +227,7 @@ def get_drive_service():
 
 
 # 使用可能なチャンネル
-AVAILABLE_CHANNELS = ["23", "27"]  # 23=昭和の曲, 27=朝ドラ
+AVAILABLE_CHANNELS = ["23", "24", "27"]  # 23=昭和の曲, 24=瀬戸内寂聴, 27=朝ドラ
 
 
 def get_pending_task():
@@ -312,7 +328,7 @@ def generate_dialogue_script(theme: str, search_results: str, key_manager: Gemin
     ranking_example = RANKING_COUNT  # 3 or 10
 
     prompt = f"""あなたはYouTubeのランキング紹介チャンネルの台本作家です。
-以下の情報を基に、男女2人による掛け合い形式のランキング動画台本を作成してください。
+以下の情報を基に、2人による掛け合い形式のランキング動画台本を作成してください。
 
 テーマ: {theme}
 
@@ -320,14 +336,14 @@ def generate_dialogue_script(theme: str, search_results: str, key_manager: Gemin
 {search_results}
 
 【キャラクター】
-👨 カツオ（勝間和代タイプ・インテリ男性）
+🎙️ カツミ（勝間和代タイプ・インテリ）
 - 論理的で知的、世間の総意を代弁
 - ランキングの紹介・説明を担当
 - 「皆さんご存知の通り」「〇〇ですよね」「データによると」など
 - 丁寧語で落ち着いたトーン
-- ヒロミの毒舌をなだめる役割
+- ヒロシの毒舌をなだめる役割
 
-👩 ヒロミ（ひろゆきタイプ・毒舌女性）
+🎙️ ヒロシ（ひろゆきタイプ・毒舌）
 - ズバッと言う、言いにくいことをハッキリ
 - 一言ツッコミ、皮肉を担当
 - 「それって〇〇ですよね」「正直どうでもよくないですか」「なんかそれ嘘っぽくないですか」など
@@ -335,24 +351,24 @@ def generate_dialogue_script(theme: str, search_results: str, key_manager: Gemin
 - ランキングや作品に対して鋭いツッコミを入れる
 
 【掛け合いの流れ】
-1. カツオ：「第〇位は『〇〇』です」（発表）
-2. ヒロミ：「それって本当に泣けるんですか？」（ツッコミ）
-3. カツオ：「この作品は〇〇で有名ですよね」（説明）
-4. ヒロミ：「有名っていうか、ゴリ押しですよね」（毒舌）
-5. カツオ：「まあまあ、〇〇な点が評価されていますよ」（フォロー）
+1. カツミ：「第〇位は『〇〇』です」（発表）
+2. ヒロシ：「それって本当に泣けるんですか？」（ツッコミ）
+3. カツミ：「この作品は〇〇で有名ですよね」（説明）
+4. ヒロシ：「有名っていうか、ゴリ押しですよね」（毒舌）
+5. カツミ：「まあまあ、〇〇な点が評価されていますよ」（フォロー）
 6. 交互に続く...
 
 【エンディング（超重要！必ずこの流れで）】
-ヒロミが最後までランキングにツッコミを入れて終わる：
-- ヒロミ：「ところでこのランキング、誰が決めたんですか？」
-- カツオ：「まあ、色々な意見を参考に...」
-- ヒロミ：「結局データの根拠ゼロですよね」
-- カツオ：「そんなことないですよ、ちゃんと調査して...」
-- ヒロミ：「泣けるかどうかなんて人それぞれじゃないですか」
-- カツオ：「まあまあ、楽しんでいただければ...」
-- ヒロミ：「正直この動画見て泣く人いるんですかね」
-- カツオ：「ヒロミさん！...では皆さん、また次回！」
-- ヒロミ：「次回もこんな適当なランキングやるんですか」
+ヒロシが最後までランキングにツッコミを入れて終わる：
+- ヒロシ：「ところでこのランキング、誰が決めたんですか？」
+- カツミ：「まあ、色々な意見を参考に...」
+- ヒロシ：「結局データの根拠ゼロですよね」
+- カツミ：「そんなことないですよ、ちゃんと調査して...」
+- ヒロシ：「泣けるかどうかなんて人それぞれじゃないですか」
+- カツミ：「まあまあ、楽しんでいただければ...」
+- ヒロシ：「正直この動画見て泣く人いるんですかね」
+- カツミ：「ヒロシさん！...では皆さん、また次回！」
+- ヒロシ：「次回もこんな適当なランキングやるんですか」
 
 【出力形式】必ず以下のJSON形式で出力してください：
 {{
@@ -360,10 +376,10 @@ def generate_dialogue_script(theme: str, search_results: str, key_manager: Gemin
     "description": "動画説明文（500文字程度、改行含む）",
     "tags": ["タグ1", "タグ2", ...],
     "opening": [
-        {{"speaker": "カツオ", "text": "皆さん、こんにちは。今日もランキングをお届けします。"}},
-        {{"speaker": "ヒロミ", "text": "また適当なランキングですか。"}},
-        {{"speaker": "カツオ", "text": "適当じゃないですよ、ちゃんと調査しましたよ。"}},
-        {{"speaker": "ヒロミ", "text": "はいはい、まあ見てやりますよ。"}},
+        {{"speaker": "カツミ", "text": "皆さん、こんにちは。今日もランキングをお届けします。"}},
+        {{"speaker": "ヒロシ", "text": "また適当なランキングですか。"}},
+        {{"speaker": "カツミ", "text": "適当じゃないですよ、ちゃんと調査しましたよ。"}},
+        {{"speaker": "ヒロシ", "text": "はいはい、まあ見てやりますよ。"}},
         ...（{opening_turns}、自然な掛け合いで）
     ],
     "rankings": [
@@ -373,35 +389,35 @@ def generate_dialogue_script(theme: str, search_results: str, key_manager: Gemin
             "year": "放送年",
             "cast": "主演・出演者名",
             "dialogue": [
-                {{"speaker": "カツオ", "text": "第{ranking_example}位は『〇〇』です。"}},
-                {{"speaker": "ヒロミ", "text": "え、これが{ranking_example}位なんですか。"}},
-                {{"speaker": "カツオ", "text": "この作品は〇〇で話題になりましたよね。"}},
-                {{"speaker": "ヒロミ", "text": "話題っていうか、ステマですよね。"}},
-                ...（{dialogue_turns}、カツオが紹介→ヒロミがツッコミの流れ）
+                {{"speaker": "カツミ", "text": "第{ranking_example}位は『〇〇』です。"}},
+                {{"speaker": "ヒロシ", "text": "え、これが{ranking_example}位なんですか。"}},
+                {{"speaker": "カツミ", "text": "この作品は〇〇で話題になりましたよね。"}},
+                {{"speaker": "ヒロシ", "text": "話題っていうか、ステマですよね。"}},
+                ...（{dialogue_turns}、カツミが紹介→ヒロシがツッコミの流れ）
             ],
             "image_keyword": "作品イメージの英語キーワード（例: japanese drama scene）"
         }},
         ... ({ranking_example}位から1位まで{ranking_example}個)
     ],
     "ending": [
-        {{"speaker": "カツオ", "text": "以上、ランキングでした。いかがでしたか？"}},
-        {{"speaker": "ヒロミ", "text": "ところでこのランキング、誰が決めたんですか？"}},
-        {{"speaker": "カツオ", "text": "色々な意見を参考にしていますよ。"}},
-        {{"speaker": "ヒロミ", "text": "結局データの根拠ゼロですよね。"}},
-        {{"speaker": "カツオ", "text": "そんなことないですよ..."}},
-        {{"speaker": "ヒロミ", "text": "泣けるかどうかなんて人それぞれじゃないですか。"}},
-        {{"speaker": "カツオ", "text": "まあまあ、楽しんでいただければ..."}},
-        {{"speaker": "ヒロミ", "text": "正直この動画見て泣く人いるんですかね。"}},
-        {{"speaker": "カツオ", "text": "ヒロミさん！...では皆さん、また次回お会いしましょう！"}},
-        {{"speaker": "ヒロミ", "text": "次回もこんな適当なランキングやるんですか。"}}
+        {{"speaker": "カツミ", "text": "以上、ランキングでした。いかがでしたか？"}},
+        {{"speaker": "ヒロシ", "text": "ところでこのランキング、誰が決めたんですか？"}},
+        {{"speaker": "カツミ", "text": "色々な意見を参考にしていますよ。"}},
+        {{"speaker": "ヒロシ", "text": "結局データの根拠ゼロですよね。"}},
+        {{"speaker": "カツミ", "text": "そんなことないですよ..."}},
+        {{"speaker": "ヒロシ", "text": "泣けるかどうかなんて人それぞれじゃないですか。"}},
+        {{"speaker": "カツミ", "text": "まあまあ、楽しんでいただければ..."}},
+        {{"speaker": "ヒロシ", "text": "正直この動画見て泣く人いるんですかね。"}},
+        {{"speaker": "カツミ", "text": "ヒロシさん！...では皆さん、また次回お会いしましょう！"}},
+        {{"speaker": "ヒロシ", "text": "次回もこんな適当なランキングやるんですか。"}}
     ]
 }}
 
 【重要】
 - ランキングは必ず{ranking_example}位から1位まで{ranking_example}個作成
 - 各セリフは20〜40文字程度（短めにテンポよく）
-- カツオは紹介・説明、ヒロミは毒舌ツッコミ
-- ヒロミの毒舌は作品を否定しすぎず、軽いツッコミ程度に
+- カツミは紹介・説明、ヒロシは毒舌ツッコミ
+- ヒロシの毒舌は作品を否定しすぎず、軽いツッコミ程度に
 - エンディングは必ず上記の毒舌パターンを含める
 - 作品名、放送年、出演者は正確に
 - 必ず有効なJSONを出力
@@ -1454,6 +1470,9 @@ def process_auto_mode(task: dict, key_manager: GeminiKeyManager):
     row = task["row"]
     theme = task["theme"]
     channel = task["channel"]
+
+    # チャンネルに応じたボイス設定
+    setup_channel_voices(channel)
 
     try:
         update_spreadsheet(row, {"status": "PROCESSING"})
