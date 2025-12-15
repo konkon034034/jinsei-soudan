@@ -860,8 +860,8 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list,
     client_id = os.environ.get("YOUTUBE_CLIENT_ID")
     client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
 
-    # TOKEN環境変数名を構築
-    token_env_name = f"TOKEN_{channel_token}"
+    # TOKEN環境変数名を構築（YOUTUBE_REFRESH_TOKEN_X 形式）
+    token_env_name = f"YOUTUBE_REFRESH_TOKEN_{channel_token}"
     refresh_token = os.environ.get(token_env_name)
 
     # デバッグ情報
@@ -872,9 +872,9 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list,
 
     if not all([client_id, client_secret, refresh_token]):
         # 利用可能な環境変数を表示
-        available_tokens = [k for k in os.environ.keys() if k.startswith("TOKEN_")]
+        available_tokens = [k for k in os.environ.keys() if k.startswith("YOUTUBE_REFRESH_TOKEN")]
         print(f"[DEBUG] 利用可能なTOKEN環境変数: {available_tokens}")
-        raise ValueError(f"YouTube認証情報が不足しています (TOKEN_{channel_token})")
+        raise ValueError(f"YouTube認証情報が不足しています ({token_env_name})")
 
     # アクセストークン取得
     token_url = "https://oauth2.googleapis.com/token"
