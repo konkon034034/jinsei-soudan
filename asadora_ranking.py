@@ -915,18 +915,18 @@ def download_bgm_from_drive(temp_dir: Path) -> str:
 
 
 def create_video_ffmpeg(sections: list, all_segments: list, temp_dir: Path) -> tuple:
-    """FFmpegで動画を超高速生成（SRT字幕 + BGMミキシング対応）"""
+    """FFmpegで動画を生成（2段階処理：動画作成→字幕オーバーレイ）"""
     print("\n" + "=" * 50)
-    print("[FFmpeg] 動画生成開始（超高速モード）")
+    print("[FFmpeg] 動画生成開始（2段階処理）")
     print("=" * 50)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     start_time = time.time()
 
     # 1. 音声ファイルを結合
-    print("\n[1/5] 音声ファイルを結合中...")
+    print("\n[1/6] 音声ファイルを結合中...")
     audio_files = [s['audio'] for s in sections if s.get('audio') and os.path.exists(s['audio'])]
-    combined_audio = str(temp_dir / "combined_audio.wav")
+    combined_audio = str(temp_dir / "combined_audio.mp3")
 
     if not combine_audio_ffmpeg(audio_files, combined_audio):
         raise ValueError("音声結合に失敗しました")
@@ -935,7 +935,7 @@ def create_video_ffmpeg(sections: list, all_segments: list, temp_dir: Path) -> t
     print(f"  総再生時間: {total_duration:.1f}秒 ({total_duration/60:.1f}分)")
 
     # 2. BGMをダウンロード（オプション）
-    print("\n[2/5] BGMを取得中...")
+    print("\n[2/6] BGMを取得中...")
     bgm_path = download_bgm_from_drive(temp_dir)
     if bgm_path:
         print(f"  BGM: {bgm_path}")
@@ -943,7 +943,7 @@ def create_video_ffmpeg(sections: list, all_segments: list, temp_dir: Path) -> t
         print("  BGMなし（音声のみ）")
 
     # 3. 背景画像にオーバーレイを焼き込み
-    print("\n[3/5] 背景画像を処理中...")
+    print("\n[3/6] 背景画像を処理中...")
     processed_sections = []
 
     for i, section in enumerate(sections):
@@ -972,94 +972,104 @@ def create_video_ffmpeg(sections: list, all_segments: list, temp_dir: Path) -> t
         print(f"  [{i+1}/{len(sections)}] {duration:.1f}秒")
 
     # 4. SRT字幕ファイルを生成
-    print("\n[4/5] SRT字幕ファイルを生成中...")
+    print("\n[4/6] SRT字幕ファイルを生成中...")
     srt_path = str(temp_dir / f"asadora_ranking_{timestamp}.srt")
     generate_srt(all_segments, srt_path)
     print(f"  字幕数: {len(all_segments)}件")
 
-    # 5. 画像シーケンスファイルを作成
-    print("\n[5/5] FFmpegで動画を合成中...")
+    # 5. 画像シーケンスファイルを作成し、動画を生成（字幕なし）
+    print("\n[5/6] 画像+音声で動画を生成中...")
     concat_file = str(temp_dir / "images.txt")
     create_slideshow_input(processed_sections, concat_file)
 
+    # 中間ファイル（字幕なし動画）
+    temp_video = str(temp_dir / f"temp_video_{timestamp}.mp4")
     output_path = str(temp_dir / f"asadora_ranking_{timestamp}.mp4")
 
-    # 日本語フォント設定（force_style）
-    font_style = "FontName=Noto Sans CJK JP,FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,MarginV=80"
-
-    # FFmpegコマンドを構築
+    # Step 1: 画像+音声で動画作成（字幕なし）
     if bgm_path and os.path.exists(bgm_path):
         # BGMあり: 音声ミキシング
         filter_complex = (
             f"[1:a]volume=1.0[voice];"
             f"[2:a]volume=0.12,aloop=loop=-1:size=2e+09[bgm_loop];"
-            f"[voice][bgm_loop]amix=inputs=2:duration=first:dropout_transition=2[a];"
-            f"[0:v]scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},subtitles={srt_path}:force_style='{font_style}'[v]"
+            f"[voice][bgm_loop]amix=inputs=2:duration=first:dropout_transition=2[a]"
         )
 
-        cmd = [
-            'ffmpeg', '-y',
-            '-f', 'concat', '-safe', '0', '-i', concat_file,  # 画像
-            '-i', combined_audio,  # 音声
-            '-i', bgm_path,  # BGM
-            '-filter_complex', filter_complex,
-            '-map', '[v]', '-map', '[a]',
-            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
-            '-c:a', 'aac', '-b:a', '192k',
-            '-pix_fmt', 'yuv420p',
-            '-movflags', '+faststart',
-            output_path
-        ]
-    else:
-        # BGMなし: シンプル版
-        video_filter = f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},subtitles={srt_path}:force_style='{font_style}'"
-
-        cmd = [
+        cmd_step1 = [
             'ffmpeg', '-y',
             '-f', 'concat', '-safe', '0', '-i', concat_file,
             '-i', combined_audio,
-            '-vf', video_filter,
+            '-i', bgm_path,
+            '-filter_complex', filter_complex,
+            '-map', '0:v', '-map', '[a]',
+            '-vf', f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}",
             '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
             '-c:a', 'aac', '-b:a', '192k',
             '-pix_fmt', 'yuv420p',
-            '-shortest',
             '-movflags', '+faststart',
-            output_path
+            temp_video
         ]
-
-    print(f"  出力: {output_path}")
-
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        elapsed = time.time() - start_time
-        print(f"\n✓ 動画生成完了!")
-        print(f"  処理時間: {elapsed:.1f}秒")
-        print(f"  動画長: {total_duration:.1f}秒")
-        print(f"  速度比: {total_duration/elapsed:.1f}x リアルタイム")
-
-    except subprocess.CalledProcessError as e:
-        print(f"\nFFmpegエラー: {e.stderr[:500] if e.stderr else 'unknown'}")
-
-        # フォールバック1: 字幕なしで再試行
-        print("\n[フォールバック] 字幕なしで再試行...")
-        cmd_fallback = [
+    else:
+        # BGMなし
+        cmd_step1 = [
             'ffmpeg', '-y',
             '-f', 'concat', '-safe', '0', '-i', concat_file,
             '-i', combined_audio,
             '-vf', f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}",
             '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
             '-c:a', 'aac', '-b:a', '192k',
-            '-pix_fmt', 'yuv420p', '-shortest',
+            '-pix_fmt', 'yuv420p',
+            '-shortest',
             '-movflags', '+faststart',
-            output_path
+            temp_video
         ]
 
-        try:
-            subprocess.run(cmd_fallback, check=True, capture_output=True)
-            print("  字幕なしで完了")
-        except subprocess.CalledProcessError as e2:
-            print(f"フォールバックも失敗: {e2.stderr[:200] if e2.stderr else 'unknown'}")
-            raise
+    print(f"  中間ファイル: {temp_video}")
+
+    try:
+        subprocess.run(cmd_step1, capture_output=True, text=True, check=True)
+        print("  ✓ 画像+音声の動画作成完了")
+    except subprocess.CalledProcessError as e:
+        print(f"FFmpegエラー（Step1）: {e.stderr[:500] if e.stderr else 'unknown'}")
+        raise
+
+    # 6. 字幕を動画全体にオーバーレイ
+    print("\n[6/6] 字幕を動画にオーバーレイ中...")
+
+    # 日本語フォント設定
+    font_style = "FontName=Noto Sans CJK JP,FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,MarginV=80"
+
+    cmd_step2 = [
+        'ffmpeg', '-y',
+        '-i', temp_video,
+        '-vf', f"subtitles={srt_path}:force_style='{font_style}'",
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+        '-c:a', 'copy',
+        '-movflags', '+faststart',
+        output_path
+    ]
+
+    try:
+        subprocess.run(cmd_step2, capture_output=True, text=True, check=True)
+        elapsed = time.time() - start_time
+        print(f"\n✓ 動画生成完了!")
+        print(f"  処理時間: {elapsed:.1f}秒")
+        print(f"  動画長: {total_duration:.1f}秒")
+        print(f"  速度比: {total_duration/elapsed:.1f}x リアルタイム")
+        print(f"  出力: {output_path}")
+
+        # 中間ファイルを削除
+        if os.path.exists(temp_video):
+            os.remove(temp_video)
+
+    except subprocess.CalledProcessError as e:
+        print(f"\nFFmpegエラー（Step2 字幕）: {e.stderr[:500] if e.stderr else 'unknown'}")
+
+        # フォールバック: 字幕なしで中間ファイルをそのまま使用
+        print("\n[フォールバック] 字幕なしで出力...")
+        import shutil
+        shutil.move(temp_video, output_path)
+        print("  字幕なしで完了")
 
     return output_path, srt_path
 
