@@ -50,6 +50,10 @@ VIDEO_WIDTH = 1920
 VIDEO_HEIGHT = 1080
 FPS = 24
 
+# ===== テストモード設定 =====
+TEST_MODE = os.environ.get("TEST_MODE", "false").lower() == "true"
+RANKING_COUNT = 3 if TEST_MODE else 10  # テスト時はTOP3、本番はTOP10
+
 # Gemini TTS設定
 VOICE_YUMIKO = "Aoede"   # 女性声
 VOICE_KENJI = "Charon"   # 男性声
@@ -296,6 +300,12 @@ def search_asadora_info(theme: str, key_manager: GeminiKeyManager) -> str:
 def generate_dialogue_script(theme: str, search_results: str, key_manager: GeminiKeyManager) -> dict:
     """対談形式の台本を生成（429エラー時リトライ対応）"""
 
+    # テストモードに応じて設定を調整
+    opening_turns = "2〜3往復" if TEST_MODE else "4〜6往復"
+    dialogue_turns = "4〜5往復" if TEST_MODE else "8〜10往復"
+    ending_turns = "2〜3往復" if TEST_MODE else "6〜8往復"
+    ranking_example = RANKING_COUNT  # 3 or 10
+
     prompt = f"""あなたはYouTubeの朝ドラ紹介チャンネルの台本作家です。
 以下の情報を基に、2人のキャラクターによる対談形式のランキング動画台本を作成してください。
 
@@ -325,31 +335,32 @@ def generate_dialogue_script(theme: str, search_results: str, key_manager: Gemin
     "opening": [
         {{"speaker": "ユミコ", "text": "皆さん、こんにちは！朝ドラのすべてへようこそ！"}},
         {{"speaker": "ケンジ", "text": "こんにちは。今日も朝ドラの魅力をお届けしますよ。"}},
-        ...（4〜6往復、自然な会話で）
+        ...（{opening_turns}、自然な会話で）
     ],
     "rankings": [
         {{
-            "rank": 10,
+            "rank": {ranking_example},
             "work_title": "作品名",
             "year": "放送年",
             "cast": "主演俳優名",
             "dialogue": [
-                {{"speaker": "ユミコ", "text": "さあ、第10位の発表よ！"}},
-                {{"speaker": "ケンジ", "text": "第10位は..."}},
-                ...（8〜10往復、作品の魅力を語る）
+                {{"speaker": "ユミコ", "text": "さあ、第{ranking_example}位の発表よ！"}},
+                {{"speaker": "ケンジ", "text": "第{ranking_example}位は..."}},
+                ...（{dialogue_turns}、作品の魅力を語る）
             ],
             "image_keyword": "作品イメージの英語キーワード（例: japanese countryside spring）"
         }},
-        ... (10位から1位まで10個)
+        ... ({ranking_example}位から1位まで{ranking_example}個)
     ],
     "ending": [
         {{"speaker": "ユミコ", "text": "いかがでしたか？"}},
         {{"speaker": "ケンジ", "text": "どれも名作ばかりでしたね。"}},
-        ...（6〜8往復、まとめと次回予告）
+        ...（{ending_turns}、まとめと次回予告）
     ]
 }}
 
 【重要】
+- ランキングは必ず{ranking_example}位から1位まで{ranking_example}個作成
 - 各セリフは25〜50文字程度
 - ユミコは感情的なリアクション、ケンジは客観的な情報提供
 - 作品名、放送年、主演は正確に
@@ -1132,10 +1143,11 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     all_segments = []
     current_time = 0.0
 
-    print("動画作成開始（FFmpeg高速モード）...")
+    total_steps = RANKING_COUNT + 2  # オープニング + ランキング数 + エンディング
+    print(f"動画作成開始（FFmpeg高速モード）... [全{total_steps}セクション]")
 
     # オープニング
-    print("[1/12] オープニング音声生成中...")
+    print(f"[1/{total_steps}] オープニング音声生成中...")
     opening_dir = temp_dir / "opening"
     opening_dir.mkdir(exist_ok=True)
 
@@ -1161,9 +1173,10 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
         current_time += opening_duration
 
     # ランキング
-    for item in script["rankings"]:
+    for idx, item in enumerate(script["rankings"]):
         rank = item["rank"]
-        print(f"[{12 - rank}/12] 第{rank}位 音声生成中...")
+        step = idx + 2  # オープニングが1なので2から
+        print(f"[{step}/{total_steps}] 第{rank}位 音声生成中...")
 
         rank_dir = temp_dir / f"rank_{rank}"
         rank_dir.mkdir(exist_ok=True)
@@ -1193,7 +1206,7 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
             current_time += duration
 
     # エンディング
-    print("[12/12] エンディング音声生成中...")
+    print(f"[{total_steps}/{total_steps}] エンディング音声生成中...")
     ending_dir = temp_dir / "ending"
     ending_dir.mkdir(exist_ok=True)
 
@@ -1425,6 +1438,15 @@ def main():
     print("=" * 60)
     print("朝ドラランキング動画自動生成システム")
     print("=" * 60)
+
+    # テストモード表示
+    if TEST_MODE:
+        print("🧪 テストモード（TOP3・短縮版）")
+        print(f"   ランキング数: {RANKING_COUNT}位まで")
+    else:
+        print("🎬 本番モード（TOP10・フル版）")
+        print(f"   ランキング数: {RANKING_COUNT}位まで")
+    print()
 
     try:
         key_manager = GeminiKeyManager()
