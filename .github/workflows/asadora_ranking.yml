@@ -14,9 +14,18 @@ on:
         options:
           - auto
           - notebook
+      test_mode:
+        description: 'テストモード（TOP3で短い動画）'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 env:
   PYTHON_VERSION: '3.11'
+  TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
 
 jobs:
   generate-video:
@@ -73,6 +82,8 @@ jobs:
 
       - name: 動画を生成・投稿
         env:
+          # テストモード設定
+          TEST_MODE: ${{ env.TEST_MODE }}
           GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
