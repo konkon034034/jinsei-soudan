@@ -42,6 +42,9 @@ except ImportError:
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 from gtts import gTTS
+from icrawler.builtin import GoogleImageCrawler
+import logging
+logging.getLogger('icrawler').setLevel(logging.ERROR)  # icrawlerのログを抑制
 
 
 # ===== 定数 =====
@@ -585,41 +588,60 @@ def match_script_with_stt(segments: list, stt_words: list) -> list:
     return matched_segments
 
 
-def fetch_unsplash_image(keyword: str, output_path: str) -> bool:
-    """Unsplash APIから画像を取得"""
-    access_key = os.environ.get("UNSPLASH_ACCESS_KEY")
-    if not access_key:
-        return False
-
+def fetch_google_image(query: str, output_path: str) -> bool:
+    """Google画像検索から画像をダウンロード"""
     try:
-        url = "https://api.unsplash.com/search/photos"
-        params = {
-            "query": keyword,
-            "orientation": "landscape",
-            "per_page": 5
-        }
-        headers = {"Authorization": f"Client-ID {access_key}"}
+        # 一時ディレクトリを作成
+        temp_dir = Path(output_path).parent / "google_images"
+        temp_dir.mkdir(exist_ok=True)
 
-        response = requests.get(url, params=params, headers=headers, timeout=10)
-        response.raise_for_status()
+        # 既存ファイルを削除
+        for f in temp_dir.glob("*"):
+            f.unlink()
 
-        data = response.json()
-        if data["results"]:
-            # ランダムに1枚選択
-            image_data = random.choice(data["results"])
-            image_url = image_data["urls"]["regular"]
+        # Google画像検索でダウンロード
+        crawler = GoogleImageCrawler(
+            storage={'root_dir': str(temp_dir)},
+            log_level=logging.ERROR
+        )
+        crawler.crawl(keyword=query, max_num=1)
 
-            img_response = requests.get(image_url, timeout=30)
-            img_response.raise_for_status()
-
-            with open(output_path, 'wb') as f:
-                f.write(img_response.content)
-
+        # ダウンロードされた画像を取得
+        images = list(temp_dir.glob("*"))
+        if images:
+            # 画像をリサイズして保存
+            img = Image.open(images[0])
+            img = img.convert('RGB')
+            img.save(output_path)
             resize_image(output_path, VIDEO_WIDTH, VIDEO_HEIGHT)
+
+            # 一時ファイルを削除
+            for f in temp_dir.glob("*"):
+                f.unlink()
+
+            print(f"    画像取得成功: {query[:30]}...")
             return True
 
     except Exception as e:
-        print(f"Unsplash画像取得エラー: {e}")
+        print(f"    Google画像取得エラー: {e}")
+
+    return False
+
+
+def fetch_ranking_image(work_title: str, cast: str, output_path: str) -> bool:
+    """ランキング項目用の画像を取得（複数クエリで試行）"""
+    # 検索クエリの優先順位
+    queries = [
+        f"{work_title} {cast}",           # 作品名 + 出演者
+        f"{cast}",                          # 出演者名のみ
+        f"{work_title} ドラマ",             # 作品名 + ドラマ
+        f"{work_title}",                    # 作品名のみ
+    ]
+
+    for query in queries:
+        if fetch_google_image(query, output_path):
+            return True
+        time.sleep(0.5)  # レート制限対策
 
     return False
 
@@ -1140,9 +1162,15 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
             item["dialogue"], rank_dir, key_manager
         )
 
-        # 背景画像を取得
+        # 背景画像を取得（Google画像検索）
         image_path = str(temp_dir / f"rank_{rank}.jpg")
-        if not fetch_unsplash_image(item.get("image_keyword", "japan drama"), image_path):
+        work_title = item.get("work_title", "")
+        cast = item.get("cast", "")
+        print(f"    画像検索: {work_title} / {cast}")
+
+        if not fetch_ranking_image(work_title, cast, image_path):
+            # フォールバック: グラデーション背景
+            print(f"    → フォールバック: グラデーション背景")
             image_path = str(temp_dir / f"rank_{rank}.png")
             generate_gradient_background(image_path, rank=rank)
 
