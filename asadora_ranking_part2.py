@@ -591,10 +591,12 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list,
     """YouTubeに動画をアップロード"""
     client_id = os.environ.get("YOUTUBE_CLIENT_ID")
     client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
-    refresh_token = os.environ.get(f"TOKEN_{channel_token}")
+    # TOKEN環境変数名を構築（YOUTUBE_REFRESH_TOKEN_X 形式）
+    token_env_name = f"YOUTUBE_REFRESH_TOKEN_{channel_token}"
+    refresh_token = os.environ.get(token_env_name)
 
     if not all([client_id, client_secret, refresh_token]):
-        raise ValueError(f"YouTube認証情報が不足しています (TOKEN_{channel_token})")
+        raise ValueError(f"YouTube認証情報が不足しています ({token_env_name})")
 
     token_url = "https://oauth2.googleapis.com/token"
     response = requests.post(token_url, data={
@@ -679,7 +681,7 @@ def main():
 
         print(f"\nタスク発見:")
         print(f"  テーマ: {theme}")
-        print(f"  チャンネル: TOKEN_{channel}")
+        print(f"  チャンネル: YOUTUBE_REFRESH_TOKEN_{channel}")
 
         update_spreadsheet(row, {"status": "PROCESSING_PART2"})
 

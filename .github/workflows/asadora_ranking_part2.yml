@@ -57,33 +57,33 @@ jobs:
           UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          TOKEN_1: ${{ secrets.TOKEN_1 }}
-          TOKEN_2: ${{ secrets.TOKEN_2 }}
-          TOKEN_3: ${{ secrets.TOKEN_3 }}
-          TOKEN_4: ${{ secrets.TOKEN_4 }}
-          TOKEN_5: ${{ secrets.TOKEN_5 }}
-          TOKEN_6: ${{ secrets.TOKEN_6 }}
-          TOKEN_7: ${{ secrets.TOKEN_7 }}
-          TOKEN_8: ${{ secrets.TOKEN_8 }}
-          TOKEN_9: ${{ secrets.TOKEN_9 }}
-          TOKEN_10: ${{ secrets.TOKEN_10 }}
-          TOKEN_11: ${{ secrets.TOKEN_11 }}
-          TOKEN_12: ${{ secrets.TOKEN_12 }}
-          TOKEN_13: ${{ secrets.TOKEN_13 }}
-          TOKEN_14: ${{ secrets.TOKEN_14 }}
-          TOKEN_15: ${{ secrets.TOKEN_15 }}
-          TOKEN_16: ${{ secrets.TOKEN_16 }}
-          TOKEN_17: ${{ secrets.TOKEN_17 }}
-          TOKEN_18: ${{ secrets.TOKEN_18 }}
-          TOKEN_19: ${{ secrets.TOKEN_19 }}
-          TOKEN_20: ${{ secrets.TOKEN_20 }}
-          TOKEN_21: ${{ secrets.TOKEN_21 }}
-          TOKEN_22: ${{ secrets.TOKEN_22 }}
-          TOKEN_23: ${{ secrets.TOKEN_23 }}
-          TOKEN_24: ${{ secrets.TOKEN_24 }}
-          TOKEN_25: ${{ secrets.TOKEN_25 }}
-          TOKEN_26: ${{ secrets.TOKEN_26 }}
-          TOKEN_27: ${{ secrets.TOKEN_27 }}
+          YOUTUBE_REFRESH_TOKEN_1: ${{ secrets.YOUTUBE_REFRESH_TOKEN_1 }}
+          YOUTUBE_REFRESH_TOKEN_2: ${{ secrets.YOUTUBE_REFRESH_TOKEN_2 }}
+          YOUTUBE_REFRESH_TOKEN_3: ${{ secrets.YOUTUBE_REFRESH_TOKEN_3 }}
+          YOUTUBE_REFRESH_TOKEN_4: ${{ secrets.YOUTUBE_REFRESH_TOKEN_4 }}
+          YOUTUBE_REFRESH_TOKEN_5: ${{ secrets.YOUTUBE_REFRESH_TOKEN_5 }}
+          YOUTUBE_REFRESH_TOKEN_6: ${{ secrets.YOUTUBE_REFRESH_TOKEN_6 }}
+          YOUTUBE_REFRESH_TOKEN_7: ${{ secrets.YOUTUBE_REFRESH_TOKEN_7 }}
+          YOUTUBE_REFRESH_TOKEN_8: ${{ secrets.YOUTUBE_REFRESH_TOKEN_8 }}
+          YOUTUBE_REFRESH_TOKEN_9: ${{ secrets.YOUTUBE_REFRESH_TOKEN_9 }}
+          YOUTUBE_REFRESH_TOKEN_10: ${{ secrets.YOUTUBE_REFRESH_TOKEN_10 }}
+          YOUTUBE_REFRESH_TOKEN_11: ${{ secrets.YOUTUBE_REFRESH_TOKEN_11 }}
+          YOUTUBE_REFRESH_TOKEN_12: ${{ secrets.YOUTUBE_REFRESH_TOKEN_12 }}
+          YOUTUBE_REFRESH_TOKEN_13: ${{ secrets.YOUTUBE_REFRESH_TOKEN_13 }}
+          YOUTUBE_REFRESH_TOKEN_14: ${{ secrets.YOUTUBE_REFRESH_TOKEN_14 }}
+          YOUTUBE_REFRESH_TOKEN_15: ${{ secrets.YOUTUBE_REFRESH_TOKEN_15 }}
+          YOUTUBE_REFRESH_TOKEN_16: ${{ secrets.YOUTUBE_REFRESH_TOKEN_16 }}
+          YOUTUBE_REFRESH_TOKEN_17: ${{ secrets.YOUTUBE_REFRESH_TOKEN_17 }}
+          YOUTUBE_REFRESH_TOKEN_18: ${{ secrets.YOUTUBE_REFRESH_TOKEN_18 }}
+          YOUTUBE_REFRESH_TOKEN_19: ${{ secrets.YOUTUBE_REFRESH_TOKEN_19 }}
+          YOUTUBE_REFRESH_TOKEN_20: ${{ secrets.YOUTUBE_REFRESH_TOKEN_20 }}
+          YOUTUBE_REFRESH_TOKEN_21: ${{ secrets.YOUTUBE_REFRESH_TOKEN_21 }}
+          YOUTUBE_REFRESH_TOKEN_22: ${{ secrets.YOUTUBE_REFRESH_TOKEN_22 }}
+          YOUTUBE_REFRESH_TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
+          YOUTUBE_REFRESH_TOKEN_24: ${{ secrets.YOUTUBE_REFRESH_TOKEN_24 }}
+          YOUTUBE_REFRESH_TOKEN_25: ${{ secrets.YOUTUBE_REFRESH_TOKEN_25 }}
+          YOUTUBE_REFRESH_TOKEN_26: ${{ secrets.YOUTUBE_REFRESH_TOKEN_26 }}
+          YOUTUBE_REFRESH_TOKEN_27: ${{ secrets.YOUTUBE_REFRESH_TOKEN_27 }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           python asadora_ranking_part2.py
