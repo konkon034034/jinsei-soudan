@@ -60,15 +60,17 @@ RANKING_COUNT = 3 if TEST_MODE else 10  # テスト時はTOP3、本番はTOP10
 
 # ElevenLabs TTS設定
 # 日本語対応ボイスを使用（eleven_multilingual_v2）
-ELEVENLABS_VOICE_MALE = "pNInz6obpgDQGcFmaJgB"    # 男性: Adam
-ELEVENLABS_VOICE_FEMALE = "21m00Tcm4TlvDq8ikWAM"  # 女性: Rachel
+ELEVENLABS_VOICE_MALE = "pNInz6obpgDQGcFmaJgB"       # 男性: Adam（落ち着いた大人の男性）
+ELEVENLABS_VOICE_FEMALE = "21m00Tcm4TlvDq8ikWAM"     # 女性: Rachel（落ち着いた大人の女性）
+ELEVENLABS_VOICE_IKEMEN_A = "TxGEqnHWrfWFTfGW9XjX"   # イケボA: Josh（若い爽やか男性）
+ELEVENLABS_VOICE_IKEMEN_B = "yoZ06aMxZJJ28mfd3POQ"   # イケボB: Sam（若い甘い声の男性）
 
 # チャンネルごとのボイス設定
 # channel: (カツミのボイス, ヒロシのボイス)
 CHANNEL_VOICE_CONFIG = {
-    "27": (ELEVENLABS_VOICE_FEMALE, ELEVENLABS_VOICE_MALE),   # 朝ドラ: カツミ=女性, ヒロシ=男性
-    "23": (ELEVENLABS_VOICE_MALE, ELEVENLABS_VOICE_FEMALE),   # 昭和の曲: カツミ=男性, ヒロシ=女性
-    "24": (ELEVENLABS_VOICE_MALE, ELEVENLABS_VOICE_MALE),     # 瀬戸内寂聴: カツミ=男性, ヒロシ=男性
+    "27": (ELEVENLABS_VOICE_FEMALE, ELEVENLABS_VOICE_MALE),       # 朝ドラ: カツミ=女性, ヒロシ=男性
+    "23": (ELEVENLABS_VOICE_MALE, ELEVENLABS_VOICE_FEMALE),       # 昭和の曲: カツミ=男性, ヒロシ=女性
+    "24": (ELEVENLABS_VOICE_IKEMEN_A, ELEVENLABS_VOICE_IKEMEN_B), # 瀬戸内寂聴: カツミ=イケボA, ヒロシ=イケボB
 }
 
 # デフォルトのキャラクター設定（チャンネルに応じて voice_id を動的に設定）
@@ -86,14 +88,25 @@ CHARACTERS = {
 }
 
 
+def get_voice_name(voice_id: str) -> str:
+    """ボイスIDから名前を取得"""
+    voice_names = {
+        ELEVENLABS_VOICE_MALE: "男性(Adam)",
+        ELEVENLABS_VOICE_FEMALE: "女性(Rachel)",
+        ELEVENLABS_VOICE_IKEMEN_A: "イケボA(Josh)",
+        ELEVENLABS_VOICE_IKEMEN_B: "イケボB(Sam)",
+    }
+    return voice_names.get(voice_id, "不明")
+
+
 def setup_channel_voices(channel: str):
     """チャンネルに応じてキャラクターのボイスIDを設定"""
     if channel in CHANNEL_VOICE_CONFIG:
         katsumi_voice, hiroshi_voice = CHANNEL_VOICE_CONFIG[channel]
         CHARACTERS["カツミ"]["voice_id"] = katsumi_voice
         CHARACTERS["ヒロシ"]["voice_id"] = hiroshi_voice
-        print(f"  ボイス設定: カツミ={'女性' if katsumi_voice == ELEVENLABS_VOICE_FEMALE else '男性'}, "
-              f"ヒロシ={'女性' if hiroshi_voice == ELEVENLABS_VOICE_FEMALE else '男性'}")
+        print(f"  ボイス設定: カツミ={get_voice_name(katsumi_voice)}, "
+              f"ヒロシ={get_voice_name(hiroshi_voice)}")
 
 
 class GeminiKeyManager:
