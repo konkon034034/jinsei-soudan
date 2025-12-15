@@ -77,8 +77,14 @@ def get_drive_service():
     return build("drive", "v3", credentials=get_google_credentials())
 
 
+# 使用可能なチャンネル（3チャンネルのみ）
+AVAILABLE_CHANNELS = ["23", "24", "27"]
+
+
 def get_audio_ready_task():
     """AUDIO_READYタスクを取得"""
+    import random
+
     service = get_sheets_service()
 
     result = service.spreadsheets().values().get(
@@ -91,11 +97,17 @@ def get_audio_ready_task():
     for i, row in enumerate(values[1:], start=2):
         status = row[2] if len(row) > 2 else ""
         if status == "AUDIO_READY":
+            # チャンネル番号を取得（有効な番号のみ使用）
+            channel = row[3] if len(row) > 3 else ""
+            if channel not in AVAILABLE_CHANNELS:
+                channel = random.choice(AVAILABLE_CHANNELS)
+                print(f"  チャンネル自動選択: {channel}")
+
             return {
                 "row": i,
                 "theme": row[0] if len(row) > 0 else "",
                 "mode": row[1] if len(row) > 1 else "NOTEBOOK",
-                "channel": row[3] if len(row) > 3 else "17",
+                "channel": channel,
                 "script": row[5] if len(row) > 5 else "",
                 "audio_url": row[7] if len(row) > 7 else "",
             }
