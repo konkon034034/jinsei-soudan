@@ -561,13 +561,17 @@ def generate_tts_for_speaker(text: str, speaker: str, output_path: str) -> bool:
     # キャラクターの音声IDを取得
     voice_id = CHARACTERS.get(speaker, {}).get("voice_id")
 
+    # デバッグ: 話者とボイスIDを表示
+    voice_name = get_voice_name(voice_id) if voice_id else "なし"
+    print(f"    [{speaker}] voice_id={voice_name}")
+
     if voice_id:
         # ElevenLabsで生成を試みる
         if generate_elevenlabs_tts(text, voice_id, output_path):
             return True
 
     # フォールバック: gTTS
-    print(f"    → gTTSにフォールバック")
+    print(f"    [{speaker}] → gTTSにフォールバック")
     return generate_gtts(text, output_path)
 
 
@@ -702,15 +706,19 @@ def fetch_google_image(query: str, output_path: str) -> bool:
         for f in temp_dir.glob("*"):
             f.unlink()
 
+        print(f"    [icrawler] 検索開始: {query}")
+
         # Google画像検索でダウンロード
         crawler = GoogleImageCrawler(
             storage={'root_dir': str(temp_dir)},
-            log_level=logging.ERROR
+            log_level=logging.WARNING  # WARNINGレベルでログ表示
         )
-        crawler.crawl(keyword=query, max_num=1)
+        crawler.crawl(keyword=query, max_num=3)  # 3枚まで試行
 
         # ダウンロードされた画像を取得
         images = list(temp_dir.glob("*"))
+        print(f"    [icrawler] ダウンロード数: {len(images)}")
+
         if images:
             # 画像をリサイズして保存
             img = Image.open(images[0])
@@ -722,11 +730,15 @@ def fetch_google_image(query: str, output_path: str) -> bool:
             for f in temp_dir.glob("*"):
                 f.unlink()
 
-            print(f"    画像取得成功: {query[:30]}...")
+            print(f"    [icrawler] 画像取得成功!")
             return True
+        else:
+            print(f"    [icrawler] 画像が見つかりませんでした")
 
     except Exception as e:
-        print(f"    Google画像取得エラー: {e}")
+        print(f"    [icrawler] エラー: {e}")
+        import traceback
+        traceback.print_exc()
 
     return False
 
@@ -1211,7 +1223,8 @@ def create_video_ffmpeg(sections: list, all_segments: list, temp_dir: Path) -> t
     print("\n[6/6] 字幕を動画にオーバーレイ中...")
 
     # 日本語フォント設定
-    font_style = "FontName=Noto Sans CJK JP,FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,MarginV=80"
+    # 字幕スタイル: フォントサイズ72、薄いグレーの影
+    font_style = "FontName=Noto Sans CJK JP,FontSize=72,PrimaryColour=&H00FFFFFF,OutlineColour=&H00333333,BorderStyle=1,Outline=3,Shadow=0,MarginV=60"
 
     cmd_step2 = [
         'ffmpeg', '-y',
