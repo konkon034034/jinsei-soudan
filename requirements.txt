@@ -18,3 +18,4 @@ google-auth-oauthlib
 google-api-python-client
 google-cloud-texttospeech
 python-dotenv
+gtts>=2.3.0
