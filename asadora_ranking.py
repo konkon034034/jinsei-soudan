@@ -815,14 +815,58 @@ def add_overlay_to_image(image_path: str, output_path: str, rank: int = None,
     img.save(output_path, quality=95)
 
 
+def download_bgm_from_drive(temp_dir: Path) -> str:
+    """Google DriveからBGMをダウンロード"""
+    bgm_folder_id = os.environ.get("BGM_FOLDER_ID")
+    if not bgm_folder_id:
+        return None
+
+    try:
+        from googleapiclient.http import MediaIoBaseDownload
+        service = get_drive_service()
+
+        # フォルダ内のファイル一覧を取得
+        results = service.files().list(
+            q=f"'{bgm_folder_id}' in parents and mimeType contains 'audio/'",
+            fields="files(id, name)"
+        ).execute()
+
+        files = results.get('files', [])
+        if not files:
+            return None
+
+        # ランダムに1曲選択
+        selected = random.choice(files)
+        print(f"  BGM選択: {selected['name']}")
+
+        # ダウンロード
+        bgm_path = str(temp_dir / "bgm.mp3")
+        request = service.files().get_media(fileId=selected['id'])
+
+        with open(bgm_path, 'wb') as f:
+            downloader = MediaIoBaseDownload(f, request)
+            done = False
+            while not done:
+                status, done = downloader.next_chunk()
+
+        return bgm_path
+
+    except Exception as e:
+        print(f"  BGMダウンロードエラー: {e}")
+        return None
+
+
 def create_video_ffmpeg(sections: list, all_segments: list, temp_dir: Path) -> tuple:
-    """FFmpegで動画を高速生成"""
-    print("\n[FFmpeg] 動画生成開始...")
+    """FFmpegで動画を超高速生成（SRT字幕 + BGMミキシング対応）"""
+    print("\n" + "=" * 50)
+    print("[FFmpeg] 動画生成開始（超高速モード）")
+    print("=" * 50)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    start_time = time.time()
 
     # 1. 音声ファイルを結合
-    print("  [1/4] 音声ファイルを結合中...")
+    print("\n[1/5] 音声ファイルを結合中...")
     audio_files = [s['audio'] for s in sections if s.get('audio') and os.path.exists(s['audio'])]
     combined_audio = str(temp_dir / "combined_audio.wav")
 
@@ -830,12 +874,19 @@ def create_video_ffmpeg(sections: list, all_segments: list, temp_dir: Path) -> t
         raise ValueError("音声結合に失敗しました")
 
     total_duration = get_audio_duration_ffprobe(combined_audio)
-    print(f"    総再生時間: {total_duration:.1f}秒")
+    print(f"  総再生時間: {total_duration:.1f}秒 ({total_duration/60:.1f}分)")
 
-    # 2. 背景画像にオーバーレイを焼き込み
-    print("  [2/4] 背景画像を処理中...")
+    # 2. BGMをダウンロード（オプション）
+    print("\n[2/5] BGMを取得中...")
+    bgm_path = download_bgm_from_drive(temp_dir)
+    if bgm_path:
+        print(f"  BGM: {bgm_path}")
+    else:
+        print("  BGMなし（音声のみ）")
+
+    # 3. 背景画像にオーバーレイを焼き込み
+    print("\n[3/5] 背景画像を処理中...")
     processed_sections = []
-    current_time = 0.0
 
     for i, section in enumerate(sections):
         if not section.get('audio') or not os.path.exists(section['audio']):
@@ -845,8 +896,8 @@ def create_video_ffmpeg(sections: list, all_segments: list, temp_dir: Path) -> t
         if duration <= 0:
             continue
 
-        # 画像を処理
-        processed_image = str(temp_dir / f"processed_{i:03d}.jpg")
+        # 画像を処理（テキストを焼き込み）
+        processed_image = str(temp_dir / f"slide_{i:03d}.png")
         add_overlay_to_image(
             section['image'],
             processed_image,
@@ -860,66 +911,97 @@ def create_video_ffmpeg(sections: list, all_segments: list, temp_dir: Path) -> t
             'image': processed_image,
             'duration': duration
         })
-        current_time += duration
+        print(f"  [{i+1}/{len(sections)}] {duration:.1f}秒")
 
-    # 3. ASS字幕を生成
-    print("  [3/4] 字幕ファイルを生成中...")
-    ass_path = str(temp_dir / "subtitles.ass")
-    generate_ass_subtitles(all_segments, ass_path, VIDEO_WIDTH, VIDEO_HEIGHT)
-
-    # SRTも生成（互換性のため）
+    # 4. SRT字幕ファイルを生成
+    print("\n[4/5] SRT字幕ファイルを生成中...")
     srt_path = str(temp_dir / f"asadora_ranking_{timestamp}.srt")
     generate_srt(all_segments, srt_path)
+    print(f"  字幕数: {len(all_segments)}件")
 
-    # 4. FFmpegで動画を生成
-    print("  [4/4] FFmpegで動画を合成中...")
-
-    # concat入力ファイルを作成
-    concat_file = str(temp_dir / "concat.txt")
+    # 5. 画像シーケンスファイルを作成
+    print("\n[5/5] FFmpegで動画を合成中...")
+    concat_file = str(temp_dir / "images.txt")
     create_slideshow_input(processed_sections, concat_file)
 
     output_path = str(temp_dir / f"asadora_ranking_{timestamp}.mp4")
 
-    # FFmpegコマンド
-    cmd = [
-        'ffmpeg', '-y',
-        # 画像スライドショー入力
-        '-f', 'concat', '-safe', '0', '-i', concat_file,
-        # 音声入力
-        '-i', combined_audio,
-        # フィルター: 字幕を焼き込み
-        '-vf', f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},ass={ass_path}",
-        # 出力設定
-        '-c:v', 'libx264',
-        '-preset', 'fast',  # ultrafastより少し遅いが画質向上
-        '-crf', '23',
-        '-c:a', 'aac',
-        '-b:a', '128k',
-        '-pix_fmt', 'yuv420p',
-        '-shortest',
-        '-movflags', '+faststart',
-        output_path
-    ]
+    # 日本語フォント設定（force_style）
+    font_style = "FontName=Noto Sans CJK JP,FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,MarginV=80"
+
+    # FFmpegコマンドを構築
+    if bgm_path and os.path.exists(bgm_path):
+        # BGMあり: 音声ミキシング
+        filter_complex = (
+            f"[1:a]volume=1.0[voice];"
+            f"[2:a]volume=0.12,aloop=loop=-1:size=2e+09[bgm_loop];"
+            f"[voice][bgm_loop]amix=inputs=2:duration=first:dropout_transition=2[a];"
+            f"[0:v]scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},subtitles={srt_path}:force_style='{font_style}'[v]"
+        )
+
+        cmd = [
+            'ffmpeg', '-y',
+            '-f', 'concat', '-safe', '0', '-i', concat_file,  # 画像
+            '-i', combined_audio,  # 音声
+            '-i', bgm_path,  # BGM
+            '-filter_complex', filter_complex,
+            '-map', '[v]', '-map', '[a]',
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+            '-c:a', 'aac', '-b:a', '192k',
+            '-pix_fmt', 'yuv420p',
+            '-movflags', '+faststart',
+            output_path
+        ]
+    else:
+        # BGMなし: シンプル版
+        video_filter = f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},subtitles={srt_path}:force_style='{font_style}'"
+
+        cmd = [
+            'ffmpeg', '-y',
+            '-f', 'concat', '-safe', '0', '-i', concat_file,
+            '-i', combined_audio,
+            '-vf', video_filter,
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+            '-c:a', 'aac', '-b:a', '192k',
+            '-pix_fmt', 'yuv420p',
+            '-shortest',
+            '-movflags', '+faststart',
+            output_path
+        ]
+
+    print(f"  出力: {output_path}")
 
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        print(f"    完了: {output_path}")
+        elapsed = time.time() - start_time
+        print(f"\n✓ 動画生成完了!")
+        print(f"  処理時間: {elapsed:.1f}秒")
+        print(f"  動画長: {total_duration:.1f}秒")
+        print(f"  速度比: {total_duration/elapsed:.1f}x リアルタイム")
+
     except subprocess.CalledProcessError as e:
-        print(f"FFmpegエラー: {e.stderr}")
-        # フォールバック: 字幕なしで再試行
-        print("  字幕なしで再試行...")
+        print(f"\nFFmpegエラー: {e.stderr[:500] if e.stderr else 'unknown'}")
+
+        # フォールバック1: 字幕なしで再試行
+        print("\n[フォールバック] 字幕なしで再試行...")
         cmd_fallback = [
             'ffmpeg', '-y',
             '-f', 'concat', '-safe', '0', '-i', concat_file,
             '-i', combined_audio,
             '-vf', f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}",
-            '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
-            '-c:a', 'aac', '-b:a', '128k',
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+            '-c:a', 'aac', '-b:a', '192k',
             '-pix_fmt', 'yuv420p', '-shortest',
             '-movflags', '+faststart',
             output_path
         ]
-        subprocess.run(cmd_fallback, check=True, capture_output=True)
+
+        try:
+            subprocess.run(cmd_fallback, check=True, capture_output=True)
+            print("  字幕なしで完了")
+        except subprocess.CalledProcessError as e2:
+            print(f"フォールバックも失敗: {e2.stderr[:200] if e2.stderr else 'unknown'}")
+            raise
 
     return output_path, srt_path
 
