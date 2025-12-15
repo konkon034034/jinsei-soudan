@@ -58,19 +58,19 @@ FPS = 24
 TEST_MODE = os.environ.get("TEST_MODE", "false").lower() == "true"
 RANKING_COUNT = 3 if TEST_MODE else 10  # テスト時はTOP3、本番はTOP10
 
-# ElevenLabs TTS設定（2人の女性ボイス）
-# 日本語対応の女性ボイスを使用（eleven_multilingual_v2）
+# ElevenLabs TTS設定（男女ペア）
+# 日本語対応ボイスを使用（eleven_multilingual_v2）
 ELEVENLABS_VOICES = {
-    "カツマ": "EXAVITQu4vr4xnSDxMaL",     # 女性A: 落ち着いた知的な声（勝間タイプ）
-    "ヒロミ": "21m00Tcm4TlvDq8ikWAM",     # 女性B: クールでドライな声（ひろゆきタイプ）
+    "カツオ": "pNInz6obpgDQGcFmaJgB",     # 男性: Adam - 落ち着いた知的な声（勝間タイプ）
+    "ヒロミ": "21m00Tcm4TlvDq8ikWAM",     # 女性: Rachel - クールでドライな声（ひろゆきタイプ）
 }
 
 # キャラクター設定（勝間タイプ × ひろゆきタイプ）
 CHARACTERS = {
-    "カツマ": {
-        "voice_id": ELEVENLABS_VOICES["カツマ"],
+    "カツオ": {
+        "voice_id": ELEVENLABS_VOICES["カツオ"],
         "color": "#4169E1",  # 青（知的）
-        "description": "インテリ女性、論理的、世間の総意を代弁、丁寧語"
+        "description": "インテリ男性、論理的、世間の総意を代弁、丁寧語"
     },
     "ヒロミ": {
         "voice_id": ELEVENLABS_VOICES["ヒロミ"],
@@ -312,7 +312,7 @@ def generate_dialogue_script(theme: str, search_results: str, key_manager: Gemin
     ranking_example = RANKING_COUNT  # 3 or 10
 
     prompt = f"""あなたはYouTubeのランキング紹介チャンネルの台本作家です。
-以下の情報を基に、2人の女性による掛け合い形式のランキング動画台本を作成してください。
+以下の情報を基に、男女2人による掛け合い形式のランキング動画台本を作成してください。
 
 テーマ: {theme}
 
@@ -320,7 +320,7 @@ def generate_dialogue_script(theme: str, search_results: str, key_manager: Gemin
 {search_results}
 
 【キャラクター】
-👩 カツマ（勝間和代タイプ・インテリ女性）
+👨 カツオ（勝間和代タイプ・インテリ男性）
 - 論理的で知的、世間の総意を代弁
 - ランキングの紹介・説明を担当
 - 「皆さんご存知の通り」「〇〇ですよね」「データによると」など
@@ -335,23 +335,23 @@ def generate_dialogue_script(theme: str, search_results: str, key_manager: Gemin
 - ランキングや作品に対して鋭いツッコミを入れる
 
 【掛け合いの流れ】
-1. カツマ：「第〇位は『〇〇』です」（発表）
+1. カツオ：「第〇位は『〇〇』です」（発表）
 2. ヒロミ：「それって本当に泣けるんですか？」（ツッコミ）
-3. カツマ：「この作品は〇〇で有名ですよね」（説明）
+3. カツオ：「この作品は〇〇で有名ですよね」（説明）
 4. ヒロミ：「有名っていうか、ゴリ押しですよね」（毒舌）
-5. カツマ：「まあまあ、〇〇な点が評価されていますよ」（フォロー）
+5. カツオ：「まあまあ、〇〇な点が評価されていますよ」（フォロー）
 6. 交互に続く...
 
 【エンディング（超重要！必ずこの流れで）】
 ヒロミが最後までランキングにツッコミを入れて終わる：
 - ヒロミ：「ところでこのランキング、誰が決めたんですか？」
-- カツマ：「まあ、色々な意見を参考に...」
+- カツオ：「まあ、色々な意見を参考に...」
 - ヒロミ：「結局データの根拠ゼロですよね」
-- カツマ：「そんなことないですよ、ちゃんと調査して...」
+- カツオ：「そんなことないですよ、ちゃんと調査して...」
 - ヒロミ：「泣けるかどうかなんて人それぞれじゃないですか」
-- カツマ：「まあまあ、楽しんでいただければ...」
+- カツオ：「まあまあ、楽しんでいただければ...」
 - ヒロミ：「正直この動画見て泣く人いるんですかね」
-- カツマ：「ヒロミさん！...では皆さん、また次回！」
+- カツオ：「ヒロミさん！...では皆さん、また次回！」
 - ヒロミ：「次回もこんな適当なランキングやるんですか」
 
 【出力形式】必ず以下のJSON形式で出力してください：
@@ -360,9 +360,9 @@ def generate_dialogue_script(theme: str, search_results: str, key_manager: Gemin
     "description": "動画説明文（500文字程度、改行含む）",
     "tags": ["タグ1", "タグ2", ...],
     "opening": [
-        {{"speaker": "カツマ", "text": "皆さん、こんにちは。今日もランキングをお届けします。"}},
+        {{"speaker": "カツオ", "text": "皆さん、こんにちは。今日もランキングをお届けします。"}},
         {{"speaker": "ヒロミ", "text": "また適当なランキングですか。"}},
-        {{"speaker": "カツマ", "text": "適当じゃないですよ、ちゃんと調査しましたよ。"}},
+        {{"speaker": "カツオ", "text": "適当じゃないですよ、ちゃんと調査しましたよ。"}},
         {{"speaker": "ヒロミ", "text": "はいはい、まあ見てやりますよ。"}},
         ...（{opening_turns}、自然な掛け合いで）
     ],
@@ -373,26 +373,26 @@ def generate_dialogue_script(theme: str, search_results: str, key_manager: Gemin
             "year": "放送年",
             "cast": "主演・出演者名",
             "dialogue": [
-                {{"speaker": "カツマ", "text": "第{ranking_example}位は『〇〇』です。"}},
+                {{"speaker": "カツオ", "text": "第{ranking_example}位は『〇〇』です。"}},
                 {{"speaker": "ヒロミ", "text": "え、これが{ranking_example}位なんですか。"}},
-                {{"speaker": "カツマ", "text": "この作品は〇〇で話題になりましたよね。"}},
+                {{"speaker": "カツオ", "text": "この作品は〇〇で話題になりましたよね。"}},
                 {{"speaker": "ヒロミ", "text": "話題っていうか、ステマですよね。"}},
-                ...（{dialogue_turns}、カツマが紹介→ヒロミがツッコミの流れ）
+                ...（{dialogue_turns}、カツオが紹介→ヒロミがツッコミの流れ）
             ],
             "image_keyword": "作品イメージの英語キーワード（例: japanese drama scene）"
         }},
         ... ({ranking_example}位から1位まで{ranking_example}個)
     ],
     "ending": [
-        {{"speaker": "カツマ", "text": "以上、ランキングでした。いかがでしたか？"}},
+        {{"speaker": "カツオ", "text": "以上、ランキングでした。いかがでしたか？"}},
         {{"speaker": "ヒロミ", "text": "ところでこのランキング、誰が決めたんですか？"}},
-        {{"speaker": "カツマ", "text": "色々な意見を参考にしていますよ。"}},
+        {{"speaker": "カツオ", "text": "色々な意見を参考にしていますよ。"}},
         {{"speaker": "ヒロミ", "text": "結局データの根拠ゼロですよね。"}},
-        {{"speaker": "カツマ", "text": "そんなことないですよ..."}},
+        {{"speaker": "カツオ", "text": "そんなことないですよ..."}},
         {{"speaker": "ヒロミ", "text": "泣けるかどうかなんて人それぞれじゃないですか。"}},
-        {{"speaker": "カツマ", "text": "まあまあ、楽しんでいただければ..."}},
+        {{"speaker": "カツオ", "text": "まあまあ、楽しんでいただければ..."}},
         {{"speaker": "ヒロミ", "text": "正直この動画見て泣く人いるんですかね。"}},
-        {{"speaker": "カツマ", "text": "ヒロミさん！...では皆さん、また次回お会いしましょう！"}},
+        {{"speaker": "カツオ", "text": "ヒロミさん！...では皆さん、また次回お会いしましょう！"}},
         {{"speaker": "ヒロミ", "text": "次回もこんな適当なランキングやるんですか。"}}
     ]
 }}
@@ -400,7 +400,7 @@ def generate_dialogue_script(theme: str, search_results: str, key_manager: Gemin
 【重要】
 - ランキングは必ず{ranking_example}位から1位まで{ranking_example}個作成
 - 各セリフは20〜40文字程度（短めにテンポよく）
-- カツマは紹介・説明、ヒロミは毒舌ツッコミ
+- カツオは紹介・説明、ヒロミは毒舌ツッコミ
 - ヒロミの毒舌は作品を否定しすぎず、軽いツッコミ程度に
 - エンディングは必ず上記の毒舌パターンを含める
 - 作品名、放送年、出演者は正確に
