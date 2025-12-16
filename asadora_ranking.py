@@ -1095,15 +1095,24 @@ import subprocess
 
 
 def combine_audio_ffmpeg(audio_files: list, output_path: str) -> bool:
-    """FFmpegで音声ファイルを結合"""
+    """FFmpegで音声ファイルを結合（WAV→MP3変換対応）"""
     if not audio_files:
         return False
 
     if len(audio_files) == 1:
-        # 1ファイルの場合はコピー
-        import shutil
-        shutil.copy(audio_files[0], output_path)
-        return True
+        # 1ファイルの場合も変換が必要
+        cmd = [
+            'ffmpeg', '-y',
+            '-i', audio_files[0],
+            '-acodec', 'libmp3lame', '-ab', '192k',
+            output_path
+        ]
+        try:
+            subprocess.run(cmd, check=True, capture_output=True)
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"音声変換エラー: {e.stderr.decode()}")
+            return False
 
     # concat用のファイルリストを作成
     list_path = output_path + ".txt"
@@ -1111,10 +1120,11 @@ def combine_audio_ffmpeg(audio_files: list, output_path: str) -> bool:
         for audio_file in audio_files:
             f.write(f"file '{audio_file}'\n")
 
+    # WAVを結合してMP3にエンコード
     cmd = [
         'ffmpeg', '-y', '-f', 'concat', '-safe', '0',
         '-i', list_path,
-        '-c', 'copy',
+        '-acodec', 'libmp3lame', '-ab', '192k',
         output_path
     ]
 
