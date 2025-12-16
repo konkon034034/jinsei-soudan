@@ -628,21 +628,66 @@ def generate_gradient_background(output_path: str, title: str = ""):
     img.save(output_path)
 
 
+def wrap_text(text: str, max_chars: int = 30) -> str:
+    """長いテキストを自動折り返し（ASS用）"""
+    if len(text) <= max_chars:
+        return text
+
+    # 句読点や助詞で区切りを見つける
+    break_chars = ['、', '。', '！', '？', 'は', 'が', 'を', 'に', 'で', 'と', 'の']
+    lines = []
+    current = ""
+
+    for char in text:
+        current += char
+        if len(current) >= max_chars:
+            # 区切り文字を探す
+            for bc in break_chars:
+                idx = current.rfind(bc)
+                if idx > 0 and idx < len(current) - 1:
+                    lines.append(current[:idx + 1])
+                    current = current[idx + 1:]
+                    break
+            else:
+                # 区切りが見つからない場合は強制改行
+                lines.append(current)
+                current = ""
+
+    if current:
+        lines.append(current)
+
+    # 最大3行まで
+    if len(lines) > 3:
+        lines = lines[:3]
+        lines[-1] = lines[-1][:max_chars - 3] + "..."
+
+    return "\\N".join(lines)
+
+
 def generate_ass_subtitles(segments: list, output_path: str):
-    """ASS字幕を生成"""
-    margin_katsumi = int(VIDEO_HEIGHT * 0.35)
-    margin_hiroshi = int(VIDEO_HEIGHT * 0.20)
+    """ASS字幕を生成（画面下部に半透明黒バー付き）"""
+    # 字幕設定
+    font_size = int(VIDEO_WIDTH * 0.03)  # 画面幅の3% ≈ 58px
+    margin_bottom = int(VIDEO_HEIGHT * 0.10)  # 下から10%
+    margin_side = 50  # 左右マージン
+
+    # ASS色形式: &HAABBGGRR
+    # 白文字: &H00FFFFFF
+    # 半透明黒背景 (rgba 0,0,0,0.7): alpha=0.3→&H4D, RGB=000000 → &H4D000000
+    primary_color = "&H00FFFFFF"  # 白
+    back_color = "&H4D000000"  # 半透明黒 (alpha ≈ 0.7)
+    outline_color = "&H00000000"  # 黒アウトライン
 
     header = f"""[Script Info]
 Title: 年金ニュース
 ScriptType: v4.00+
 PlayResX: {VIDEO_WIDTH}
 PlayResY: {VIDEO_HEIGHT}
+WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Katsumi,Noto Sans CJK JP,64,&H00FFE4B5,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,50,50,{margin_katsumi},1
-Style: Hiroshi,Noto Sans CJK JP,64,&H006495ED,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,50,50,{margin_hiroshi},1
+Style: Default,Noto Sans CJK JP Bold,{font_size},{primary_color},&H000000FF,{outline_color},{back_color},-1,0,0,0,100,100,0,0,3,2,0,2,{margin_side},{margin_side},{margin_bottom},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -652,9 +697,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     for seg in segments:
         start = f"0:{int(seg['start']//60):02d}:{int(seg['start']%60):02d}.{int((seg['start']%1)*100):02d}"
         end = f"0:{int(seg['end']//60):02d}:{int(seg['end']%60):02d}.{int((seg['end']%1)*100):02d}"
-        style = "Katsumi" if seg["speaker"] == "カツミ" else "Hiroshi"
-        text = f"{seg['speaker']}：{seg['text']}"
-        lines.append(f"Dialogue: 0,{start},{end},{style},,0,0,0,,{text}")
+        # 話者名を含めたテキスト、長い場合は折り返し
+        full_text = f"{seg['speaker']}：{seg['text']}"
+        wrapped_text = wrap_text(full_text, max_chars=35)
+        lines.append(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{wrapped_text}")
 
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines))
