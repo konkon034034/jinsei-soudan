@@ -253,8 +253,10 @@ def get_drive_service():
     return build("drive", "v3", credentials=creds)
 
 
-# 使用可能なチャンネル
-AVAILABLE_CHANNELS = ["23", "24", "27"]  # シニアの口コミランキング用チャンネル
+# 使用可能なチャンネル（自動実行対象）
+AVAILABLE_CHANNELS = ["27"]  # シニアの口コミランキング（自動実行）
+# TOKEN_23 = 年金ニュース用（別スクリプト）
+# TOKEN_24 = テスト用（手動実行のみ）
 
 
 def get_pending_task():
