@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 シニアの口コミランキング動画自動生成システム
-- モードA: 完全自動（ElevenLabs TTS）
+- モードA: 完全自動（Gemini TTS）
 - モードB: 高品質（NotebookLM）前半処理
 
 参考: https://zenn.dev/xtm_blog/articles/da1eba90525f91
@@ -24,6 +24,8 @@ import struct
 import wave
 
 import google.generativeai as genai
+from google import genai as genai_new
+from google.genai import types as genai_types
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload
@@ -58,53 +60,53 @@ FPS = 24
 TEST_MODE = os.environ.get("TEST_MODE", "false").lower() == "true"
 RANKING_COUNT = 3 if TEST_MODE else 10  # テスト時はTOP3、本番はTOP10
 
-# ElevenLabs TTS設定
-# 日本語対応ボイスを使用（eleven_multilingual_v2）
-ELEVENLABS_VOICE_MALE = "pNInz6obpgDQGcFmaJgB"       # 男性: Adam（落ち着いた大人の男性）
-ELEVENLABS_VOICE_FEMALE = "21m00Tcm4TlvDq8ikWAM"     # 女性: Rachel（落ち着いた大人の女性）
-ELEVENLABS_VOICE_IKEMEN_A = "TxGEqnHWrfWFTfGW9XjX"   # イケボA: Josh（若い爽やか男性）
-ELEVENLABS_VOICE_IKEMEN_B = "yoZ06aMxZJJ28mfd3POQ"   # イケボB: Sam（若い甘い声の男性）
+# Gemini TTS設定
+# 使用可能なボイス: Kore(女性), Puck(男性), Charon(落ち着き), Fenrir(力強い)
+GEMINI_VOICE_KORE = "Kore"       # 女性ボイス
+GEMINI_VOICE_PUCK = "Puck"       # 男性ボイス
+GEMINI_VOICE_CHARON = "Charon"   # 落ち着いたボイス
+GEMINI_VOICE_FENRIR = "Fenrir"   # 力強いボイス
 
 # チャンネルごとのボイス設定
 # channel: (カツミのボイス, ヒロシのボイス)
 CHANNEL_VOICE_CONFIG = {
-    "27": (ELEVENLABS_VOICE_FEMALE, ELEVENLABS_VOICE_MALE),       # シニアの口コミ27: カツミ=女性, ヒロシ=男性
-    "23": (ELEVENLABS_VOICE_MALE, ELEVENLABS_VOICE_FEMALE),       # シニアの口コミ23: カツミ=男性, ヒロシ=女性
-    "24": (ELEVENLABS_VOICE_IKEMEN_A, ELEVENLABS_VOICE_IKEMEN_B), # シニアの口コミ24: カツミ=イケボA, ヒロシ=イケボB
+    "27": (GEMINI_VOICE_KORE, GEMINI_VOICE_PUCK),       # シニアの口コミ27: カツミ=Kore(女性), ヒロシ=Puck(男性)
+    "23": (GEMINI_VOICE_PUCK, GEMINI_VOICE_KORE),       # シニアの口コミ23: カツミ=Puck(男性), ヒロシ=Kore(女性)
+    "24": (GEMINI_VOICE_CHARON, GEMINI_VOICE_FENRIR),   # シニアの口コミ24: カツミ=Charon(落ち着き), ヒロシ=Fenrir(力強い)
 }
 
-# デフォルトのキャラクター設定（チャンネルに応じて voice_id を動的に設定）
+# デフォルトのキャラクター設定（チャンネルに応じて voice を動的に設定）
 CHARACTERS = {
     "カツミ": {
-        "voice_id": ELEVENLABS_VOICE_FEMALE,  # デフォルト（動的に変更される）
+        "voice": GEMINI_VOICE_KORE,  # デフォルト（動的に変更される）
         "color": "#4169E1",  # 青（知的）
         "description": "メインMC、論理的、紹介・説明担当"
     },
     "ヒロシ": {
-        "voice_id": ELEVENLABS_VOICE_MALE,  # デフォルト（動的に変更される）
+        "voice": GEMINI_VOICE_PUCK,  # デフォルト（動的に変更される）
         "color": "#FF6347",  # 赤（サブ）
         "description": "サブMC、リアクション・共感担当"
     }
 }
 
 
-def get_voice_name(voice_id: str) -> str:
-    """ボイスIDから名前を取得"""
+def get_voice_name(voice: str) -> str:
+    """ボイス名から説明を取得"""
     voice_names = {
-        ELEVENLABS_VOICE_MALE: "男性(Adam)",
-        ELEVENLABS_VOICE_FEMALE: "女性(Rachel)",
-        ELEVENLABS_VOICE_IKEMEN_A: "イケボA(Josh)",
-        ELEVENLABS_VOICE_IKEMEN_B: "イケボB(Sam)",
+        GEMINI_VOICE_KORE: "Kore(女性)",
+        GEMINI_VOICE_PUCK: "Puck(男性)",
+        GEMINI_VOICE_CHARON: "Charon(落ち着き)",
+        GEMINI_VOICE_FENRIR: "Fenrir(力強い)",
     }
-    return voice_names.get(voice_id, "不明")
+    return voice_names.get(voice, voice)
 
 
 def setup_channel_voices(channel: str):
-    """チャンネルに応じてキャラクターのボイスIDを設定"""
+    """チャンネルに応じてキャラクターのボイスを設定"""
     if channel in CHANNEL_VOICE_CONFIG:
         katsumi_voice, hiroshi_voice = CHANNEL_VOICE_CONFIG[channel]
-        CHARACTERS["カツミ"]["voice_id"] = katsumi_voice
-        CHARACTERS["ヒロシ"]["voice_id"] = hiroshi_voice
+        CHARACTERS["カツミ"]["voice"] = katsumi_voice
+        CHARACTERS["ヒロシ"]["voice"] = hiroshi_voice
         print(f"  ボイス設定: カツミ={get_voice_name(katsumi_voice)}, "
               f"ヒロシ={get_voice_name(hiroshi_voice)}")
 
@@ -520,41 +522,102 @@ def upload_to_drive(content: str, filename: str, folder_id: str = None) -> str:
     return file.get('webViewLink', '')
 
 
-def generate_elevenlabs_tts(text: str, voice_id: str, output_path: str) -> bool:
-    """ElevenLabs TTSで音声生成"""
-    api_key = os.environ.get("ELEVENLABS_API_KEY")
-    if not api_key:
-        print("    [ElevenLabs] APIキーが設定されていません → gTTSにフォールバック")
-        return False
+def wave_file(filename: str, pcm: bytes, channels: int = 1, rate: int = 24000, sample_width: int = 2):
+    """PCMデータをWAVファイルとして保存"""
+    with wave.open(filename, "wb") as wf:
+        wf.setnchannels(channels)
+        wf.setsampwidth(sample_width)
+        wf.setframerate(rate)
+        wf.writeframes(pcm)
+
+
+def generate_gemini_tts_multispeaker(dialogue: list, channel: str, output_path: str, key_manager: GeminiKeyManager) -> bool:
+    """Gemini TTSでマルチスピーカー音声を生成"""
+
+    # チャンネル別ボイス設定を取得
+    katsumi_voice, hiroshi_voice = CHANNEL_VOICE_CONFIG.get(channel, (GEMINI_VOICE_KORE, GEMINI_VOICE_PUCK))
+
+    # 台本テキストを生成（話者:テキスト形式）
+    script_lines = []
+    for line in dialogue:
+        speaker = line["speaker"]
+        text = line["text"]
+        script_lines.append(f"{speaker}: {text}")
+
+    script_text = "\n".join(script_lines)
+
+    print(f"    [Gemini TTS] マルチスピーカー音声生成中...")
+    print(f"    カツミ={get_voice_name(katsumi_voice)}, ヒロシ={get_voice_name(hiroshi_voice)}")
+
+    def api_call():
+        api_key, key_name = key_manager.get_working_key()
+        print(f"    [API] {key_name} を使用")
+
+        client = genai_new.Client(api_key=api_key)
+
+        # マルチスピーカー設定
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-preview-tts",
+            contents=script_text,
+            config=genai_types.GenerateContentConfig(
+                response_modalities=["AUDIO"],
+                speech_config=genai_types.SpeechConfig(
+                    multi_speaker_voice_config=genai_types.MultiSpeakerVoiceConfig(
+                        speaker_voice_configs=[
+                            genai_types.SpeakerVoiceConfig(
+                                speaker="カツミ",
+                                voice_config=genai_types.VoiceConfig(
+                                    prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
+                                        voice_name=katsumi_voice
+                                    )
+                                )
+                            ),
+                            genai_types.SpeakerVoiceConfig(
+                                speaker="ヒロシ",
+                                voice_config=genai_types.VoiceConfig(
+                                    prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
+                                        voice_name=hiroshi_voice
+                                    )
+                                )
+                            )
+                        ]
+                    )
+                )
+            )
+        )
+
+        return response
 
     try:
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
-        headers = {
-            "xi-api-key": api_key,
-            "Content-Type": "application/json"
-        }
-        data = {
-            "text": text,
-            "model_id": "eleven_multilingual_v2",
-            "voice_settings": {
-                "stability": 0.5,
-                "similarity_boost": 0.75
-            }
-        }
+        response = call_gemini_with_retry(api_call, key_manager)
 
-        response = requests.post(url, headers=headers, json=data, timeout=60)
-        response.raise_for_status()
+        # 音声データを取得
+        data = response.candidates[0].content.parts[0].inline_data.data
 
-        with open(output_path, 'wb') as f:
-            f.write(response.content)
+        # WAVファイルとして保存
+        wav_path = output_path.replace('.mp3', '.wav')
+        wave_file(wav_path, data)
 
-        # 成功ログ（ファイルサイズも表示）
+        # WAVをMP3に変換（FFmpeg使用）
+        cmd = [
+            'ffmpeg', '-y', '-i', wav_path,
+            '-acodec', 'libmp3lame', '-q:a', '2',
+            output_path
+        ]
+        subprocess.run(cmd, capture_output=True, check=True)
+
+        # 一時WAVファイルを削除
+        if os.path.exists(wav_path):
+            os.remove(wav_path)
+
         file_size = os.path.getsize(output_path)
-        print(f"    [ElevenLabs] 生成成功 ({file_size} bytes)")
+        print(f"    [Gemini TTS] 生成成功 ({file_size} bytes)")
         return True
 
     except Exception as e:
-        print(f"    ElevenLabs TTSエラー: {e}")
+        print(f"    [Gemini TTS] エラー: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
@@ -569,143 +632,86 @@ def generate_gtts(text: str, output_path: str) -> bool:
         return False
 
 
-def generate_tts_for_speaker(text: str, speaker: str, output_path: str) -> bool:
-    """話者に応じたTTSで音声生成（ElevenLabs優先、gTTSフォールバック）"""
-    # キャラクターの音声IDを取得
-    voice_id = CHARACTERS.get(speaker, {}).get("voice_id")
-
-    # デバッグ: 話者とボイスIDを表示
-    voice_name = get_voice_name(voice_id) if voice_id else "なし"
-    print(f"    [{speaker}] voice_id={voice_name}")
-
-    if voice_id:
-        # ElevenLabsで生成を試みる
-        if generate_elevenlabs_tts(text, voice_id, output_path):
-            return True
-
-    # フォールバック: gTTS
-    print(f"    [{speaker}] → gTTSにフォールバック")
-    return generate_gtts(text, output_path)
+def generate_gtts_dialogue(dialogue: list, output_path: str) -> bool:
+    """gTTSで対話音声を生成（フォールバック用）"""
+    try:
+        # 全テキストを結合
+        full_text = " ".join([line["text"] for line in dialogue])
+        tts = gTTS(text=full_text, lang='ja')
+        tts.save(output_path)
+        return True
+    except Exception as e:
+        print(f"    gTTS生成エラー: {e}")
+        return False
 
 
-def generate_dialogue_audio_parallel(dialogue: list, temp_dir: Path, key_manager: GeminiKeyManager = None) -> tuple:
-    """対話の音声を並列生成（ElevenLabs版）"""
-    audio_files = []
+def generate_dialogue_audio_parallel(dialogue: list, temp_dir: Path, key_manager: GeminiKeyManager = None, channel: str = "27") -> tuple:
+    """対話の音声を生成（Gemini TTS マルチスピーカー版）"""
+
+    combined_path = str(temp_dir / "combined.mp3")
     segments = []
 
-    def generate_single(index, line):
-        speaker = line["speaker"]
-        text = line["text"]
+    # Gemini TTSでマルチスピーカー音声を生成
+    if key_manager and generate_gemini_tts_multispeaker(dialogue, channel, combined_path, key_manager):
+        # 音声ファイルの長さを取得
+        total_duration = get_audio_duration_ffprobe(combined_path)
 
-        output_path = str(temp_dir / f"line_{index:04d}.mp3")
-        success = generate_tts_for_speaker(text, speaker, output_path)
+        if total_duration > 0:
+            # セグメント情報を推定（均等分割）
+            # 注: Gemini TTSは正確なタイムスタンプを返さないため、テキスト長で推定
+            total_chars = sum(len(line["text"]) for line in dialogue)
+            current_time = 0.0
 
-        return index, output_path, success, speaker, text
+            for line in dialogue:
+                speaker = line["speaker"]
+                text = line["text"]
 
-    # 並列処理
-    with ThreadPoolExecutor(max_workers=min(5, len(dialogue))) as executor:
-        futures = [executor.submit(generate_single, i, line) for i, line in enumerate(dialogue)]
-        results = [f.result() for f in as_completed(futures)]
-
-    # インデックス順にソート
-    results.sort(key=lambda x: x[0])
-
-    # 音声ファイルを結合
-    total_duration = 0
-    valid_files = []
-
-    for index, path, success, speaker, text in results:
-        if success and os.path.exists(path):
-            try:
-                audio = AudioFileClip(path)
-                duration = audio.duration
-                audio.close()
+                # テキスト長に基づいて時間を推定
+                char_ratio = len(text) / total_chars if total_chars > 0 else 1 / len(dialogue)
+                duration = total_duration * char_ratio
 
                 segments.append({
                     "speaker": speaker,
                     "text": text,
-                    "start": total_duration,
-                    "end": total_duration + duration,
-                    "color": CHARACTERS[speaker]["color"]
+                    "start": current_time,
+                    "end": current_time + duration,
+                    "color": CHARACTERS.get(speaker, {}).get("color", "#FFFFFF")
                 })
 
-                valid_files.append(path)
-                total_duration += duration
-            except Exception as e:
-                print(f"音声ファイル読み込みエラー: {e}")
+                current_time += duration
 
-    # 音声を結合
-    combined_path = str(temp_dir / "combined.mp3")
-    if valid_files:
-        clips = [AudioFileClip(f) for f in valid_files]
-        combined = concatenate_audioclips(clips)
-        combined.write_audiofile(combined_path)
-        combined.close()
-        for clip in clips:
-            clip.close()
+            return combined_path, segments, total_duration
 
-    return combined_path, segments, total_duration
+    # フォールバック: gTTS
+    print("    [フォールバック] gTTSで音声生成...")
+    if generate_gtts_dialogue(dialogue, combined_path):
+        total_duration = get_audio_duration_ffprobe(combined_path)
 
+        if total_duration > 0:
+            # セグメント情報を推定
+            total_chars = sum(len(line["text"]) for line in dialogue)
+            current_time = 0.0
 
-def transcribe_with_elevenlabs(audio_path: str) -> list:
-    """ElevenLabs STTで音声を文字起こし"""
-    api_key = os.environ.get("ELEVENLABS_API_KEY")
-    if not api_key:
-        return []
+            for line in dialogue:
+                speaker = line["speaker"]
+                text = line["text"]
 
-    try:
-        url = "https://api.elevenlabs.io/v1/speech-to-text"
-        headers = {"xi-api-key": api_key}
+                char_ratio = len(text) / total_chars if total_chars > 0 else 1 / len(dialogue)
+                duration = total_duration * char_ratio
 
-        with open(audio_path, 'rb') as f:
-            files = {"file": f}
-            data = {"model_id": "scribe_v1", "language_code": "ja"}
+                segments.append({
+                    "speaker": speaker,
+                    "text": text,
+                    "start": current_time,
+                    "end": current_time + duration,
+                    "color": CHARACTERS.get(speaker, {}).get("color", "#FFFFFF")
+                })
 
-            response = requests.post(url, headers=headers, files=files, data=data, timeout=300)
-            response.raise_for_status()
+                current_time += duration
 
-        result = response.json()
-        return result.get("words", [])
+            return combined_path, segments, total_duration
 
-    except Exception as e:
-        print(f"STTエラー: {e}")
-        return []
-
-
-def match_script_with_stt(segments: list, stt_words: list) -> list:
-    """台本とSTT結果をマッチングして正確な字幕を生成"""
-    if not stt_words:
-        return segments
-
-    # STTのワードを時間順にソート
-    stt_words.sort(key=lambda x: x.get("start", 0))
-
-    matched_segments = []
-
-    for seg in segments:
-        # セグメントの時間範囲内のSTTワードを探す
-        seg_start = seg["start"]
-        seg_end = seg["end"]
-
-        # 時間範囲を少し広げてマッチング
-        margin = 0.5
-        matching_words = [
-            w for w in stt_words
-            if w.get("start", 0) >= seg_start - margin and w.get("end", 0) <= seg_end + margin
-        ]
-
-        # STTテキストと台本テキストを比較
-        stt_text = "".join([w.get("text", "") for w in matching_words])
-        original_text = seg["text"]
-
-        # 台本テキストを優先（STTは時間調整のみに使用）
-        matched_segments.append({
-            **seg,
-            "text": original_text,  # 台本の正確なテキストを使用
-            "stt_text": stt_text    # 参考用
-        })
-
-    return matched_segments
+    return combined_path, segments, 0.0
 
 
 def fetch_google_image(query: str, output_path: str) -> bool:
@@ -1295,7 +1301,7 @@ def format_srt_time(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
 
 
-def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) -> tuple:
+def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager, channel: str = "27") -> tuple:
     """動画を作成（FFmpegベース高速版）"""
     sections = []  # FFmpeg用のセクション情報
     all_segments = []
@@ -1311,7 +1317,7 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     opening_dir.mkdir(exist_ok=True)
 
     opening_audio, opening_segments, opening_duration = generate_dialogue_audio_parallel(
-        script["opening"], opening_dir, key_manager
+        script["opening"], opening_dir, key_manager, channel
     )
 
     opening_bg = str(temp_dir / "opening_bg.png")
@@ -1341,7 +1347,7 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
         rank_dir.mkdir(exist_ok=True)
 
         audio_path, segments, duration = generate_dialogue_audio_parallel(
-            item["dialogue"], rank_dir, key_manager
+            item["dialogue"], rank_dir, key_manager, channel
         )
 
         # 背景画像を取得（Google画像検索）
@@ -1381,7 +1387,7 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     ending_dir.mkdir(exist_ok=True)
 
     ending_audio, ending_segments, ending_duration = generate_dialogue_audio_parallel(
-        script["ending"], ending_dir, key_manager
+        script["ending"], ending_dir, key_manager, channel
     )
 
     ending_bg = str(temp_dir / "ending_bg.png")
@@ -1545,7 +1551,7 @@ def process_auto_mode(task: dict, key_manager: GeminiKeyManager):
         # 3-5. 動画作成
         print("[3/6] 動画作成中...")
         temp_dir = Path(tempfile.mkdtemp())
-        video_path, srt_path = create_video(script, temp_dir, key_manager)
+        video_path, srt_path = create_video(script, temp_dir, key_manager, channel)
 
         # 6. YouTubeアップロード
         print("[6/6] YouTubeアップロード中...")
