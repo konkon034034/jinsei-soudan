@@ -43,9 +43,11 @@ except ImportError:
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 from gtts import gTTS
-from icrawler.builtin import GoogleImageCrawler
 import logging
-logging.getLogger('icrawler').setLevel(logging.ERROR)  # icrawlerのログを抑制
+
+# Unsplash API設定
+UNSPLASH_ACCESS_KEY = os.environ.get("UNSPLASH_ACCESS_KEY", "")
+UNSPLASH_API_URL = "https://api.unsplash.com/search/photos"
 
 
 # ===== 定数 =====
@@ -904,77 +906,91 @@ def generate_dialogue_audio(dialogue: list, output_path: str, key_manager, chann
     return output_path, segments, 0.0
 
 
-def fetch_google_image(query: str, output_path: str) -> bool:
-    """Google画像検索から画像をダウンロード"""
+def fetch_unsplash_image(query: str, output_path: str) -> bool:
+    """Unsplash APIから画像をダウンロード"""
+    if not UNSPLASH_ACCESS_KEY:
+        print("    [Unsplash] エラー: UNSPLASH_ACCESS_KEY が設定されていません")
+        return False
+
     try:
-        # 一時ディレクトリを作成
-        temp_dir = Path(output_path).parent / "google_images"
-        temp_dir.mkdir(exist_ok=True)
+        print(f"    [Unsplash] 検索中: {query}")
 
-        # 既存ファイルを削除
-        for f in temp_dir.glob("*"):
-            f.unlink()
+        # Unsplash API検索
+        headers = {
+            "Authorization": f"Client-ID {UNSPLASH_ACCESS_KEY}"
+        }
+        params = {
+            "query": query,
+            "per_page": 3,
+            "orientation": "landscape"  # 横長画像を優先
+        }
 
-        print(f"    [icrawler] 検索開始: {query}")
+        response = requests.get(UNSPLASH_API_URL, headers=headers, params=params, timeout=30)
 
-        # Google画像検索でダウンロード
-        crawler = GoogleImageCrawler(
-            storage={'root_dir': str(temp_dir)},
-            log_level=logging.WARNING  # WARNINGレベルでログ表示
-        )
-        crawler.crawl(keyword=query, max_num=3)  # 3枚まで試行
+        if response.status_code != 200:
+            print(f"    [Unsplash] APIエラー: {response.status_code}")
+            return False
 
-        # ダウンロードされた画像を取得
-        images = list(temp_dir.glob("*"))
-        print(f"    [icrawler] ダウンロード数: {len(images)}")
+        data = response.json()
+        results = data.get("results", [])
 
-        if images:
-            # 画像をリサイズして保存
-            img = Image.open(images[0])
-            img = img.convert('RGB')
-            img.save(output_path)
-            resize_image(output_path, VIDEO_WIDTH, VIDEO_HEIGHT)
+        if not results:
+            print(f"    [Unsplash] 画像が見つかりませんでした")
+            return False
 
-            # 一時ファイルを削除
-            for f in temp_dir.glob("*"):
-                f.unlink()
+        # 最初の画像をダウンロード
+        image_url = results[0]["urls"]["regular"]  # 1080p相当
+        print(f"    [Unsplash] ダウンロード中...")
 
-            print(f"    [icrawler] 画像取得成功!")
-            return True
-        else:
-            print(f"    [icrawler] 画像が見つかりませんでした")
+        img_response = requests.get(image_url, timeout=30)
+        if img_response.status_code != 200:
+            print(f"    [Unsplash] 画像ダウンロードエラー: {img_response.status_code}")
+            return False
 
+        # 画像を保存
+        with open(output_path, 'wb') as f:
+            f.write(img_response.content)
+
+        # リサイズ
+        resize_image(output_path, VIDEO_WIDTH, VIDEO_HEIGHT)
+
+        print(f"    [Unsplash] ✓ 画像取得成功!")
+        return True
+
+    except requests.Timeout:
+        print(f"    [Unsplash] タイムアウト")
     except Exception as e:
-        print(f"    [icrawler] エラー: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"    [Unsplash] エラー: {e}")
 
     return False
 
 
 def fetch_ranking_image(work_title: str, cast: str, output_path: str) -> bool:
-    """ランキング項目用の画像を取得（複数クエリで試行）"""
-    # 検索クエリの優先順位
+    """ランキング項目用の画像を取得（Unsplash APIで試行）"""
+    # 検索クエリの優先順位（英語キーワードも追加でUnsplash向け最適化）
     queries = []
 
     # 事例タイトルでの検索（シニア向けコンテンツ）
     if work_title:
-        queries.append(f"{work_title} シニア")      # 事例 + シニア
-        queries.append(f"{work_title} 老後")        # 事例 + 老後
-        queries.append(work_title)                  # 事例のみ
+        queries.append(f"{work_title}")             # 事例のみ
+        queries.append(f"senior {work_title}")      # 英語 + 事例
+        queries.append("elderly lifestyle")          # 汎用シニア画像
 
     # 当事者属性での検索
     if cast:
-        queries.append(f"シニア {cast}")            # シニア + 属性
-        queries.append(cast)                        # 属性のみ
+        queries.append(f"{cast}")                   # 属性のみ
+        queries.append("senior citizen")            # 汎用シニア
+
+    # フォールバック用の汎用クエリ
+    queries.append("elderly happy")
+    queries.append("senior lifestyle")
 
     for query in queries:
         if not query or not query.strip():
             continue
-        print(f"    検索中: {query}")
-        if fetch_google_image(query, output_path):
+        if fetch_unsplash_image(query, output_path):
             return True
-        time.sleep(0.3)  # レート制限対策
+        time.sleep(0.5)  # レート制限対策
 
     return False
 
