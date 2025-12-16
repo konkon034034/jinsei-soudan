@@ -551,7 +551,7 @@ def main():
 
         # 4. YouTube投稿
         print("\n[4/4] YouTubeに投稿中...")
-        title = script.get("title", f"年金ニュース {datetime.now().strftime('%Y/%m/%d')}")
+        title = f"【{datetime.now().strftime('%Y/%m/%d')}】今日の年金ニュース"
         description = script.get("description", "今日の年金ニュースをお届けします。")
         tags = script.get("tags", ["年金", "ニュース", "シニア"])
 
