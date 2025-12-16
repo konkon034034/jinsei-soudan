@@ -584,6 +584,60 @@ def upload_audio_to_drive(audio_path: str, folder_id: str = None) -> str:
         return None
 
 
+def download_jingle_from_drive(file_id: str, output_path: str) -> bool:
+    """Google Driveからジングルファイルをダウンロード"""
+    try:
+        creds = get_google_credentials()
+        service = build('drive', 'v3', credentials=creds)
+
+        # ファイル情報を取得
+        file_info = service.files().get(fileId=file_id, fields='name,mimeType').execute()
+        print(f"    [ジングル] ファイル名: {file_info.get('name')}")
+
+        # ダウンロード
+        request = service.files().get_media(fileId=file_id)
+        with open(output_path, 'wb') as f:
+            downloader = request.execute()
+            f.write(downloader)
+
+        print(f"    ✓ ジングルダウンロード完了")
+        return True
+
+    except Exception as e:
+        print(f"    ⚠ ジングルダウンロードエラー: {e}")
+        return False
+
+
+def add_jingle_to_audio(tts_audio_path: str, jingle_path: str, output_path: str, silence_ms: int = 500) -> bool:
+    """ジングルをTTS音声の先頭に追加（pydub使用）"""
+    try:
+        from pydub import AudioSegment
+
+        # 音声ファイルを読み込み
+        tts_audio = AudioSegment.from_file(tts_audio_path)
+
+        # ジングルを読み込み
+        jingle = AudioSegment.from_file(jingle_path)
+        print(f"    [ジングル] 長さ: {len(jingle) / 1000:.1f}秒")
+
+        # 無音を作成（サンプルレートとチャンネル数を合わせる）
+        silence = AudioSegment.silent(duration=silence_ms, frame_rate=tts_audio.frame_rate)
+
+        # 結合: ジングル + 無音 + TTS音声
+        combined = jingle + silence + tts_audio
+
+        # WAV形式で出力（24000Hz, mono, 16bit）
+        combined = combined.set_frame_rate(24000).set_channels(1).set_sample_width(2)
+        combined.export(output_path, format="wav")
+
+        print(f"    ✓ ジングル追加完了（合計: {len(combined) / 1000:.1f}秒）")
+        return True
+
+    except Exception as e:
+        print(f"    ⚠ ジングル追加エラー: {e}")
+        return False
+
+
 def fetch_unsplash_image(query: str, output_path: str) -> bool:
     """Unsplash APIで画像取得"""
     if not UNSPLASH_ACCESS_KEY:
@@ -724,14 +778,63 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     print(f"  セリフ数: {len(all_dialogue)}")
 
     # 音声生成（Gemini TTSでパラレル処理）
-    audio_path = str(temp_dir / "audio.wav")
-    _, segments, duration = generate_dialogue_audio_parallel(all_dialogue, audio_path, temp_dir, key_manager)
+    tts_audio_path = str(temp_dir / "tts_audio.wav")
+    _, segments, tts_duration = generate_dialogue_audio_parallel(all_dialogue, tts_audio_path, temp_dir, key_manager)
     all_segments = segments
 
-    if duration == 0:
+    if tts_duration == 0:
         raise ValueError("音声生成に失敗しました")
 
-    print(f"  音声長: {duration:.1f}秒")
+    print(f"  TTS音声長: {tts_duration:.1f}秒")
+
+    # オープニングジングル追加（オプション）
+    audio_path = str(temp_dir / "audio.wav")
+    jingle_file_id = os.environ.get("JINGLE_FILE_ID")
+    jingle_duration = 0.0
+
+    if jingle_file_id:
+        print("  [ジングル] オープニングジングルを追加...")
+        jingle_path = str(temp_dir / "jingle.mp3")
+
+        if download_jingle_from_drive(jingle_file_id, jingle_path):
+            if add_jingle_to_audio(tts_audio_path, jingle_path, audio_path, silence_ms=500):
+                # ジングル追加成功：字幕タイミングをオフセット
+                # ジングルの長さを取得
+                result = subprocess.run([
+                    'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                    '-of', 'default=noprint_wrappers=1:nokey=1', jingle_path
+                ], capture_output=True, text=True)
+                jingle_duration = float(result.stdout.strip()) if result.stdout.strip() else 0.0
+                jingle_duration += 0.5  # 無音分を追加
+
+                # 字幕タイミングをジングル分だけオフセット
+                for seg in all_segments:
+                    seg["start"] += jingle_duration
+                    seg["end"] += jingle_duration
+
+                print(f"  ✓ ジングル追加完了（オフセット: {jingle_duration:.1f}秒）")
+            else:
+                # ジングル追加失敗：TTS音声のみ使用
+                print("  ⚠ ジングル追加失敗、TTS音声のみで続行")
+                import shutil
+                shutil.copy(tts_audio_path, audio_path)
+        else:
+            # ダウンロード失敗：TTS音声のみ使用
+            print("  ⚠ ジングルダウンロード失敗、TTS音声のみで続行")
+            import shutil
+            shutil.copy(tts_audio_path, audio_path)
+    else:
+        # ジングル未設定：TTS音声のみ使用
+        import shutil
+        shutil.copy(tts_audio_path, audio_path)
+
+    # 最終音声長を取得
+    result = subprocess.run([
+        'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+        '-of', 'default=noprint_wrappers=1:nokey=1', audio_path
+    ], capture_output=True, text=True)
+    duration = float(result.stdout.strip()) if result.stdout.strip() else tts_duration
+    print(f"  最終音声長: {duration:.1f}秒")
 
     # Google Driveにアップロード（オプション）
     drive_folder_id = os.environ.get("AUDIO_DRIVE_FOLDER_ID")
