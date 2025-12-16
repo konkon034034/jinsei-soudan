@@ -32,9 +32,12 @@ CHANNEL = "23"  # TOKEN_23固定
 FISH_AUDIO_API_KEY = os.environ.get("FISH_AUDIO_API_KEY", "")
 FISH_AUDIO_API_URL = "https://api.fish.audio/v1/tts"
 
-# TOKEN_23用ボイス設定（カツミ=男性、ヒロシ=女性）
-FISH_VOICE_KATSUMI = "3ea9e8922a2549f5833c2198de843041"  # Takaeshi（男性）
-FISH_VOICE_HIROSHI = "acc8237220d8470985ec9be6c4c480a9"  # Hatsune Miku（女性）
+# ボイス設定（全チャンネル統一）
+# カツミ（女性）: 女性アナウンサー（ベテラン）- 信頼感ある落ち着いた進行役
+FISH_VOICE_KATSUMI = "f1d92c18f84e47c6b5bc0cebb80ddaf5"
+
+# ヒロシ（男性）: おじさん（極道風）- 毒舌ツッコミ役
+FISH_VOICE_HIROSHI = "dd25aabce1894d94b5c3d1230efaeb68"
 
 CHARACTERS = {
     "カツミ": {"voice": FISH_VOICE_KATSUMI, "color": "#4169E1"},

@@ -66,34 +66,30 @@ RANKING_COUNT = 3 if TEST_MODE else 10  # テスト時はTOP3、本番はTOP10
 FISH_AUDIO_API_KEY = os.environ.get("FISH_AUDIO_API_KEY", "")
 FISH_AUDIO_API_URL = "https://api.fish.audio/v1/tts"
 
-# Fish Audio ボイスID（日本語対応）
-# 女性ボイス
-FISH_VOICE_FEMALE_GIRL = "a2c280f3ad5a4d5c9825c0f600dbeb52"      # Girl Voice（かわいい日本語女性）
-FISH_VOICE_FEMALE_MIKU = "acc8237220d8470985ec9be6c4c480a9"      # Hatsune Miku TTS
-FISH_VOICE_FEMALE_JUNKO = "d2feb61a72b64a87aa8e4775ebe35d0c"     # Junko Enoshima（アニメ女性）
+# Fish Audio ボイスID（全チャンネル統一）
+# カツミ（女性）: 女性アナウンサー（ベテラン）- 信頼感ある落ち着いた進行役
+FISH_VOICE_KATSUMI = "f1d92c18f84e47c6b5bc0cebb80ddaf5"
 
-# 男性ボイス
-FISH_VOICE_MALE_TAKAESHI = "3ea9e8922a2549f5833c2198de843041"    # Takaeshi（日本人男性、アニメ向け）
-FISH_VOICE_MALE_GOKU = "692700a95ef44ea385b9e662b775d8b8"        # Goku（力強い男性）
-FISH_VOICE_MALE_DEKU = "c7bde82dda1d4e6486c3d4c0f8bcf59e"        # Izuku Midoriya Deku
+# ヒロシ（男性）: おじさん（極道風）- 毒舌ツッコミ役
+FISH_VOICE_HIROSHI = "dd25aabce1894d94b5c3d1230efaeb68"
 
-# チャンネルごとのボイス設定
+# チャンネルごとのボイス設定（全チャンネル統一）
 # channel: (カツミのボイス, ヒロシのボイス)
 CHANNEL_VOICE_CONFIG = {
-    "27": (FISH_VOICE_FEMALE_GIRL, FISH_VOICE_MALE_TAKAESHI),    # TOKEN_27: カツミ=女性, ヒロシ=男性
-    "23": (FISH_VOICE_MALE_TAKAESHI, FISH_VOICE_FEMALE_MIKU),    # TOKEN_23: カツミ=男性, ヒロシ=女性
-    "24": (FISH_VOICE_FEMALE_JUNKO, FISH_VOICE_MALE_GOKU),       # TOKEN_24: カツミ=落ち着き, ヒロシ=力強い
+    "27": (FISH_VOICE_KATSUMI, FISH_VOICE_HIROSHI),  # TOKEN_27
+    "23": (FISH_VOICE_KATSUMI, FISH_VOICE_HIROSHI),  # TOKEN_23
+    "24": (FISH_VOICE_KATSUMI, FISH_VOICE_HIROSHI),  # TOKEN_24
 }
 
-# デフォルトのキャラクター設定（チャンネルに応じて voice を動的に設定）
+# デフォルトのキャラクター設定
 CHARACTERS = {
     "カツミ": {
-        "voice": FISH_VOICE_FEMALE_GIRL,  # デフォルト（動的に変更される）
+        "voice": FISH_VOICE_KATSUMI,
         "color": "#4169E1",  # 青（知的）
         "description": "メインMC、論理的、紹介・説明担当"
     },
     "ヒロシ": {
-        "voice": FISH_VOICE_MALE_TAKAESHI,  # デフォルト（動的に変更される）
+        "voice": FISH_VOICE_HIROSHI,
         "color": "#FF6347",  # 赤（サブ）
         "description": "サブMC、リアクション・共感担当、毒舌"
     }
@@ -101,12 +97,8 @@ CHARACTERS = {
 
 # Fish Audio ボイス名マッピング
 FISH_VOICE_NAMES = {
-    FISH_VOICE_FEMALE_GIRL: "Girl Voice（女性）",
-    FISH_VOICE_FEMALE_MIKU: "Hatsune Miku（女性）",
-    FISH_VOICE_FEMALE_JUNKO: "Junko Enoshima（女性）",
-    FISH_VOICE_MALE_TAKAESHI: "Takaeshi（男性）",
-    FISH_VOICE_MALE_GOKU: "Goku（力強い男性）",
-    FISH_VOICE_MALE_DEKU: "Deku（男性）",
+    FISH_VOICE_KATSUMI: "女性アナウンサー（ベテラン）",
+    FISH_VOICE_HIROSHI: "おじさん（極道風）",
 }
 
 
@@ -727,7 +719,7 @@ def generate_fish_audio_dialogue(dialogue: list, channel: str, output_path: str,
     # チャンネル別ボイス設定を取得
     katsumi_voice, hiroshi_voice = CHANNEL_VOICE_CONFIG.get(
         channel,
-        (FISH_VOICE_FEMALE_GIRL, FISH_VOICE_MALE_TAKAESHI)
+        (FISH_VOICE_KATSUMI, FISH_VOICE_HIROSHI)
     )
 
     print(f"    [Fish Audio] セリフごと音声生成中...")
