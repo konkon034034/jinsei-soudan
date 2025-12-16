@@ -16,6 +16,7 @@ import subprocess
 import wave
 from datetime import datetime
 from pathlib import Path
+# Note: 順次処理に変更したため ThreadPoolExecutor は未使用だが、将来のために残す
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import google.generativeai as genai
@@ -68,6 +69,9 @@ class GeminiKeyManager:
                 self.keys.append(key)
         self.failed_keys = set()
         self.current_index = 0
+        # 429エラー対策: キーごとの失敗回数を記録
+        self.key_failure_counts = {}
+        self.key_429_counts = {}
 
     def get_working_key(self):
         for key in self.keys:
@@ -86,10 +90,39 @@ class GeminiKeyManager:
         """全キーを取得"""
         return self.keys.copy()
 
+    def get_key_with_least_failures(self, exclude_keys: set = None) -> tuple:
+        """失敗回数が最も少ないキーを取得（429対策）"""
+        exclude_keys = exclude_keys or set()
+        available_keys = [k for k in self.keys if k not in exclude_keys]
+
+        if not available_keys:
+            # 除外キーをクリアして全キーから選択
+            available_keys = self.keys.copy()
+
+        # 429エラー回数が最も少ないキーを選択
+        best_key = min(available_keys, key=lambda k: self.key_429_counts.get(k, 0))
+        key_index = self.keys.index(best_key)
+        return best_key, f"KEY_{key_index}"
+
     def mark_failed(self, key_name):
         idx = int(key_name.split("_")[1]) if "_" in key_name else 0
         if idx < len(self.keys):
             self.failed_keys.add(self.keys[idx])
+
+    def mark_429_error(self, api_key: str):
+        """429エラーを記録"""
+        self.key_429_counts[api_key] = self.key_429_counts.get(api_key, 0) + 1
+        key_index = self.keys.index(api_key) if api_key in self.keys else "?"
+        print(f"        [429] KEY_{key_index} 429エラー回数: {self.key_429_counts[api_key]}")
+
+    def get_error_summary(self) -> str:
+        """エラーサマリーを取得"""
+        summary = []
+        for i, key in enumerate(self.keys):
+            count_429 = self.key_429_counts.get(key, 0)
+            if count_429 > 0:
+                summary.append(f"KEY_{i}: 429x{count_429}")
+        return ", ".join(summary) if summary else "エラーなし"
 
 
 def get_google_credentials():
@@ -246,59 +279,107 @@ def save_wav_file(filename: str, pcm_data: bytes, channels: int = 1, rate: int =
         wf.writeframes(pcm_data)
 
 
-def generate_gemini_tts_chunk(dialogue_chunk: list, api_key: str, output_path: str, chunk_index: int) -> bool:
-    """Gemini TTSで対話チャンクの音声を生成（マルチスピーカー）"""
-    try:
-        client = genai_tts.Client(api_key=api_key)
+def generate_gemini_tts_chunk(dialogue_chunk: list, api_key: str, output_path: str, chunk_index: int,
+                              key_manager: GeminiKeyManager = None, max_retries: int = 3, retry_wait: int = 60) -> bool:
+    """Gemini TTSで対話チャンクの音声を生成（マルチスピーカー）
 
-        # 対話テキストを構築
-        dialogue_text = "\n".join([
-            f"{line['speaker']}: {line['text']}"
-            for line in dialogue_chunk
-        ])
+    Args:
+        dialogue_chunk: 対話リスト
+        api_key: 初回使用するAPIキー
+        output_path: 出力パス
+        chunk_index: チャンクインデックス
+        key_manager: APIキーマネージャー（リトライ時のキーローテーション用）
+        max_retries: 最大リトライ回数（デフォルト3回）
+        retry_wait: 429エラー時の待機秒数（デフォルト60秒）
+    """
+    current_key = api_key
+    tried_keys = set()
 
-        # マルチスピーカー設定
-        speaker_configs = [
-            types.SpeakerVoiceConfig(
-                speaker="カツミ",
-                voice_config=types.VoiceConfig(
-                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                        voice_name=GEMINI_VOICE_KATSUMI
-                    )
-                )
-            ),
-            types.SpeakerVoiceConfig(
-                speaker="ヒロシ",
-                voice_config=types.VoiceConfig(
-                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                        voice_name=GEMINI_VOICE_HIROSHI
-                    )
-                )
-            )
-        ]
+    for attempt in range(max_retries + 1):
+        try:
+            client = genai_tts.Client(api_key=current_key)
+            key_index = key_manager.keys.index(current_key) if key_manager and current_key in key_manager.keys else "?"
 
-        response = client.models.generate_content(
-            model=GEMINI_TTS_MODEL,
-            contents=f"以下の会話をカツミとヒロシの声で読み上げてください。自然なポッドキャスト風の会話として:\n\n{dialogue_text}",
-            config=types.GenerateContentConfig(
-                response_modalities=["AUDIO"],
-                speech_config=types.SpeechConfig(
-                    multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
-                        speaker_voice_configs=speaker_configs
+            # 対話テキストを構築
+            dialogue_text = "\n".join([
+                f"{line['speaker']}: {line['text']}"
+                for line in dialogue_chunk
+            ])
+
+            # マルチスピーカー設定
+            speaker_configs = [
+                types.SpeakerVoiceConfig(
+                    speaker="カツミ",
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                            voice_name=GEMINI_VOICE_KATSUMI
+                        )
                     )
                 ),
+                types.SpeakerVoiceConfig(
+                    speaker="ヒロシ",
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                            voice_name=GEMINI_VOICE_HIROSHI
+                        )
+                    )
+                )
+            ]
+
+            if attempt > 0:
+                print(f"      [リトライ {attempt}/{max_retries}] チャンク{chunk_index + 1} KEY_{key_index}で再試行")
+
+            response = client.models.generate_content(
+                model=GEMINI_TTS_MODEL,
+                contents=f"以下の会話をカツミとヒロシの声で読み上げてください。自然なポッドキャスト風の会話として:\n\n{dialogue_text}",
+                config=types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=types.SpeechConfig(
+                        multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
+                            speaker_voice_configs=speaker_configs
+                        )
+                    ),
+                )
             )
-        )
 
-        # 音声データを取得
-        if response.candidates and response.candidates[0].content.parts:
-            audio_data = response.candidates[0].content.parts[0].inline_data.data
-            save_wav_file(output_path, audio_data)
-            print(f"      ✓ チャンク{chunk_index + 1} 生成完了")
-            return True
+            # 音声データを取得
+            if response.candidates and response.candidates[0].content.parts:
+                audio_data = response.candidates[0].content.parts[0].inline_data.data
+                save_wav_file(output_path, audio_data)
+                print(f"      ✓ チャンク{chunk_index + 1} 生成完了 (KEY_{key_index})")
+                return True
 
-    except Exception as e:
-        print(f"      ✗ チャンク{chunk_index + 1} エラー: {e}")
+        except Exception as e:
+            error_str = str(e)
+            is_429 = "429" in error_str or "RESOURCE_EXHAUSTED" in error_str
+
+            if is_429:
+                print(f"      ✗ チャンク{chunk_index + 1} 429エラー (KEY_{key_index}): レート制限超過")
+
+                # 429エラーを記録
+                if key_manager:
+                    key_manager.mark_429_error(current_key)
+                    tried_keys.add(current_key)
+
+                # リトライ可能か確認
+                if attempt < max_retries:
+                    # 別のキーを取得
+                    if key_manager:
+                        new_key, new_key_name = key_manager.get_key_with_least_failures(tried_keys)
+                        if new_key != current_key:
+                            print(f"        → {new_key_name}に切り替えて即座にリトライ")
+                            current_key = new_key
+                            continue  # 待機なしでリトライ
+
+                    # 同じキーしかない場合は待機
+                    print(f"        → {retry_wait}秒待機後にリトライ...")
+                    time.sleep(retry_wait)
+                else:
+                    print(f"      ✗ チャンク{chunk_index + 1} 最大リトライ回数超過")
+            else:
+                print(f"      ✗ チャンク{chunk_index + 1} エラー: {e}")
+                # 429以外のエラーはリトライしない
+                break
 
     return False
 
@@ -360,8 +441,17 @@ def split_dialogue_into_chunks(dialogue: list, max_lines: int = MAX_LINES_PER_CH
     return chunks
 
 
-def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir: Path, key_manager: GeminiKeyManager) -> tuple:
-    """対話音声をパラレル生成"""
+def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir: Path, key_manager: GeminiKeyManager,
+                                     chunk_interval: int = 10) -> tuple:
+    """対話音声を順次生成（429エラー対策版）
+
+    Args:
+        dialogue: 対話リスト
+        output_path: 出力パス
+        temp_dir: 一時ディレクトリ
+        key_manager: APIキーマネージャー
+        chunk_interval: チャンク間の待機秒数（デフォルト10秒）
+    """
     segments = []
     current_time = 0.0
 
@@ -375,32 +465,42 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
         print("    ❌ Gemini APIキーがありません")
         return None, [], 0.0
 
-    print(f"    [Gemini TTS] {len(api_keys)}個のAPIキーでパラレル処理")
+    print(f"    [Gemini TTS] {len(api_keys)}個のAPIキーで順次処理（429対策）")
+    print(f"    [設定] チャンク間待機: {chunk_interval}秒, リトライ待機: 60秒, 最大リトライ: 3回")
 
-    # パラレル処理でチャンクを生成
+    # 順次処理でチャンクを生成（429対策）
     chunk_files = [None] * len(chunks)
-    max_workers = min(len(api_keys), len(chunks), 4)  # 最大4並列
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {}
-        for i, chunk in enumerate(chunks):
-            api_key = api_keys[i % len(api_keys)]
-            chunk_path = str(temp_dir / f"chunk_{i:03d}.wav")
-            future = executor.submit(generate_gemini_tts_chunk, chunk, api_key, chunk_path, i)
-            futures[future] = (i, chunk_path)
+    for i, chunk in enumerate(chunks):
+        # APIキーをラウンドロビンで選択
+        api_key = api_keys[i % len(api_keys)]
+        chunk_path = str(temp_dir / f"chunk_{i:03d}.wav")
 
-        for future in as_completed(futures):
-            idx, path = futures[future]
-            try:
-                success = future.result()
-                if success and os.path.exists(path):
-                    chunk_files[idx] = path
-            except Exception as e:
-                print(f"      チャンク{idx + 1} 例外: {e}")
+        print(f"    チャンク {i + 1}/{len(chunks)} 処理中...")
+        success = generate_gemini_tts_chunk(
+            chunk, api_key, chunk_path, i,
+            key_manager=key_manager,
+            max_retries=3,
+            retry_wait=60
+        )
+
+        if success and os.path.exists(chunk_path):
+            chunk_files[i] = chunk_path
+
+        # 次のチャンクの前に待機（最後のチャンク以外）
+        if i < len(chunks) - 1:
+            print(f"      → {chunk_interval}秒待機（API制限回避）...")
+            time.sleep(chunk_interval)
 
     # 成功したチャンクを確認
     successful_chunks = [f for f in chunk_files if f is not None]
+    failed_count = len(chunks) - len(successful_chunks)
     print(f"    [Gemini TTS] {len(successful_chunks)}/{len(chunks)} チャンク成功")
+
+    # エラーサマリーを表示
+    error_summary = key_manager.get_error_summary()
+    if error_summary != "エラーなし":
+        print(f"    [エラー集計] {error_summary}")
 
     if not successful_chunks:
         # フォールバック：gTTSで全体を生成
