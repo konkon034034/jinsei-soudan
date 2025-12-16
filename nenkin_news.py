@@ -2,7 +2,7 @@
 """
 年金ニュース動画自動生成システム
 - TOKEN_23（年金ニュースチャンネル）用
-- Gemini APIでニュース収集→台本生成→Fish Audio TTS→動画生成→YouTube投稿
+- Gemini APIでニュース収集→台本生成→Gemini TTS→動画生成→YouTube投稿
 """
 
 import os
@@ -13,10 +13,14 @@ import time
 import tempfile
 import requests
 import subprocess
+import wave
 from datetime import datetime
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import google.generativeai as genai
+from google import genai as genai_tts
+from google.genai import types
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -28,29 +32,31 @@ VIDEO_WIDTH = 1920
 VIDEO_HEIGHT = 1080
 CHANNEL = "23"  # TOKEN_23固定
 
-# ===== Fish Audio TTS設定 =====
-FISH_AUDIO_API_KEY = os.environ.get("FISH_AUDIO_API_KEY", "")
-FISH_AUDIO_API_URL = "https://api.fish.audio/v1/tts"
+# ===== Gemini TTS設定 =====
+GEMINI_TTS_MODEL = "gemini-2.5-flash-preview-tts"
 
-# ボイス設定（全チャンネル統一）
-# カツミ（女性）: 女性アナウンサー（ベテラン）- 信頼感ある落ち着いた進行役
-FISH_VOICE_KATSUMI = "f1d92c18f84e47c6b5bc0cebb80ddaf5"
+# ボイス設定（Gemini TTS）
+# カツミ（女性）: Kore - 落ち着いた信頼感ある声
+GEMINI_VOICE_KATSUMI = "Kore"
 
-# ヒロシ（男性）: おじさん（極道風）- 毒舌ツッコミ役
-FISH_VOICE_HIROSHI = "dd25aabce1894d94b5c3d1230efaeb68"
+# ヒロシ（男性）: Puck - 明るくアップビートな声
+GEMINI_VOICE_HIROSHI = "Puck"
 
 CHARACTERS = {
-    "カツミ": {"voice": FISH_VOICE_KATSUMI, "color": "#4169E1"},
-    "ヒロシ": {"voice": FISH_VOICE_HIROSHI, "color": "#FF6347"}
+    "カツミ": {"voice": GEMINI_VOICE_KATSUMI, "color": "#4169E1"},
+    "ヒロシ": {"voice": GEMINI_VOICE_HIROSHI, "color": "#FF6347"}
 }
 
 # Unsplash API設定
 UNSPLASH_ACCESS_KEY = os.environ.get("UNSPLASH_ACCESS_KEY", "")
 UNSPLASH_API_URL = "https://api.unsplash.com/search/photos"
 
+# チャンク設定（長い台本を分割するサイズ）
+MAX_LINES_PER_CHUNK = 8
+
 
 class GeminiKeyManager:
-    """Gemini APIキー管理"""
+    """Gemini APIキー管理（TTS用にも使用）"""
     def __init__(self):
         self.keys = []
         base_key = os.environ.get("GEMINI_API_KEY")
@@ -61,6 +67,7 @@ class GeminiKeyManager:
             if key:
                 self.keys.append(key)
         self.failed_keys = set()
+        self.current_index = 0
 
     def get_working_key(self):
         for key in self.keys:
@@ -68,6 +75,16 @@ class GeminiKeyManager:
                 return key, f"KEY_{self.keys.index(key)}"
         self.failed_keys.clear()
         return self.keys[0] if self.keys else None, "KEY_0"
+
+    def get_key_by_index(self, index: int):
+        """インデックスでキーを取得（パラレル処理用）"""
+        if not self.keys:
+            return None
+        return self.keys[index % len(self.keys)]
+
+    def get_all_keys(self):
+        """全キーを取得"""
+        return self.keys.copy()
 
     def mark_failed(self, key_name):
         idx = int(key_name.split("_")[1]) if "_" in key_name else 0
@@ -220,39 +237,99 @@ def generate_script(news_list: list, key_manager: GeminiKeyManager) -> dict:
     return None
 
 
-def detect_emotion_tag(speaker: str, text: str) -> str:
-    """感情タグを判定"""
-    if speaker == "ヒロシ":
-        if any(w in text for w in ["えっ", "マジ", "本当"]):
-            return "(surprised) "
-        if any(w in text for w in ["なるほど", "そうなんだ"]):
-            return "(empathetic) "
-    return ""
+def save_wav_file(filename: str, pcm_data: bytes, channels: int = 1, rate: int = 24000, sample_width: int = 2):
+    """WAVファイルを保存"""
+    with wave.open(filename, "wb") as wf:
+        wf.setnchannels(channels)
+        wf.setsampwidth(sample_width)
+        wf.setframerate(rate)
+        wf.writeframes(pcm_data)
 
 
-def generate_fish_audio_tts(text: str, voice_id: str, output_path: str, max_retries: int = 3) -> bool:
-    """Fish Audio APIで音声生成"""
-    if not FISH_AUDIO_API_KEY:
-        print("    [Fish Audio] APIキーなし")
-        return False
+def generate_gemini_tts_chunk(dialogue_chunk: list, api_key: str, output_path: str, chunk_index: int) -> bool:
+    """Gemini TTSで対話チャンクの音声を生成（マルチスピーカー）"""
+    try:
+        client = genai_tts.Client(api_key=api_key)
 
-    headers = {
-        "Authorization": f"Bearer {FISH_AUDIO_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    payload = {"text": text, "reference_id": voice_id, "format": "wav"}
+        # 対話テキストを構築
+        dialogue_text = "\n".join([
+            f"{line['speaker']}: {line['text']}"
+            for line in dialogue_chunk
+        ])
 
-    for attempt in range(max_retries):
-        try:
-            response = requests.post(FISH_AUDIO_API_URL, headers=headers, json=payload, timeout=60)
-            if response.status_code == 200:
-                with open(output_path, 'wb') as f:
-                    f.write(response.content)
-                return True
-            print(f"      [試行{attempt+1}] エラー: {response.status_code}")
-        except Exception as e:
-            print(f"      [試行{attempt+1}] 例外: {e}")
-        time.sleep(2)
+        # マルチスピーカー設定
+        speaker_configs = [
+            types.SpeakerVoiceConfig(
+                speaker="カツミ",
+                voice_config=types.VoiceConfig(
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                        voice_name=GEMINI_VOICE_KATSUMI
+                    )
+                )
+            ),
+            types.SpeakerVoiceConfig(
+                speaker="ヒロシ",
+                voice_config=types.VoiceConfig(
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                        voice_name=GEMINI_VOICE_HIROSHI
+                    )
+                )
+            )
+        ]
+
+        response = client.models.generate_content(
+            model=GEMINI_TTS_MODEL,
+            contents=f"以下の会話をカツミとヒロシの声で読み上げてください。自然なポッドキャスト風の会話として:\n\n{dialogue_text}",
+            config=types.GenerateContentConfig(
+                response_modalities=["AUDIO"],
+                speech_config=types.SpeechConfig(
+                    multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
+                        speaker_voice_configs=speaker_configs
+                    )
+                ),
+            )
+        )
+
+        # 音声データを取得
+        if response.candidates and response.candidates[0].content.parts:
+            audio_data = response.candidates[0].content.parts[0].inline_data.data
+            save_wav_file(output_path, audio_data)
+            print(f"      ✓ チャンク{chunk_index + 1} 生成完了")
+            return True
+
+    except Exception as e:
+        print(f"      ✗ チャンク{chunk_index + 1} エラー: {e}")
+
+    return False
+
+
+def generate_gemini_tts_single(text: str, voice: str, api_key: str, output_path: str) -> bool:
+    """Gemini TTSでシングルスピーカー音声を生成（フォールバック用）"""
+    try:
+        client = genai_tts.Client(api_key=api_key)
+
+        response = client.models.generate_content(
+            model=GEMINI_TTS_MODEL,
+            contents=text,
+            config=types.GenerateContentConfig(
+                response_modalities=["AUDIO"],
+                speech_config=types.SpeechConfig(
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                            voice_name=voice
+                        )
+                    )
+                ),
+            )
+        )
+
+        if response.candidates and response.candidates[0].content.parts:
+            audio_data = response.candidates[0].content.parts[0].inline_data.data
+            save_wav_file(output_path, audio_data)
+            return True
+
+    except Exception as e:
+        print(f"        シングルTTSエラー: {e}")
 
     return False
 
@@ -275,40 +352,82 @@ def generate_gtts_fallback(text: str, output_path: str) -> bool:
         return False
 
 
-def generate_dialogue_audio(dialogue: list, output_path: str, temp_dir: Path) -> tuple:
-    """対話音声を生成"""
-    audio_files = []
+def split_dialogue_into_chunks(dialogue: list, max_lines: int = MAX_LINES_PER_CHUNK) -> list:
+    """対話をチャンクに分割"""
+    chunks = []
+    for i in range(0, len(dialogue), max_lines):
+        chunks.append(dialogue[i:i + max_lines])
+    return chunks
+
+
+def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir: Path, key_manager: GeminiKeyManager) -> tuple:
+    """対話音声をパラレル生成"""
     segments = []
     current_time = 0.0
 
-    for idx, line in enumerate(dialogue):
-        speaker = line["speaker"]
-        text = line["text"]
-        voice_id = CHARACTERS[speaker]["voice"]
+    # チャンクに分割
+    chunks = split_dialogue_into_chunks(dialogue)
+    print(f"    [Gemini TTS] {len(dialogue)}セリフを{len(chunks)}チャンクに分割")
 
-        emotion_tag = detect_emotion_tag(speaker, text)
-        tagged_text = emotion_tag + text
-
-        temp_audio = str(temp_dir / f"line_{idx:03d}.wav")
-
-        if generate_fish_audio_tts(tagged_text, voice_id, temp_audio):
-            audio_files.append(temp_audio)
-        elif generate_gtts_fallback(text, temp_audio):
-            audio_files.append(temp_audio)
-
-    if not audio_files:
+    # APIキーを取得
+    api_keys = key_manager.get_all_keys()
+    if not api_keys:
+        print("    ❌ Gemini APIキーがありません")
         return None, [], 0.0
 
-    # 音声を結合
-    list_file = temp_dir / "concat.txt"
-    with open(list_file, 'w') as f:
-        for af in audio_files:
-            f.write(f"file '{af}'\n")
+    print(f"    [Gemini TTS] {len(api_keys)}個のAPIキーでパラレル処理")
 
-    subprocess.run([
-        'ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', str(list_file),
-        '-acodec', 'pcm_s16le', '-ar', '24000', '-ac', '1', output_path
-    ], capture_output=True)
+    # パラレル処理でチャンクを生成
+    chunk_files = [None] * len(chunks)
+    max_workers = min(len(api_keys), len(chunks), 4)  # 最大4並列
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {}
+        for i, chunk in enumerate(chunks):
+            api_key = api_keys[i % len(api_keys)]
+            chunk_path = str(temp_dir / f"chunk_{i:03d}.wav")
+            future = executor.submit(generate_gemini_tts_chunk, chunk, api_key, chunk_path, i)
+            futures[future] = (i, chunk_path)
+
+        for future in as_completed(futures):
+            idx, path = futures[future]
+            try:
+                success = future.result()
+                if success and os.path.exists(path):
+                    chunk_files[idx] = path
+            except Exception as e:
+                print(f"      チャンク{idx + 1} 例外: {e}")
+
+    # 成功したチャンクを確認
+    successful_chunks = [f for f in chunk_files if f is not None]
+    print(f"    [Gemini TTS] {len(successful_chunks)}/{len(chunks)} チャンク成功")
+
+    if not successful_chunks:
+        # フォールバック：gTTSで全体を生成
+        print("    [フォールバック] gTTSで音声生成")
+        all_text = "。".join([line["text"] for line in dialogue])
+        fallback_path = str(temp_dir / "fallback.wav")
+        if generate_gtts_fallback(all_text, fallback_path):
+            successful_chunks = [fallback_path]
+        else:
+            return None, [], 0.0
+
+    # 音声を結合
+    if len(successful_chunks) == 1:
+        # 1つだけなら結合不要
+        import shutil
+        shutil.copy(successful_chunks[0], output_path)
+    else:
+        # ffmpegで結合
+        list_file = temp_dir / "concat.txt"
+        with open(list_file, 'w') as f:
+            for af in successful_chunks:
+                f.write(f"file '{af}'\n")
+
+        subprocess.run([
+            'ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', str(list_file),
+            '-acodec', 'pcm_s16le', '-ar', '24000', '-ac', '1', output_path
+        ], capture_output=True)
 
     # 長さ取得
     result = subprocess.run([
@@ -332,11 +451,37 @@ def generate_dialogue_audio(dialogue: list, output_path: str, temp_dir: Path) ->
         current_time += duration
 
     # 一時ファイル削除
-    for af in audio_files:
-        if os.path.exists(af):
-            os.remove(af)
+    for af in successful_chunks:
+        if af and os.path.exists(af):
+            try:
+                os.remove(af)
+            except:
+                pass
 
     return output_path, segments, total_duration
+
+
+def upload_audio_to_drive(audio_path: str, folder_id: str = None) -> str:
+    """音声ファイルをGoogle Driveにアップロード"""
+    try:
+        creds = get_google_credentials()
+        service = build('drive', 'v3', credentials=creds)
+
+        file_name = os.path.basename(audio_path)
+        file_metadata = {'name': file_name}
+
+        if folder_id:
+            file_metadata['parents'] = [folder_id]
+
+        media = MediaFileUpload(audio_path, mimetype='audio/wav', resumable=True)
+        file = service.files().create(body=file_metadata, media_body=media, fields='id,webViewLink').execute()
+
+        print(f"    ✓ Google Driveにアップロード完了: {file.get('webViewLink', file.get('id'))}")
+        return file.get('id')
+
+    except Exception as e:
+        print(f"    ⚠ Google Driveアップロードエラー: {e}")
+        return None
 
 
 def fetch_unsplash_image(query: str, output_path: str) -> bool:
@@ -432,15 +577,20 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
 
     print(f"  セリフ数: {len(all_dialogue)}")
 
-    # 音声生成
+    # 音声生成（Gemini TTSでパラレル処理）
     audio_path = str(temp_dir / "audio.wav")
-    _, segments, duration = generate_dialogue_audio(all_dialogue, audio_path, temp_dir)
+    _, segments, duration = generate_dialogue_audio_parallel(all_dialogue, audio_path, temp_dir, key_manager)
     all_segments = segments
 
     if duration == 0:
         raise ValueError("音声生成に失敗しました")
 
     print(f"  音声長: {duration:.1f}秒")
+
+    # Google Driveにアップロード（オプション）
+    drive_folder_id = os.environ.get("AUDIO_DRIVE_FOLDER_ID")
+    if drive_folder_id:
+        upload_audio_to_drive(audio_path, drive_folder_id)
 
     # 背景画像
     bg_path = str(temp_dir / "background.png")
@@ -538,9 +688,12 @@ def main():
     print("=" * 50)
     print("年金ニュース動画生成システム")
     print(f"実行日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("TTS: Google Gemini TTS (gemini-2.5-flash-preview-tts)")
+    print(f"ボイス: カツミ={GEMINI_VOICE_KATSUMI}, ヒロシ={GEMINI_VOICE_HIROSHI}")
     print("=" * 50)
 
     key_manager = GeminiKeyManager()
+    print(f"利用可能なAPIキー: {len(key_manager.get_all_keys())}個")
 
     # 1. ニュース検索
     print("\n[1/4] 年金ニュースを検索中...")
