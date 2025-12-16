@@ -1375,11 +1375,14 @@ def create_video_ffmpeg(sections: list, all_segments: list, temp_dir: Path) -> t
         })
         print(f"  [{i+1}/{len(sections)}] {duration:.1f}秒")
 
-    # 4. SRT字幕ファイルを生成
-    print("\n[4/6] SRT字幕ファイルを生成中...")
-    srt_path = str(temp_dir / f"asadora_ranking_{timestamp}.srt")
-    generate_srt(all_segments, srt_path)
+    # 4. ASS字幕ファイルを生成（話者別位置指定）
+    print("\n[4/6] ASS字幕ファイルを生成中...")
+    ass_path = str(temp_dir / f"asadora_ranking_{timestamp}.ass")
+    srt_path = str(temp_dir / f"asadora_ranking_{timestamp}.srt")  # 互換性のため
+    generate_ass_subtitles_positioned(all_segments, ass_path, VIDEO_WIDTH, VIDEO_HEIGHT)
+    generate_srt(all_segments, srt_path)  # SRTも生成（アーティファクト用）
     print(f"  字幕数: {len(all_segments)}件")
+    print(f"  カツミ: 画面65%位置, ヒロシ: 画面80%位置")
 
     # 5. 画像シーケンスファイルを作成し、動画を生成（字幕なし）
     print("\n[5/6] 画像+音声で動画を生成中...")
@@ -1437,17 +1440,15 @@ def create_video_ffmpeg(sections: list, all_segments: list, temp_dir: Path) -> t
         print(f"FFmpegエラー（Step1）: {e.stderr[:500] if e.stderr else 'unknown'}")
         raise
 
-    # 6. 字幕を動画全体にオーバーレイ
+    # 6. 字幕を動画全体にオーバーレイ（ASS形式で話者別位置）
     print("\n[6/6] 字幕を動画にオーバーレイ中...")
+    print("  ASS形式: カツミ=65%位置(オレンジ), ヒロシ=80%位置(青)")
 
-    # 日本語フォント設定
-    # 字幕スタイル: フォントサイズ72、薄いグレーの影
-    font_style = "FontName=Noto Sans CJK JP,FontSize=72,PrimaryColour=&H00FFFFFF,OutlineColour=&H00333333,BorderStyle=1,Outline=3,Shadow=0,MarginV=60"
-
+    # ASS字幕を使用（話者別の位置・色が設定済み）
     cmd_step2 = [
         'ffmpeg', '-y',
         '-i', temp_video,
-        '-vf', f"subtitles={srt_path}:force_style='{font_style}'",
+        '-vf', f"ass={ass_path}",
         '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
         '-c:a', 'copy',
         '-movflags', '+faststart',
@@ -1480,14 +1481,80 @@ def create_video_ffmpeg(sections: list, all_segments: list, temp_dir: Path) -> t
 
 
 def generate_srt(segments: list, output_path: str):
-    """SRTファイルを生成"""
+    """SRTファイルを生成（互換性のため残す）"""
     with open(output_path, 'w', encoding='utf-8') as f:
         for i, seg in enumerate(segments, 1):
             start = format_srt_time(seg['start'])
             end = format_srt_time(seg['end'])
             speaker = seg.get('speaker', '')
-            text = f"【{speaker}】{seg['text']}" if speaker else seg['text']
+            text = f"{speaker}：{seg['text']}" if speaker else seg['text']
             f.write(f"{i}\n{start} --> {end}\n{text}\n\n")
+
+
+def generate_ass_subtitles_positioned(segments: list, output_path: str, video_width: int = 1920, video_height: int = 1080):
+    """
+    ASS形式の字幕ファイルを生成（話者別の位置指定）
+
+    位置設定:
+    - タイトル/その他: 画面上部 (Alignment=8, MarginV=50)
+    - カツミ: 画面の65%位置 (Alignment=2, MarginV=378)
+    - ヒロシ: 画面の80%位置 (Alignment=2, MarginV=216)
+    """
+    # MarginVの計算（1080pベース）
+    # y=65% → 上から702px → 下から378px
+    # y=80% → 上から864px → 下から216px
+    margin_katsumi = int(video_height * 0.35)  # 378 at 1080p
+    margin_hiroshi = int(video_height * 0.20)  # 216 at 1080p
+
+    header = f"""[Script Info]
+Title: シニアの口コミランキング
+ScriptType: v4.00+
+PlayResX: {video_width}
+PlayResY: {video_height}
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Katsumi,Noto Sans CJK JP,64,&H00FFE4B5,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,50,50,{margin_katsumi},1
+Style: Hiroshi,Noto Sans CJK JP,64,&H006495ED,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,50,50,{margin_hiroshi},1
+Style: Title,Noto Sans CJK JP,72,&H0000D7FF,&H000000FF,&H00000080,&H80000000,-1,0,0,0,100,100,0,0,1,4,2,8,50,50,50,1
+Style: Default,Noto Sans CJK JP,64,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,50,50,300,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+
+    def format_ass_time(seconds: float) -> str:
+        """秒をASS形式に変換"""
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        centis = int((seconds % 1) * 100)
+        return f"{hours}:{minutes:02d}:{secs:02d}.{centis:02d}"
+
+    lines = [header]
+
+    for seg in segments:
+        start = format_ass_time(seg['start'])
+        end = format_ass_time(seg['end'])
+        speaker = seg.get('speaker', '')
+        text = seg.get('text', '')
+
+        # スタイルを選択
+        if speaker == 'カツミ':
+            style = 'Katsumi'
+            display_text = f"カツミ：{text}"
+        elif speaker == 'ヒロシ':
+            style = 'Hiroshi'
+            display_text = f"ヒロシ：{text}"
+        else:
+            style = 'Default'
+            display_text = text
+
+        lines.append(f"Dialogue: 0,{start},{end},{style},,0,0,0,,{display_text}")
+
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(lines))
 
 
 def format_srt_time(seconds: float) -> str:
@@ -1610,10 +1677,10 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager, ch
 
 
 def upload_to_youtube(video_path: str, title: str, description: str, tags: list, channel_token: str, mode: str = "AUTO") -> str:
-    """YouTubeに動画をアップロード
+    """YouTubeに動画をアップロード（常に限定公開）
 
     Args:
-        mode: "TEST" → 限定公開(unlisted), "AUTO" → 公開(public)
+        mode: 互換性のため残すが、常に限定公開(unlisted)でアップロード
     """
     client_id = os.environ.get("YOUTUBE_CLIENT_ID")
     client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
@@ -1660,16 +1727,11 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list,
 
     hashtags = " ".join([f"#{tag}" for tag in tags[:5]])
 
-    # モードに応じて公開設定を切り替え
-    # TEST → 限定公開(unlisted), AUTO → 公開(public)
-    privacy_status = "unlisted" if mode == "TEST" else "public"
+    # 公開設定: 常に限定公開（unlisted）
+    privacy_status = "unlisted"
     print(f"\n[公開設定]")
-    print(f"  mode: {mode}")
     print(f"  privacyStatus: {privacy_status}")
-    if mode == "TEST":
-        print(f"  → 限定公開（URLを知っている人だけ視聴可能）")
-    else:
-        print(f"  → 公開（誰でも視聴可能）")
+    print(f"  → 限定公開（URLを知っている人だけ視聴可能）")
 
     body = {
         "snippet": {
