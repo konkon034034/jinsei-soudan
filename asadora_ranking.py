@@ -1774,7 +1774,19 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list,
             print(f"アップロード進捗: {int(status.progress() * 100)}%")
 
     video_id = response["id"]
-    return f"https://www.youtube.com/watch?v={video_id}"
+    video_url = f"https://www.youtube.com/watch?v={video_id}"
+
+    # アップロード完了メッセージを表示
+    print("\n" + "=" * 40)
+    print("YouTube投稿完了!")
+    print("=" * 40)
+    print(f"動画URL: {video_url}")
+    print(f"チャンネル: TOKEN_{channel_token}")
+    print(f"タイトル: {title}")
+    print(f"公開設定: 限定公開")
+    print("=" * 40)
+
+    return video_url
 
 
 def send_slack_notification(message: str, success: bool = True):

@@ -516,7 +516,17 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list)
 
     video_id = response["id"]
     url = f"https://www.youtube.com/watch?v={video_id}"
-    print(f"✓ アップロード完了: {url}")
+
+    # アップロード完了メッセージを表示
+    print("\n" + "=" * 40)
+    print("YouTube投稿完了!")
+    print("=" * 40)
+    print(f"動画URL: {url}")
+    print(f"チャンネル: TOKEN_23")
+    print(f"タイトル: {title}")
+    print(f"公開設定: 限定公開")
+    print("=" * 40)
+
     return url
 
 
@@ -557,8 +567,7 @@ def main():
 
         try:
             url = upload_to_youtube(video_path, title, description, tags)
-            print(f"\n✅ 完了!")
-            print(f"   動画URL: {url}")
+            # アップロード完了メッセージは upload_to_youtube 内で表示済み
         except Exception as e:
             print(f"❌ YouTube投稿エラー: {e}")
             # ローカルに保存
