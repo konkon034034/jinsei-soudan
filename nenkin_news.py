@@ -95,7 +95,7 @@ def search_pension_news(key_manager: GeminiKeyManager) -> list:
         return []
 
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-2.0-flash")
 
     prompt = """
 あなたは年金ニュースの専門リサーチャーです。
@@ -149,7 +149,7 @@ def generate_script(news_list: list, key_manager: GeminiKeyManager) -> dict:
         return None
 
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-2.0-flash")
 
     news_text = "\n".join([
         f"【ニュース{i+1}】{n['title']}\n{n['summary']}\n影響: {n['impact']}"
