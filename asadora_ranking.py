@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 シニアの口コミランキング動画自動生成システム
-- モードA: 完全自動（Gemini TTS）
+- モードA: 完全自動（Fish Audio TTS）
 - モードB: 高品質（NotebookLM）前半処理
 
 参考: https://zenn.dev/xtm_blog/articles/da1eba90525f91
@@ -15,6 +15,7 @@ import time
 import tempfile
 import requests
 import random
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -24,8 +25,6 @@ import struct
 import wave
 
 import google.generativeai as genai
-from google import genai as genai_new
-from google.genai import types as genai_types
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload
@@ -60,45 +59,58 @@ FPS = 24
 TEST_MODE = os.environ.get("TEST_MODE", "false").lower() == "true"
 RANKING_COUNT = 3 if TEST_MODE else 10  # テスト時はTOP3、本番はTOP10
 
-# Gemini TTS設定
-# 使用可能なボイス: Kore(女性), Puck(男性), Charon(落ち着き), Fenrir(力強い)
-GEMINI_VOICE_KORE = "Kore"       # 女性ボイス
-GEMINI_VOICE_PUCK = "Puck"       # 男性ボイス
-GEMINI_VOICE_CHARON = "Charon"   # 落ち着いたボイス
-GEMINI_VOICE_FENRIR = "Fenrir"   # 力強いボイス
+# ===== Fish Audio TTS設定 =====
+# Fish Audio API
+FISH_AUDIO_API_KEY = os.environ.get("FISH_AUDIO_API_KEY", "")
+FISH_AUDIO_API_URL = "https://api.fish.audio/v1/tts"
+
+# Fish Audio ボイスID（日本語対応）
+# 女性ボイス
+FISH_VOICE_FEMALE_GIRL = "a2c280f3ad5a4d5c9825c0f600dbeb52"      # Girl Voice（かわいい日本語女性）
+FISH_VOICE_FEMALE_MIKU = "acc8237220d8470985ec9be6c4c480a9"      # Hatsune Miku TTS
+FISH_VOICE_FEMALE_JUNKO = "d2feb61a72b64a87aa8e4775ebe35d0c"     # Junko Enoshima（アニメ女性）
+
+# 男性ボイス
+FISH_VOICE_MALE_TAKAESHI = "3ea9e8922a2549f5833c2198de843041"    # Takaeshi（日本人男性、アニメ向け）
+FISH_VOICE_MALE_GOKU = "692700a95ef44ea385b9e662b775d8b8"        # Goku（力強い男性）
+FISH_VOICE_MALE_DEKU = "c7bde82dda1d4e6486c3d4c0f8bcf59e"        # Izuku Midoriya Deku
 
 # チャンネルごとのボイス設定
 # channel: (カツミのボイス, ヒロシのボイス)
 CHANNEL_VOICE_CONFIG = {
-    "27": (GEMINI_VOICE_KORE, GEMINI_VOICE_PUCK),       # シニアの口コミ27: カツミ=Kore(女性), ヒロシ=Puck(男性)
-    "23": (GEMINI_VOICE_PUCK, GEMINI_VOICE_KORE),       # シニアの口コミ23: カツミ=Puck(男性), ヒロシ=Kore(女性)
-    "24": (GEMINI_VOICE_CHARON, GEMINI_VOICE_FENRIR),   # シニアの口コミ24: カツミ=Charon(落ち着き), ヒロシ=Fenrir(力強い)
+    "27": (FISH_VOICE_FEMALE_GIRL, FISH_VOICE_MALE_TAKAESHI),    # TOKEN_27: カツミ=女性, ヒロシ=男性
+    "23": (FISH_VOICE_MALE_TAKAESHI, FISH_VOICE_FEMALE_MIKU),    # TOKEN_23: カツミ=男性, ヒロシ=女性
+    "24": (FISH_VOICE_FEMALE_JUNKO, FISH_VOICE_MALE_GOKU),       # TOKEN_24: カツミ=落ち着き, ヒロシ=力強い
 }
 
 # デフォルトのキャラクター設定（チャンネルに応じて voice を動的に設定）
 CHARACTERS = {
     "カツミ": {
-        "voice": GEMINI_VOICE_KORE,  # デフォルト（動的に変更される）
+        "voice": FISH_VOICE_FEMALE_GIRL,  # デフォルト（動的に変更される）
         "color": "#4169E1",  # 青（知的）
         "description": "メインMC、論理的、紹介・説明担当"
     },
     "ヒロシ": {
-        "voice": GEMINI_VOICE_PUCK,  # デフォルト（動的に変更される）
+        "voice": FISH_VOICE_MALE_TAKAESHI,  # デフォルト（動的に変更される）
         "color": "#FF6347",  # 赤（サブ）
-        "description": "サブMC、リアクション・共感担当"
+        "description": "サブMC、リアクション・共感担当、毒舌"
     }
+}
+
+# Fish Audio ボイス名マッピング
+FISH_VOICE_NAMES = {
+    FISH_VOICE_FEMALE_GIRL: "Girl Voice（女性）",
+    FISH_VOICE_FEMALE_MIKU: "Hatsune Miku（女性）",
+    FISH_VOICE_FEMALE_JUNKO: "Junko Enoshima（女性）",
+    FISH_VOICE_MALE_TAKAESHI: "Takaeshi（男性）",
+    FISH_VOICE_MALE_GOKU: "Goku（力強い男性）",
+    FISH_VOICE_MALE_DEKU: "Deku（男性）",
 }
 
 
 def get_voice_name(voice: str) -> str:
-    """ボイス名から説明を取得"""
-    voice_names = {
-        GEMINI_VOICE_KORE: "Kore(女性)",
-        GEMINI_VOICE_PUCK: "Puck(男性)",
-        GEMINI_VOICE_CHARON: "Charon(落ち着き)",
-        GEMINI_VOICE_FENRIR: "Fenrir(力強い)",
-    }
-    return voice_names.get(voice, voice)
+    """ボイスIDから説明を取得"""
+    return FISH_VOICE_NAMES.get(voice, voice[:8] + "...")
 
 
 def setup_channel_voices(channel: str):
@@ -531,110 +543,253 @@ def wave_file(filename: str, pcm: bytes, channels: int = 1, rate: int = 24000, s
         wf.writeframes(pcm)
 
 
-def generate_gemini_tts_multispeaker(dialogue: list, channel: str, output_path: str, key_manager: GeminiKeyManager, max_retries: int = 3, timeout: int = 60) -> bool:
+def detect_emotion_tag(speaker: str, text: str) -> str:
     """
-    Gemini TTSでマルチスピーカー音声を生成（WAVファイル出力）
+    セリフの内容から感情タグを判定
+
+    感情タグルール:
+    - カツミ（普通）: タグなし
+    - カツミ（共感）: (empathetic)
+    - ヒロシ（毒舌）: (frustrated) または (sarcastic)
+    - ヒロシ（ツッコミ）: (surprised)
+    - ヒロシ（断言）: (confident)
+    """
+    # 毒舌・皮肉パターン
+    toxic_patterns = ["まあ", "正直", "ぶっちゃけ", "ひどい", "残念", "ダメ", "最悪", "無理", "やばい", "やめて"]
+    # ツッコミパターン
+    tsukkomi_patterns = ["えっ", "え？", "何それ", "マジで", "うそ", "本当", "信じられない", "！？", "!?"]
+    # 断言パターン
+    confident_patterns = ["間違いない", "絶対", "確実", "これは", "断言", "やっぱり", "当然", "もちろん"]
+    # 共感パターン
+    empathetic_patterns = ["わかる", "そうだね", "確かに", "なるほど", "いいね", "素敵", "すごい", "感動"]
+
+    if speaker == "ヒロシ":
+        # 毒舌チェック
+        for pattern in toxic_patterns:
+            if pattern in text:
+                return "(sarcastic) " if random.random() > 0.5 else "(frustrated) "
+        # ツッコミチェック
+        for pattern in tsukkomi_patterns:
+            if pattern in text:
+                return "(surprised) "
+        # 断言チェック
+        for pattern in confident_patterns:
+            if pattern in text:
+                return "(confident) "
+
+    elif speaker == "カツミ":
+        # 共感チェック
+        for pattern in empathetic_patterns:
+            if pattern in text:
+                return "(empathetic) "
+
+    return ""  # タグなし
+
+
+def generate_fish_audio_tts(text: str, reference_id: str, output_path: str, max_retries: int = 3, timeout: int = 60) -> bool:
+    """
+    Fish Audio APIで音声を生成
 
     Args:
-        dialogue: 対話リスト [{"speaker": "カツミ", "text": "..."}, ...]
-        channel: チャンネル番号（"23", "24", "27"）
-        output_path: 出力WAVファイルパス
-        key_manager: GeminiKeyManager インスタンス
-        max_retries: 最大リトライ回数（デフォルト3回）
-        timeout: タイムアウト秒数（デフォルト60秒）
+        text: 読み上げるテキスト
+        reference_id: Fish AudioのボイスモデルID
+        output_path: 出力ファイルパス（.wav）
+        max_retries: 最大リトライ回数
+        timeout: タイムアウト秒数
 
     Returns:
         bool: 成功時True
     """
+    if not FISH_AUDIO_API_KEY:
+        print("    [Fish Audio] エラー: FISH_AUDIO_API_KEY が設定されていません")
+        return False
 
-    # チャンネル別ボイス設定を取得
-    katsumi_voice, hiroshi_voice = CHANNEL_VOICE_CONFIG.get(channel, (GEMINI_VOICE_KORE, GEMINI_VOICE_PUCK))
+    headers = {
+        "Authorization": f"Bearer {FISH_AUDIO_API_KEY}",
+        "Content-Type": "application/json"
+    }
 
-    # 台本テキストを生成（話者: テキスト形式）
-    script_lines = []
-    for line in dialogue:
-        speaker = line["speaker"]
-        text = line["text"]
-        script_lines.append(f"{speaker}: {text}")
-
-    script_text = "\n".join(script_lines)
-
-    print(f"    [Gemini TTS] マルチスピーカー音声生成中...")
-    print(f"    カツミ={get_voice_name(katsumi_voice)}, ヒロシ={get_voice_name(hiroshi_voice)}")
-    print(f"    リトライ: 最大{max_retries}回, タイムアウト: {timeout}秒")
+    payload = {
+        "text": text,
+        "reference_id": reference_id,
+        "format": "wav"
+    }
 
     last_error = None
 
     for attempt in range(max_retries):
         try:
-            api_key, key_name = key_manager.get_working_key()
-            print(f"    [試行 {attempt + 1}/{max_retries}] {key_name} を使用")
-
-            # タイムアウト付きでクライアント作成
-            client = genai_new.Client(
-                api_key=api_key,
-                http_options={"timeout": timeout * 1000}  # ミリ秒
+            response = requests.post(
+                FISH_AUDIO_API_URL,
+                headers=headers,
+                json=payload,
+                timeout=timeout
             )
 
-            # マルチスピーカー設定
-            response = client.models.generate_content(
-                model="gemini-2.5-flash-preview-tts",
-                contents=script_text,
-                config=genai_types.GenerateContentConfig(
-                    response_modalities=["AUDIO"],
-                    speech_config=genai_types.SpeechConfig(
-                        multi_speaker_voice_config=genai_types.MultiSpeakerVoiceConfig(
-                            speaker_voice_configs=[
-                                genai_types.SpeakerVoiceConfig(
-                                    speaker="カツミ",
-                                    voice_config=genai_types.VoiceConfig(
-                                        prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
-                                            voice_name=katsumi_voice
-                                        )
-                                    )
-                                ),
-                                genai_types.SpeakerVoiceConfig(
-                                    speaker="ヒロシ",
-                                    voice_config=genai_types.VoiceConfig(
-                                        prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
-                                            voice_name=hiroshi_voice
-                                        )
-                                    )
-                                )
-                            ]
-                        )
-                    )
-                )
-            )
-
-            # 音声データを取得
-            data = response.candidates[0].content.parts[0].inline_data.data
-
-            # WAVファイルとして保存
-            wave_file(output_path, data)
-
-            file_size = os.path.getsize(output_path)
-            print(f"    [Gemini TTS] ✓ 生成成功 ({file_size} bytes)")
-            return True
-
-        except Exception as e:
-            last_error = e
-            error_str = str(e)
-
-            if "429" in error_str or "quota" in error_str.lower():
-                print(f"    [試行 {attempt + 1}] クォータエラー (429)")
-                key_manager.mark_failed(key_name)
-            elif "timeout" in error_str.lower():
-                print(f"    [試行 {attempt + 1}] タイムアウト")
+            if response.status_code == 200:
+                with open(output_path, 'wb') as f:
+                    f.write(response.content)
+                return True
+            elif response.status_code == 429:
+                print(f"      [試行 {attempt + 1}] レート制限 (429)")
             else:
-                print(f"    [試行 {attempt + 1}] エラー: {error_str[:100]}")
+                print(f"      [試行 {attempt + 1}] エラー: {response.status_code} - {response.text[:100]}")
+                last_error = f"HTTP {response.status_code}"
 
-            if attempt < max_retries - 1:
-                wait_time = (attempt + 1) * 2  # 2秒, 4秒, 6秒...
-                print(f"    {wait_time}秒後にリトライ...")
-                time.sleep(wait_time)
+        except requests.Timeout:
+            print(f"      [試行 {attempt + 1}] タイムアウト")
+            last_error = "Timeout"
+        except Exception as e:
+            print(f"      [試行 {attempt + 1}] エラー: {str(e)[:100]}")
+            last_error = str(e)
 
-    print(f"    [Gemini TTS] ✗ 全リトライ失敗: {last_error}")
+        if attempt < max_retries - 1:
+            wait_time = (attempt + 1) * 2
+            print(f"      {wait_time}秒後にリトライ...")
+            time.sleep(wait_time)
+
+    print(f"    [Fish Audio] ✗ 全リトライ失敗: {last_error}")
+    return False
+
+
+def concatenate_audio_files(audio_files: list, output_path: str) -> bool:
+    """
+    複数の音声ファイルをffmpegで結合
+
+    Args:
+        audio_files: 結合する音声ファイルのリスト
+        output_path: 出力ファイルパス
+
+    Returns:
+        bool: 成功時True
+    """
+    if not audio_files:
+        return False
+
+    if len(audio_files) == 1:
+        # 1ファイルの場合はコピー
+        import shutil
+        shutil.copy(audio_files[0], output_path)
+        return True
+
+    try:
+        # 一時ファイルリストを作成
+        temp_dir = Path(audio_files[0]).parent
+        list_file = temp_dir / "concat_list.txt"
+
+        with open(list_file, 'w') as f:
+            for audio_file in audio_files:
+                f.write(f"file '{audio_file}'\n")
+
+        # ffmpegで結合
+        cmd = [
+            'ffmpeg', '-y', '-f', 'concat', '-safe', '0',
+            '-i', str(list_file),
+            '-acodec', 'pcm_s16le', '-ar', '24000', '-ac', '1',
+            output_path
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        # 一時ファイル削除
+        if list_file.exists():
+            list_file.unlink()
+
+        if result.returncode == 0:
+            return True
+        else:
+            print(f"    [ffmpeg] 結合エラー: {result.stderr[:200]}")
+            return False
+
+    except Exception as e:
+        print(f"    [ffmpeg] 結合エラー: {e}")
+        return False
+
+
+def generate_fish_audio_dialogue(dialogue: list, channel: str, output_path: str, temp_dir: Path, max_retries: int = 3) -> bool:
+    """
+    Fish Audio APIでセリフごとに音声を生成し、結合
+
+    Args:
+        dialogue: 対話リスト [{"speaker": "カツミ", "text": "..."}, ...]
+        channel: チャンネル番号（"23", "24", "27"）
+        output_path: 出力WAVファイルパス
+        temp_dir: 一時ファイル用ディレクトリ
+        max_retries: 最大リトライ回数
+
+    Returns:
+        bool: 成功時True
+    """
+    # チャンネル別ボイス設定を取得
+    katsumi_voice, hiroshi_voice = CHANNEL_VOICE_CONFIG.get(
+        channel,
+        (FISH_VOICE_FEMALE_GIRL, FISH_VOICE_MALE_TAKAESHI)
+    )
+
+    print(f"    [Fish Audio] セリフごと音声生成中...")
+    print(f"    カツミ={get_voice_name(katsumi_voice)}, ヒロシ={get_voice_name(hiroshi_voice)}")
+    print(f"    セリフ数: {len(dialogue)}件")
+
+    audio_files = []
+
+    for idx, line in enumerate(dialogue):
+        speaker = line["speaker"]
+        text = line["text"]
+
+        # ボイスIDを選択
+        voice_id = katsumi_voice if speaker == "カツミ" else hiroshi_voice
+
+        # 感情タグを追加
+        emotion_tag = detect_emotion_tag(speaker, text)
+        tagged_text = emotion_tag + text
+
+        # 一時ファイルパス
+        temp_audio = str(temp_dir / f"line_{idx:03d}.wav")
+
+        print(f"      [{idx + 1}/{len(dialogue)}] {speaker}: {text[:30]}...")
+        if emotion_tag:
+            print(f"        感情タグ: {emotion_tag.strip()}")
+
+        # Fish Audio APIで生成
+        if generate_fish_audio_tts(tagged_text, voice_id, temp_audio, max_retries):
+            audio_files.append(temp_audio)
+        else:
+            print(f"      ✗ セリフ {idx + 1} の生成に失敗")
+            # 失敗してもフォールバック（gTTSで単一セリフ）
+            try:
+                from gtts import gTTS
+                tts = gTTS(text=text, lang='ja')
+                temp_mp3 = temp_audio.replace('.wav', '.mp3')
+                tts.save(temp_mp3)
+
+                # WAVに変換
+                cmd = ['ffmpeg', '-y', '-i', temp_mp3, '-acodec', 'pcm_s16le', '-ar', '24000', '-ac', '1', temp_audio]
+                subprocess.run(cmd, capture_output=True)
+
+                if os.path.exists(temp_mp3):
+                    os.remove(temp_mp3)
+
+                if os.path.exists(temp_audio):
+                    audio_files.append(temp_audio)
+            except Exception as e:
+                print(f"        フォールバックも失敗: {e}")
+
+    if not audio_files:
+        print("    [Fish Audio] ✗ 音声ファイルが生成されませんでした")
+        return False
+
+    # 音声ファイルを結合
+    print(f"    [Fish Audio] {len(audio_files)}件の音声を結合中...")
+    if concatenate_audio_files(audio_files, output_path):
+        # 一時ファイル削除
+        for f in audio_files:
+            if os.path.exists(f):
+                os.remove(f)
+
+        file_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+        print(f"    [Fish Audio] ✓ 生成成功 ({file_size} bytes)")
+        return True
+
     return False
 
 
@@ -667,14 +822,14 @@ def generate_gtts_dialogue(dialogue: list, output_path: str) -> bool:
         return False
 
 
-def generate_dialogue_audio(dialogue: list, output_path: str, key_manager: GeminiKeyManager, channel: str = "27") -> tuple:
+def generate_dialogue_audio(dialogue: list, output_path: str, key_manager, channel: str = "27") -> tuple:
     """
-    対話の音声を生成（Gemini TTS マルチスピーカー版、WAV出力）
+    対話の音声を生成（Fish Audio TTS版、WAV出力）
 
     Args:
         dialogue: 対話リスト
         output_path: 出力WAVファイルパス
-        key_manager: GeminiKeyManager インスタンス
+        key_manager: GeminiKeyManager インスタンス（互換性のため残す）
         channel: チャンネル番号
 
     Returns:
@@ -682,8 +837,11 @@ def generate_dialogue_audio(dialogue: list, output_path: str, key_manager: Gemin
     """
     segments = []
 
-    # Gemini TTSでマルチスピーカー音声を生成
-    if generate_gemini_tts_multispeaker(dialogue, channel, output_path, key_manager):
+    # 一時ディレクトリを取得
+    temp_dir = Path(output_path).parent
+
+    # Fish Audio APIで音声を生成
+    if FISH_AUDIO_API_KEY and generate_fish_audio_dialogue(dialogue, channel, output_path, temp_dir):
         # 音声ファイルの長さを取得
         total_duration = get_audio_duration_ffprobe(output_path)
 
