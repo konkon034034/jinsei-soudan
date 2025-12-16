@@ -33,3 +33,6 @@ service_account.json
 service_account.txt
 *.mp4
 *.pptx
+output/
+*.mp4
+TEMP_MPY_*
