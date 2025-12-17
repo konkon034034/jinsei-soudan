@@ -40,16 +40,18 @@ CHANNEL_DESCRIPTION = "毎朝7時、年金に関する最新ニュースをお�
 # ===== Gemini TTS設定 =====
 GEMINI_TTS_MODEL = "gemini-2.5-flash-preview-tts"
 
-# ボイス設定（Gemini TTS）
-# カツミ（女性）: Kore - 落ち着いた信頼感ある声
+# ===== キャラクター設定 =====
+# カツミ（女性）: 年金に詳しい説明役。落ち着いた優しい口調。
+# ボイス: Kore - 落ち着いた信頼感ある声
 GEMINI_VOICE_KATSUMI = "Kore"
 
-# ヒロシ（男性）: Puck - 明るくアップビートな声
+# ヒロシ（男性）: 年金に詳しくない聞き役。ちょっとお馬鹿で素朴な疑問を聞く。
+# ボイス: Puck - 明るくアップビートな声
 GEMINI_VOICE_HIROSHI = "Puck"
 
 CHARACTERS = {
-    "カツミ": {"voice": GEMINI_VOICE_KATSUMI, "color": "#4169E1"},
-    "ヒロシ": {"voice": GEMINI_VOICE_HIROSHI, "color": "#FF6347"}
+    "カツミ": {"voice": GEMINI_VOICE_KATSUMI, "color": "#4169E1"},  # 説明役
+    "ヒロシ": {"voice": GEMINI_VOICE_HIROSHI, "color": "#FF6347"}   # 聞き役
 }
 
 # チャンク設定（長い台本を分割するサイズ）
@@ -214,11 +216,20 @@ def generate_script(news_list: list, key_manager: GeminiKeyManager) -> dict:
 以下のニュースを元に、カツミとヒロシの掛け合い台本を作成してください。
 
 【登場人物】
-- カツミ: 優しく丁寧に解説する司会者。年金制度に詳しい。
-- ヒロシ: 視聴者目線で質問する。時々ツッコミも入れる。
+- カツミ（女性）: 年金に詳しい説明役。落ち着いた優しい口調でわかりやすく解説する。
+- ヒロシ（男性）: 年金に詳しくない聞き役。ちょっとお馬鹿で素朴な疑問を聞く。視聴者目線で「え、それどういうこと？」と質問する。
 
 【ニュース】
 {news_text}
+
+【台本の流れ】
+1. オープニング: カツミが今日のニュースを紹介
+2. 本編: カツミが説明し、ヒロシが質問・リアクション
+3. エンディング: ヒロシがぼやき（愚痴っぽいコメント）→ カツミがなだめて締める
+
+【エンディング例】
+ヒロシ「はぁ〜、年金のこと考えると頭痛くなるわ...」
+カツミ「まあまあ、少しずつ理解していきましょうね」
 
 【台本形式】
 以下のJSON形式で出力してください:
@@ -228,22 +239,22 @@ def generate_script(news_list: list, key_manager: GeminiKeyManager) -> dict:
   "description": "動画の説明文（100文字程度）",
   "tags": ["タグ1", "タグ2", "タグ3"],
   "opening": [
-    {{"speaker": "カツミ", "text": "オープニングの挨拶"}},
-    {{"speaker": "ヒロシ", "text": "リアクション"}}
+    {{"speaker": "カツミ", "text": "おはようございます。今日の年金ニュースをお届けします"}},
+    {{"speaker": "ヒロシ", "text": "今日はどんなニュースがあるんですか？"}}
   ],
   "news_sections": [
     {{
       "news_title": "ニュース1のタイトル",
       "dialogue": [
         {{"speaker": "カツミ", "text": "ニュースの解説"}},
-        {{"speaker": "ヒロシ", "text": "質問やリアクション"}},
-        {{"speaker": "カツミ", "text": "補足説明"}}
+        {{"speaker": "ヒロシ", "text": "え、それってどういうこと？（素朴な質問）"}},
+        {{"speaker": "カツミ", "text": "わかりやすく補足説明"}}
       ]
     }}
   ],
   "ending": [
-    {{"speaker": "カツミ", "text": "まとめ"}},
-    {{"speaker": "ヒロシ", "text": "締めの一言"}}
+    {{"speaker": "ヒロシ", "text": "はぁ〜、年金って難しいなぁ...（ぼやき）"}},
+    {{"speaker": "カツミ", "text": "まあまあ、少しずつ理解していきましょうね（なだめて締める）"}}
   ]
 }}
 ```
@@ -251,7 +262,8 @@ def generate_script(news_list: list, key_manager: GeminiKeyManager) -> dict:
 【注意】
 - 各セリフは50文字以内
 - 難しい用語は分かりやすく言い換える
-- ヒロシは視聴者が思いそうな疑問を代弁する
+- ヒロシは視聴者が思いそうな素朴な疑問を代弁する（ちょっとお馬鹿な感じで）
+- エンディングは必ずヒロシのぼやき→カツミがなだめる、の順番で
 """
 
     try:
@@ -1092,7 +1104,11 @@ def main():
         # 4. YouTube投稿
         print("\n[4/4] YouTubeに投稿中...")
         title = f"【{datetime.now().strftime('%Y/%m/%d')}】今日の年金ニュース"
-        description = script.get("description", "今日の年金ニュースをお届けします。")
+
+        # 概要欄（キャラ紹介 + 動画説明）
+        char_intro = "年金に詳しいカツミと、ちょっとお馬鹿なヒロシが年金ニュースをわかりやすく解説！毎朝届く年金情報で、あなたの老後を応援します。\n\n"
+        script_desc = script.get("description", "今日の年金ニュースをお届けします。")
+        description = char_intro + script_desc
         tags = script.get("tags", ["年金", "ニュース", "シニア"])
 
         try:
