@@ -56,6 +56,7 @@ jobs:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
+          JINGLE_FILE_ID: ${{ secrets.JINGLE_FILE_ID }}
         run: |
           python nenkin_news.py
 
