@@ -645,9 +645,11 @@ def add_jingle_to_audio(tts_audio_path: str, jingle_path: str, output_path: str,
 def fetch_unsplash_image(query: str, output_path: str) -> bool:
     """Unsplash APIで画像取得"""
     if not UNSPLASH_ACCESS_KEY:
+        print("    [Unsplash] APIキー未設定")
         return False
 
     try:
+        print(f"    [Unsplash] 画像検索中: {query}")
         headers = {"Authorization": f"Client-ID {UNSPLASH_ACCESS_KEY}"}
         params = {"query": query, "per_page": 1, "orientation": "landscape"}
         response = requests.get(UNSPLASH_API_URL, headers=headers, params=params, timeout=30)
@@ -664,7 +666,12 @@ def fetch_unsplash_image(query: str, output_path: str) -> bool:
                 img = Image.open(output_path)
                 img = img.resize((VIDEO_WIDTH, VIDEO_HEIGHT), Image.LANCZOS)
                 img.save(output_path)
+                print(f"    [Unsplash] ✓ 画像取得成功")
                 return True
+            else:
+                print(f"    [Unsplash] 検索結果なし")
+        else:
+            print(f"    [Unsplash] API応答エラー: {response.status_code}")
     except Exception as e:
         print(f"    [Unsplash] エラー: {e}")
 
@@ -672,18 +679,22 @@ def fetch_unsplash_image(query: str, output_path: str) -> bool:
 
 
 def generate_gradient_background(output_path: str, title: str = ""):
-    """グラデーション背景を生成"""
+    """温かみのあるベージュ系グラデーション背景を生成"""
     img = Image.new('RGB', (VIDEO_WIDTH, VIDEO_HEIGHT))
     draw = ImageDraw.Draw(img)
 
-    # 青系グラデーション
+    # 温かみのあるベージュ系グラデーション（上から下へ）
+    # 上: 明るいベージュ (245, 235, 220)
+    # 下: やや濃いベージュ (230, 215, 195)
     for y in range(VIDEO_HEIGHT):
-        r = int(20 + (y / VIDEO_HEIGHT) * 30)
-        g = int(40 + (y / VIDEO_HEIGHT) * 60)
-        b = int(80 + (y / VIDEO_HEIGHT) * 100)
+        ratio = y / VIDEO_HEIGHT
+        r = int(245 - ratio * 15)  # 245 → 230
+        g = int(235 - ratio * 20)  # 235 → 215
+        b = int(220 - ratio * 25)  # 220 → 195
         draw.line([(0, y), (VIDEO_WIDTH, y)], fill=(r, g, b))
 
     img.save(output_path)
+    print(f"    [背景] ✓ フォールバック背景生成完了")
 
 
 def wrap_text(text: str, max_chars: int = 30) -> str:
@@ -847,9 +858,14 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
         upload_audio_to_drive(audio_path, drive_folder_id)
 
     # 背景画像
+    print("  背景画像を準備中...")
     bg_path = str(temp_dir / "background.png")
     if not fetch_unsplash_image("pension elderly japan", bg_path):
         generate_gradient_background(bg_path, script.get("title", ""))
+
+    # 背景画像の存在確認
+    if not os.path.exists(bg_path):
+        raise ValueError(f"背景画像の生成に失敗しました: {bg_path}")
 
     # ASS字幕
     ass_path = str(temp_dir / "subtitles.ass")
