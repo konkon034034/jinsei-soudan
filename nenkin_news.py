@@ -287,9 +287,10 @@ def search_pension_news(key_manager: GeminiKeyManager) -> dict:
 【注意】
 - 最新のニュースを優先（過去1週間以内）
 - 年金受給者に関係する内容を選ぶ
-- 公式ソースからのニュースを2-3件
-- 噂・未確定情報も1件程度あれば含める（reliabilityをlowに）
+- 公式ソースからのニュースを5〜8件（できるだけ多く）
+- 噂・未確定情報も2〜3件含める（reliabilityをlowに）
 - URLは可能な限り含める
+- ニュースは多ければ多いほど良い（30分番組に使用）
 """
 
     try:
@@ -343,11 +344,12 @@ def search_pension_news(key_manager: GeminiKeyManager) -> dict:
     return {"confirmed": [], "rumor": [], "sources": []}
 
 
-def generate_script(news_data: dict, key_manager: GeminiKeyManager) -> dict:
+def generate_script(news_data: dict, key_manager: GeminiKeyManager, test_mode: bool = False) -> dict:
     """ニュースから台本を生成
 
     Args:
         news_data: {"confirmed": [...], "rumor": [...], "sources": [...]}
+        test_mode: テストモードの場合は短い台本を生成
     """
     api_key, key_name = key_manager.get_working_key()
     if not api_key:
@@ -429,6 +431,16 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager) -> dict:
 }}
 ```
 
+{"【テストモード：短縮版】" if test_mode else "【重要：30分のラジオ番組を作成】"}
+{'''- 合計5〜10セリフで簡潔に
+- オープニング: 2セリフ
+- ニュース解説: 3〜5セリフ
+- エンディング: なし''' if test_mode else '''- 合計150〜200セリフ以上を生成（30分番組相当）
+- 各ニュースについて15〜25セリフで詳しく解説
+- オープニング: 5〜10セリフ
+- 各ニュースセクション: 15〜25セリフ（深掘り解説）
+- エンディング: 5〜10セリフ'''}
+
 【注意】
 - 各セリフは50文字以内
 - 難しい用語は分かりやすく言い換える
@@ -436,6 +448,7 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager) -> dict:
 - 確定情報をメインに、噂は「〜らしいよ」と軽く触れる程度に
 - エンディングは必ずヒロシのぼやき→カツミがなだめる、の順番で
 - rumor_sectionは噂情報がない場合は空配列[]にする
+- 各ニュースは詳しく掘り下げ、視聴者の理解を深める
 """
 
     try:
@@ -1615,22 +1628,30 @@ def main():
 
     # 2. 台本生成
     print("\n[2/4] 台本を生成中...")
-    script = generate_script(news_data, key_manager)
+    script = generate_script(news_data, key_manager, test_mode=TEST_MODE)
     if not script:
         print("❌ 台本生成に失敗しました")
         log_to_spreadsheet(status="エラー", news_count=news_count, error_message="台本生成に失敗しました")
         return
 
-    # テストモード: 台本を短縮（5セリフ程度、約20秒）
-    if TEST_MODE:
+    # セリフ数をカウント
+    dialogue_count = len(script.get("opening", []))
+    for section in script.get("news_sections", []):
+        dialogue_count += len(section.get("dialogue", []))
+    dialogue_count += len(script.get("rumor_section", []))
+    dialogue_count += len(script.get("ending", []))
+    print(f"  生成されたセリフ数: {dialogue_count}セリフ")
+
+    # テストモード: 台本を短縮（安全措置として残す）
+    if TEST_MODE and dialogue_count > 15:
         if script.get("opening"):
-            script["opening"] = script["opening"][:2]  # オープニング2セリフ
+            script["opening"] = script["opening"][:2]
         if script.get("news_sections"):
             for section in script["news_sections"]:
                 if section.get("dialogue"):
-                    section["dialogue"] = section["dialogue"][:3]  # 本編3セリフ
+                    section["dialogue"] = section["dialogue"][:3]
         if script.get("ending"):
-            script["ending"] = []  # エンディング削除
+            script["ending"] = []
         print("  [テスト] 台本を短縮（約5セリフ）")
 
     # 3. 動画生成
