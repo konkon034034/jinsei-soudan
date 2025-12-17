@@ -878,7 +878,7 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     output_path = str(temp_dir / f"nenkin_news_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
 
     # 背景バーの設定
-    bar_height = int(VIDEO_HEIGHT * 0.35)  # 画面の35%（下1/3をカバー）
+    bar_height = int(VIDEO_HEIGHT * 0.30)  # 画面の30%
     bar_y = VIDEO_HEIGHT - bar_height  # バーのY座標（画面下部）
 
     # ffmpegフィルター: scale → 背景バー描画 → 字幕
