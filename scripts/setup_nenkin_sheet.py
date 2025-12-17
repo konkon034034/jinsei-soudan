@@ -7,7 +7,21 @@ from googleapiclient.discovery import build
 
 SPREADSHEET_ID = "15_ixYlyRp9sOlS0tdklhz6wQmwRxWlOL9cPndFWwOFo"
 SHEET_NAME = "年金ニュース"
-HEADERS = ["日付", "タイトル", "動画URL", "ステータス", "処理時間", "動画長"]
+HEADERS = [
+    "作成済",      # A: チェックボックス
+    "日時",        # B
+    "情報収集",    # C
+    "スクリプト作成",  # D
+    "文字数カウント",  # E
+    "script",     # F: 台本全文
+    "生成URL",    # G: 動画URL
+    "編集後プロンプト", # H
+    "概要",        # I
+    "metadata",   # J
+    "comment",    # K
+    "search",     # L
+    "YouTubeサムネ" # M
+]
 
 def main():
     # 認証
@@ -36,7 +50,7 @@ def main():
         # ヘッダーだけ更新
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
-            range=f"{SHEET_NAME}!A1:F1",
+            range=f"{SHEET_NAME}!A1:M1",
             valueInputOption="RAW",
             body={"values": [HEADERS]}
         ).execute()
@@ -62,7 +76,7 @@ def main():
         # ヘッダーを追加
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
-            range=f"{SHEET_NAME}!A1:F1",
+            range=f"{SHEET_NAME}!A1:M1",
             valueInputOption="RAW",
             body={"values": [HEADERS]}
         ).execute()
@@ -77,39 +91,55 @@ def main():
             break
 
     if sheet_id:
-        requests = [
-            {"updateDimensionProperties": {
-                "range": {"sheetId": sheet_id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
-                "properties": {"pixelSize": 120}, "fields": "pixelSize"
-            }},
-            {"updateDimensionProperties": {
-                "range": {"sheetId": sheet_id, "dimension": "COLUMNS", "startIndex": 1, "endIndex": 2},
-                "properties": {"pixelSize": 300}, "fields": "pixelSize"
-            }},
-            {"updateDimensionProperties": {
-                "range": {"sheetId": sheet_id, "dimension": "COLUMNS", "startIndex": 2, "endIndex": 3},
-                "properties": {"pixelSize": 350}, "fields": "pixelSize"
-            }},
-            {"updateDimensionProperties": {
-                "range": {"sheetId": sheet_id, "dimension": "COLUMNS", "startIndex": 3, "endIndex": 4},
-                "properties": {"pixelSize": 100}, "fields": "pixelSize"
-            }},
-            {"updateDimensionProperties": {
-                "range": {"sheetId": sheet_id, "dimension": "COLUMNS", "startIndex": 4, "endIndex": 6},
-                "properties": {"pixelSize": 100}, "fields": "pixelSize"
-            }},
-            # ヘッダー行を太字に
-            {"repeatCell": {
+        # 列幅設定 (A-M: 13列)
+        column_widths = [
+            70,   # A: 作成済 (チェックボックス)
+            150,  # B: 日時
+            300,  # C: 情報収集
+            300,  # D: スクリプト作成
+            100,  # E: 文字数カウント
+            400,  # F: script (台本全文)
+            200,  # G: 生成URL
+            300,  # H: 編集後プロンプト
+            300,  # I: 概要
+            200,  # J: metadata
+            200,  # K: comment
+            200,  # L: search
+            150,  # M: YouTubeサムネ
+        ]
+
+        requests = []
+        for i, width in enumerate(column_widths):
+            requests.append({
+                "updateDimensionProperties": {
+                    "range": {"sheetId": sheet_id, "dimension": "COLUMNS", "startIndex": i, "endIndex": i + 1},
+                    "properties": {"pixelSize": width},
+                    "fields": "pixelSize"
+                }
+            })
+
+        # ヘッダー行を太字に
+        requests.append({
+            "repeatCell": {
                 "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1},
                 "cell": {"userEnteredFormat": {"textFormat": {"bold": True}}},
                 "fields": "userEnteredFormat.textFormat.bold"
-            }},
-            # ヘッダー行を固定
-            {"updateSheetProperties": {
+            }
+        })
+        # ヘッダー行を固定
+        requests.append({
+            "updateSheetProperties": {
                 "properties": {"sheetId": sheet_id, "gridProperties": {"frozenRowCount": 1}},
                 "fields": "gridProperties.frozenRowCount"
-            }}
-        ]
+            }
+        })
+        # A列にチェックボックスを設定
+        requests.append({
+            "setDataValidation": {
+                "range": {"sheetId": sheet_id, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 1},
+                "rule": {"condition": {"type": "BOOLEAN"}, "showCustomUi": True}
+            }
+        })
         service.spreadsheets().batchUpdate(
             spreadsheetId=SPREADSHEET_ID,
             body={"requests": requests}
