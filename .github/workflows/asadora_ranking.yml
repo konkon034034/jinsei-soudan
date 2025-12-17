@@ -1,10 +1,10 @@
-name: 朝ドラランキング動画自動生成
+name: 朝ドラランキング動画自動生成 [スケジュール停止中]
 
 on:
-  schedule:
-    # 毎日朝9時（JST）に実行 = UTC 0:00
-    - cron: '0 0 * * *'
-  workflow_dispatch:
+  # schedule:
+  #   # 毎日朝9時（JST）に実行 = UTC 0:00
+  #   - cron: '0 0 * * *'
+  workflow_dispatch:  # 手動実行のみ
     inputs:
       mode:
         description: '処理モード'
@@ -63,13 +63,9 @@ jobs:
 
       - name: 環境変数チェック
         env:
-          YOUTUBE_REFRESH_TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
-          YOUTUBE_REFRESH_TOKEN_24: ${{ secrets.YOUTUBE_REFRESH_TOKEN_24 }}
           YOUTUBE_REFRESH_TOKEN_27: ${{ secrets.YOUTUBE_REFRESH_TOKEN_27 }}
         run: |
           echo "=== 環境変数チェック ==="
-          echo "YOUTUBE_REFRESH_TOKEN_23: $([ -n \"$YOUTUBE_REFRESH_TOKEN_23\" ] && echo '設定済み' || echo '未設定')"
-          echo "YOUTUBE_REFRESH_TOKEN_24: $([ -n \"$YOUTUBE_REFRESH_TOKEN_24\" ] && echo '設定済み' || echo '未設定')"
           echo "YOUTUBE_REFRESH_TOKEN_27: $([ -n \"$YOUTUBE_REFRESH_TOKEN_27\" ] && echo '設定済み' || echo '未設定')"
 
       - name: 動画を生成・投稿
@@ -88,9 +84,7 @@ jobs:
           BGM_FOLDER_ID: ${{ secrets.BGM_FOLDER_ID }}
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          # 3チャンネルのみ (23, 24, 27)
-          YOUTUBE_REFRESH_TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
-          YOUTUBE_REFRESH_TOKEN_24: ${{ secrets.YOUTUBE_REFRESH_TOKEN_24 }}
+          # シニア口コミ専用 - TOKEN_27のみ
           YOUTUBE_REFRESH_TOKEN_27: ${{ secrets.YOUTUBE_REFRESH_TOKEN_27 }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |

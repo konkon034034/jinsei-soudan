@@ -247,10 +247,10 @@ def get_drive_service():
     return build("drive", "v3", credentials=creds)
 
 
-# 使用可能なチャンネル（自動実行対象）
-AVAILABLE_CHANNELS = ["27"]  # シニアの口コミランキング（自動実行）
-# TOKEN_23 = 年金ニュース用（別スクリプト）
-# TOKEN_24 = テスト用（手動実行のみ）
+# ===== シニア口コミ専用 - TOKEN_27固定 =====
+# このスクリプトはTOKEN_27（シニア口コミランキング）専用
+AVAILABLE_CHANNELS = ["27"]
+# 注: TOKEN_23は年金ニュース用（nenkin_news.py）、TOKEN_24はテスト用
 
 
 def get_pending_task():
