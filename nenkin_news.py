@@ -52,10 +52,6 @@ CHARACTERS = {
     "ヒロシ": {"voice": GEMINI_VOICE_HIROSHI, "color": "#FF6347"}
 }
 
-# Unsplash API設定
-UNSPLASH_ACCESS_KEY = os.environ.get("UNSPLASH_ACCESS_KEY", "")
-UNSPLASH_API_URL = "https://api.unsplash.com/search/photos"
-
 # チャンク設定（長い台本を分割するサイズ）
 MAX_LINES_PER_CHUNK = 8
 
@@ -588,15 +584,15 @@ def upload_audio_to_drive(audio_path: str, folder_id: str = None) -> str:
         return None
 
 
-def download_jingle_from_drive(file_id: str, output_path: str) -> bool:
-    """Google Driveからジングルファイルをダウンロード"""
+def download_file_from_drive(file_id: str, output_path: str, file_type: str = "ファイル") -> bool:
+    """Google Driveからファイルをダウンロード（汎用）"""
     try:
         creds = get_google_credentials()
         service = build('drive', 'v3', credentials=creds)
 
         # ファイル情報を取得
         file_info = service.files().get(fileId=file_id, fields='name,mimeType').execute()
-        print(f"    [ジングル] ファイル名: {file_info.get('name')}")
+        print(f"    [{file_type}] ファイル名: {file_info.get('name')}, MIME: {file_info.get('mimeType')}")
 
         # ダウンロード
         request = service.files().get_media(fileId=file_id)
@@ -604,11 +600,44 @@ def download_jingle_from_drive(file_id: str, output_path: str) -> bool:
             downloader = request.execute()
             f.write(downloader)
 
-        print(f"    ✓ ジングルダウンロード完了")
+        print(f"    ✓ {file_type}ダウンロード完了")
         return True
 
     except Exception as e:
-        print(f"    ⚠ ジングルダウンロードエラー: {e}")
+        print(f"    ⚠ {file_type}ダウンロードエラー: {e}")
+        return False
+
+
+def download_jingle_from_drive(file_id: str, output_path: str) -> bool:
+    """Google Driveからジングルファイルをダウンロード"""
+    return download_file_from_drive(file_id, output_path, "ジングル")
+
+
+def download_background_from_drive(file_id: str, output_path: str) -> bool:
+    """Google Driveから背景画像をダウンロードしてリサイズ"""
+    try:
+        temp_path = output_path + ".tmp"
+        if not download_file_from_drive(file_id, temp_path, "背景画像"):
+            return False
+
+        # 画像をリサイズ
+        img = Image.open(temp_path)
+        img = img.convert('RGB')  # RGBAの場合に対応
+        img = img.resize((VIDEO_WIDTH, VIDEO_HEIGHT), Image.LANCZOS)
+        img.save(output_path, 'PNG')
+
+        # 一時ファイル削除
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+        print(f"    ✓ 背景画像リサイズ完了 ({VIDEO_WIDTH}x{VIDEO_HEIGHT})")
+        return True
+
+    except Exception as e:
+        print(f"    ⚠ 背景画像処理エラー: {e}")
+        # 一時ファイルを削除
+        if os.path.exists(output_path + ".tmp"):
+            os.remove(output_path + ".tmp")
         return False
 
 
@@ -640,42 +669,6 @@ def add_jingle_to_audio(tts_audio_path: str, jingle_path: str, output_path: str,
     except Exception as e:
         print(f"    ⚠ ジングル追加エラー: {e}")
         return False
-
-
-def fetch_unsplash_image(query: str, output_path: str) -> bool:
-    """Unsplash APIで画像取得"""
-    if not UNSPLASH_ACCESS_KEY:
-        print("    [Unsplash] APIキー未設定")
-        return False
-
-    try:
-        print(f"    [Unsplash] 画像検索中: {query}")
-        headers = {"Authorization": f"Client-ID {UNSPLASH_ACCESS_KEY}"}
-        params = {"query": query, "per_page": 1, "orientation": "landscape"}
-        response = requests.get(UNSPLASH_API_URL, headers=headers, params=params, timeout=30)
-
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("results"):
-                img_url = data["results"][0]["urls"]["regular"]
-                img_response = requests.get(img_url, timeout=30)
-                with open(output_path, 'wb') as f:
-                    f.write(img_response.content)
-
-                # リサイズ
-                img = Image.open(output_path)
-                img = img.resize((VIDEO_WIDTH, VIDEO_HEIGHT), Image.LANCZOS)
-                img.save(output_path)
-                print(f"    [Unsplash] ✓ 画像取得成功")
-                return True
-            else:
-                print(f"    [Unsplash] 検索結果なし")
-        else:
-            print(f"    [Unsplash] API応答エラー: {response.status_code}")
-    except Exception as e:
-        print(f"    [Unsplash] エラー: {e}")
-
-    return False
 
 
 def generate_gradient_background(output_path: str, title: str = ""):
@@ -857,10 +850,20 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     if drive_folder_id:
         upload_audio_to_drive(audio_path, drive_folder_id)
 
-    # 背景画像
+    # 背景画像（Google Driveから取得、未設定時はフォールバック）
     print("  背景画像を準備中...")
     bg_path = str(temp_dir / "background.png")
-    if not fetch_unsplash_image("pension elderly japan", bg_path):
+    bg_file_id = os.environ.get("BACKGROUND_IMAGE_ID")
+
+    bg_loaded = False
+    if bg_file_id:
+        print(f"    [背景] Google Driveから取得中... (ID: {bg_file_id[:10]}...)")
+        bg_loaded = download_background_from_drive(bg_file_id, bg_path)
+    else:
+        print("    [背景] BACKGROUND_IMAGE_ID未設定")
+
+    if not bg_loaded:
+        print("    [背景] フォールバック背景を生成")
         generate_gradient_background(bg_path, script.get("title", ""))
 
     # 背景画像の存在確認
