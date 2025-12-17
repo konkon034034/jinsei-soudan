@@ -33,6 +33,11 @@ VIDEO_WIDTH = 1920
 VIDEO_HEIGHT = 1080
 CHANNEL = "23"  # TOKEN_23固定
 
+# テストモード（環境変数で制御）
+# TEST_MODE=true: 短縮版（1ニュース、5セリフ、約20秒）
+# TEST_MODE=false または未設定: フル版
+TEST_MODE = os.environ.get("TEST_MODE", "").lower() == "true"
+
 # ===== チャンネル情報 =====
 CHANNEL_NAME = "毎朝届く！おはよう年金ニュースラジオ"
 CHANNEL_DESCRIPTION = "毎朝7時、年金に関する最新ニュースをお届けします"
@@ -1578,6 +1583,7 @@ def main():
     print("=" * 50)
     print("年金ニュース動画生成システム")
     print(f"実行日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"モード: {'🧪 テストモード（短縮版）' if TEST_MODE else '📺 本番モード（フル版）'}")
     print("TTS: Google Gemini TTS (gemini-2.5-flash-preview-tts)")
     print(f"ボイス: カツミ={GEMINI_VOICE_KATSUMI}, ヒロシ={GEMINI_VOICE_HIROSHI}")
     print("=" * 50)
@@ -1591,6 +1597,15 @@ def main():
     # 1. ニュース検索（Web検索機能付き）
     print("\n[1/4] 年金ニュースを検索中...")
     news_data = search_pension_news(key_manager)
+
+    # テストモード: ニュースを1件に制限
+    if TEST_MODE:
+        if news_data.get("confirmed"):
+            news_data["confirmed"] = news_data["confirmed"][:1]
+        if news_data.get("rumor"):
+            news_data["rumor"] = []  # 噂は削除
+        print("  [テスト] ニュースを1件に制限")
+
     news_count = len(news_data.get("confirmed", [])) + len(news_data.get("rumor", []))
 
     if not news_data.get("confirmed") and not news_data.get("rumor"):
@@ -1605,6 +1620,18 @@ def main():
         print("❌ 台本生成に失敗しました")
         log_to_spreadsheet(status="エラー", news_count=news_count, error_message="台本生成に失敗しました")
         return
+
+    # テストモード: 台本を短縮（5セリフ程度、約20秒）
+    if TEST_MODE:
+        if script.get("opening"):
+            script["opening"] = script["opening"][:2]  # オープニング2セリフ
+        if script.get("news_sections"):
+            for section in script["news_sections"]:
+                if section.get("dialogue"):
+                    section["dialogue"] = section["dialogue"][:3]  # 本編3セリフ
+        if script.get("ending"):
+            script["ending"] = []  # エンディング削除
+        print("  [テスト] 台本を短縮（約5セリフ）")
 
     # 3. 動画生成
     print("\n[3/4] 動画を生成中...")
