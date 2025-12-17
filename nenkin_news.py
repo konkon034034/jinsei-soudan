@@ -913,7 +913,8 @@ def generate_ass_subtitles(segments: list, output_path: str):
     # 字幕設定
     font_size = int(VIDEO_WIDTH * 0.09)  # 画面幅の9% ≈ 172px（2倍サイズ）
     margin_bottom = int(VIDEO_HEIGHT * 0.05)  # 下から5%（38%バー内に収まるよう調整）
-    margin_side = int(VIDEO_WIDTH * 0.12)  # 左右マージン（画面幅の12% ≈ 230px）
+    margin_left = int(VIDEO_WIDTH * 0.15)   # 左マージン（画面幅の15% ≈ 288px）
+    margin_right = int(VIDEO_WIDTH * 0.12)  # 右マージン（画面幅の12% ≈ 230px）
 
     # ASS色形式: &HAABBGGRR
     primary_color = "&H00FFFFFF"  # 白文字
@@ -929,7 +930,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Noto Sans CJK JP Bold,{font_size},{primary_color},&H000000FF,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,2,{margin_side},{margin_side},{margin_bottom},1
+Style: Default,Noto Sans CJK JP Bold,{font_size},{primary_color},&H000000FF,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,2,{margin_left},{margin_right},{margin_bottom},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -1215,6 +1216,221 @@ def generate_grandma_comment(script: dict, key_manager: GeminiKeyManager) -> str
         return ""
 
 
+# ===== サムネイル設定 =====
+THUMBNAIL_WIDTH = 1280
+THUMBNAIL_HEIGHT = 720
+
+
+def generate_thumbnail_title(script: dict, key_manager: GeminiKeyManager) -> str:
+    """サムネイル用のキャッチーなタイトルを生成（Gemini API）
+
+    Args:
+        script: 台本データ
+        key_manager: APIキーマネージャー
+
+    Returns:
+        str: キャッチーなタイトル（20文字以内）
+    """
+    api_key, key_name = key_manager.get_working_key()
+    if not api_key:
+        return "今日の年金ニュース"
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-2.0-flash")
+
+    # ニュースタイトルを取得
+    news_titles = []
+    for section in script.get("news_sections", []):
+        title = section.get("news_title", "")
+        if title:
+            news_titles.append(title)
+
+    news_text = "\n".join(news_titles) if news_titles else "年金ニュース"
+
+    prompt = f"""
+以下の年金ニュースから、YouTubeサムネイル用のキャッチーなタイトルを作成してください。
+
+【今日のニュース】
+{news_text}
+
+【条件】
+- 15〜20文字以内
+- 視聴者の興味を引く表現
+- 「！」「？」「...」などを効果的に使う
+- 年金受給者が気になるワードを入れる
+
+【例】
+「年金が増える!? 新制度の真実」
+「知らないと損！年金の落とし穴」
+「65歳以上必見！今月の年金情報」
+
+【出力】
+タイトルのみを出力してください。
+"""
+
+    try:
+        response = model.generate_content(prompt)
+        title = response.text.strip().strip('"\'「」『』')
+        if len(title) > 25:
+            title = title[:22] + "..."
+        print(f"  [サムネ] タイトル: {title}")
+        return title
+    except Exception as e:
+        print(f"  ⚠ サムネタイトル生成エラー: {e}")
+        return "今日の年金ニュース"
+
+
+def generate_thumbnail(bg_image_path: str, title: str, output_path: str) -> bool:
+    """サムネイル画像を生成
+
+    Args:
+        bg_image_path: 背景画像のパス
+        title: サムネイルタイトル
+        output_path: 出力パス
+
+    Returns:
+        bool: 成功したかどうか
+    """
+    try:
+        # 背景画像を読み込み
+        if os.path.exists(bg_image_path):
+            bg = Image.open(bg_image_path)
+            bg = bg.resize((THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT), Image.LANCZOS)
+        else:
+            # フォールバック: ベージュ系グラデーション
+            bg = Image.new('RGB', (THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT))
+            draw = ImageDraw.Draw(bg)
+            for y in range(THUMBNAIL_HEIGHT):
+                ratio = y / THUMBNAIL_HEIGHT
+                r = int(245 - ratio * 15)
+                g = int(235 - ratio * 20)
+                b = int(220 - ratio * 25)
+                draw.line([(0, y), (THUMBNAIL_WIDTH, y)], fill=(r, g, b))
+
+        draw = ImageDraw.Draw(bg)
+
+        # 半透明の茶色バー（下部40%）
+        bar_height = int(THUMBNAIL_HEIGHT * 0.40)
+        bar_y = THUMBNAIL_HEIGHT - bar_height
+        bar_overlay = Image.new('RGBA', (THUMBNAIL_WIDTH, bar_height), (60, 40, 30, 200))
+        bg.paste(bar_overlay, (0, bar_y), bar_overlay)
+
+        # フォント設定（日本語対応）
+        font_paths = [
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc",
+            "/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
+        ]
+
+        font = None
+        font_size = 72
+        for font_path in font_paths:
+            if os.path.exists(font_path):
+                try:
+                    font = ImageFont.truetype(font_path, font_size)
+                    break
+                except:
+                    continue
+
+        if font is None:
+            font = ImageFont.load_default()
+            font_size = 40
+
+        # タイトルテキストを描画（中央配置）
+        draw = ImageDraw.Draw(bg)
+
+        # テキストのバウンディングボックスを取得
+        bbox = draw.textbbox((0, 0), title, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+
+        # 中央配置
+        x = (THUMBNAIL_WIDTH - text_width) // 2
+        y = bar_y + (bar_height - text_height) // 2
+
+        # 白文字で描画
+        draw.text((x, y), title, font=font, fill=(255, 255, 255))
+
+        # 日付を小さく追加
+        date_text = datetime.now().strftime('%Y/%m/%d')
+        date_font_size = 36
+        date_font = None
+        for font_path in font_paths:
+            if os.path.exists(font_path):
+                try:
+                    date_font = ImageFont.truetype(font_path, date_font_size)
+                    break
+                except:
+                    continue
+
+        if date_font:
+            date_bbox = draw.textbbox((0, 0), date_text, font=date_font)
+            date_x = THUMBNAIL_WIDTH - (date_bbox[2] - date_bbox[0]) - 30
+            date_y = 20
+            draw.text((date_x, date_y), date_text, font=date_font, fill=(255, 255, 255))
+
+        # 保存
+        bg = bg.convert('RGB')
+        bg.save(output_path, 'JPEG', quality=95)
+        print(f"  [サムネ] ✓ 生成完了: {output_path}")
+        return True
+
+    except Exception as e:
+        print(f"  ⚠ サムネイル生成エラー: {e}")
+        return False
+
+
+def set_youtube_thumbnail(video_id: str, thumbnail_path: str) -> bool:
+    """YouTubeにサムネイルを設定
+
+    Args:
+        video_id: 動画ID
+        thumbnail_path: サムネイル画像のパス
+
+    Returns:
+        bool: 成功したかどうか
+    """
+    if not os.path.exists(thumbnail_path):
+        print(f"  ⚠ サムネイル画像が見つかりません: {thumbnail_path}")
+        return False
+
+    client_id = os.environ.get("YOUTUBE_CLIENT_ID")
+    client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
+    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_23")
+
+    if not all([client_id, client_secret, refresh_token]):
+        print("  ⚠ YouTube認証情報が不足のためサムネイル設定をスキップ")
+        return False
+
+    try:
+        # アクセストークン取得
+        response = requests.post("https://oauth2.googleapis.com/token", data={
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "refresh_token": refresh_token,
+            "grant_type": "refresh_token"
+        })
+        access_token = response.json()["access_token"]
+
+        from google.oauth2.credentials import Credentials as OAuthCredentials
+        creds = OAuthCredentials(token=access_token)
+        youtube = build("youtube", "v3", credentials=creds)
+
+        # サムネイルをアップロード
+        youtube.thumbnails().set(
+            videoId=video_id,
+            media_body=MediaFileUpload(thumbnail_path, mimetype='image/jpeg')
+        ).execute()
+
+        print(f"  ✓ YouTubeサムネイル設定完了")
+        return True
+
+    except Exception as e:
+        print(f"  ⚠ YouTubeサムネイル設定エラー: {e}")
+        return False
+
+
 def post_youtube_comment(video_id: str, comment_text: str) -> bool:
     """YouTubeに最初のコメントを投稿
 
@@ -1405,8 +1621,15 @@ def main():
         ], capture_output=True, text=True)
         video_duration = float(result.stdout.strip()) if result.stdout.strip() else 0.0
 
-        # 4. YouTube投稿
-        print("\n[4/4] YouTubeに投稿中...")
+        # 4. サムネイル生成
+        print("\n[4/7] サムネイルを生成中...")
+        thumbnail_path = str(temp_path / "thumbnail.jpg")
+        bg_path = str(temp_path / "background.png")
+        thumbnail_title = generate_thumbnail_title(script, key_manager)
+        generate_thumbnail(bg_path, thumbnail_title, thumbnail_path)
+
+        # 5. YouTube投稿
+        print("\n[5/7] YouTubeに投稿中...")
         title = f"【{datetime.now().strftime('%Y/%m/%d')}】今日の年金ニュース"
 
         # 概要欄（キャラ紹介 + 動画説明 + 参照元）
@@ -1437,10 +1660,15 @@ def main():
             # 動画IDを抽出
             video_id = video_url.split("v=")[-1] if "v=" in video_url else ""
 
+            # サムネイルを設定
+            if video_id and os.path.exists(thumbnail_path):
+                print("\n[6/7] サムネイルを設定中...")
+                set_youtube_thumbnail(video_id, thumbnail_path)
+
             # おばあちゃんコメントを生成・投稿
             grandma_comment = ""
             if video_id:
-                print("\n[5/6] おばあちゃんコメントを生成・投稿中...")
+                print("\n[6.5/7] おばあちゃんコメントを生成・投稿中...")
                 grandma_comment = generate_grandma_comment(script, key_manager)
                 if grandma_comment:
                     post_youtube_comment(video_id, grandma_comment)
@@ -1449,7 +1677,7 @@ def main():
             processing_time = time.time() - start_time
 
             # 通知を送信
-            print("\n[6/6] 通知を送信中...")
+            print("\n[7/7] 通知を送信中...")
             send_slack_notification(title, video_url, video_duration, processing_time)
             send_discord_notification(title, video_url, video_duration, processing_time)
 
