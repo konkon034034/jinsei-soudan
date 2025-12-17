@@ -552,6 +552,9 @@ def generate_gemini_tts_chunk(dialogue_chunk: list, api_key: str, output_path: s
 
             if attempt > 0:
                 print(f"      [リトライ {attempt}/{max_retries}] チャンク{chunk_index + 1} KEY_{key_index}で再試行")
+            elif chunk_index == 0:
+                # 最初のチャンクでボイス設定をログ出力
+                print(f"      [ボイス設定] カツミ={GEMINI_VOICE_KATSUMI}, ヒロシ={GEMINI_VOICE_HIROSHI}")
 
             response = client.models.generate_content(
                 model=GEMINI_TTS_MODEL,
