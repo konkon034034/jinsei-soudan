@@ -528,7 +528,16 @@ def generate_gemini_tts_chunk(dialogue_chunk: list, api_key: str, output_path: s
 
             response = client.models.generate_content(
                 model=GEMINI_TTS_MODEL,
-                contents=f"以下の会話をカツミとヒロシの声で読み上げてください。自然なポッドキャスト風の会話として:\n\n{dialogue_text}",
+                contents=f"""以下の会話をカツミとヒロシの声で読み上げてください。
+
+【読み上げ方】
+- ゆっくり、はっきり発音する（高齢者向けラジオ番組）
+- 句読点で適切に間を取る
+- 自然なポッドキャスト風の会話として
+- 1セリフ5〜10秒程度のペースで
+
+【会話】
+{dialogue_text}""",
                 config=types.GenerateContentConfig(
                     response_modalities=["AUDIO"],
                     speech_config=types.SpeechConfig(
@@ -648,6 +657,10 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
         temp_dir: 一時ディレクトリ
         key_manager: APIキーマネージャー
         chunk_interval: チャンク間の待機秒数（デフォルト10秒）
+
+    Returns:
+        tuple: (output_path, segments, total_duration)
+        - segments: 成功したチャンクのセリフのみ含む
     """
     segments = []
     current_time = 0.0
@@ -667,6 +680,7 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
 
     # 順次処理でチャンクを生成（429対策）
     chunk_files = [None] * len(chunks)
+    successful_chunk_indices = []  # 成功したチャンクのインデックス
 
     for i, chunk in enumerate(chunks):
         # APIキーをラウンドロビンで選択
@@ -683,6 +697,7 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
 
         if success and os.path.exists(chunk_path):
             chunk_files[i] = chunk_path
+            successful_chunk_indices.append(i)  # 成功したインデックスを記録
 
         # 次のチャンクの前に待機（最後のチャンク以外）
         if i < len(chunks) - 1:
@@ -706,6 +721,8 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
         fallback_path = str(temp_dir / "fallback.wav")
         if generate_gtts_fallback(all_text, fallback_path):
             successful_chunks = [fallback_path]
+            # gTTSは全セリフを生成するので、全チャンクを成功扱い
+            successful_chunk_indices = list(range(len(chunks)))
         else:
             return None, [], 0.0
 
@@ -733,10 +750,17 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
     ], capture_output=True, text=True)
     total_duration = float(result.stdout.strip()) if result.stdout.strip() else 0.0
 
-    # セグメント情報を推定
-    total_chars = sum(len(line["text"]) for line in dialogue)
-    for line in dialogue:
-        ratio = len(line["text"]) / total_chars if total_chars > 0 else 1/len(dialogue)
+    # 成功したチャンクのセリフのみを抽出
+    successful_dialogues = []
+    for idx in successful_chunk_indices:
+        successful_dialogues.extend(chunks[idx])
+
+    print(f"    [字幕] 成功したセリフ数: {len(successful_dialogues)}/{len(dialogue)}")
+
+    # セグメント情報を推定（成功したセリフのみ）
+    total_chars = sum(len(line["text"]) for line in successful_dialogues)
+    for line in successful_dialogues:
+        ratio = len(line["text"]) / total_chars if total_chars > 0 else 1/len(successful_dialogues)
         duration = total_duration * ratio
         segments.append({
             "speaker": line["speaker"],
