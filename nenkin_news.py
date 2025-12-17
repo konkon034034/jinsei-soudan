@@ -62,6 +62,33 @@ CHARACTERS = {
 # チャンク設定（長い台本を分割するサイズ）
 MAX_LINES_PER_CHUNK = 8
 
+# ===== 読み方辞書（TTS用） =====
+READING_DICT = {
+    "iDeCo": "イデコ",
+    "IDECO": "イデコ",
+    "ideco": "イデコ",
+    "NISA": "ニーサ",
+    "nisa": "ニーサ",
+    "つみたてNISA": "つみたてニーサ",
+    "新NISA": "しんニーサ",
+    "GPIF": "ジーピーアイエフ",
+    "厚労省": "こうろうしょう",
+    "年金機構": "ねんきんきこう",
+    "WPI": "ダブリューピーアイ",
+    "401k": "よんまるいちけー",
+    "DC": "ディーシー",
+    "DB": "ディービー",
+    "GDP": "ジーディーピー",
+    "CPI": "シーピーアイ",
+}
+
+
+def fix_reading(text: str) -> str:
+    """読み方辞書でテキストを変換（TTS用）"""
+    for word, reading in READING_DICT.items():
+        text = text.replace(word, reading)
+    return text
+
 
 class GeminiKeyManager:
     """Gemini APIキー管理（TTS用にも使用）"""
@@ -497,9 +524,9 @@ def generate_gemini_tts_chunk(dialogue_chunk: list, api_key: str, output_path: s
             client = genai_tts.Client(api_key=current_key)
             key_index = key_manager.keys.index(current_key) if key_manager and current_key in key_manager.keys else "?"
 
-            # 対話テキストを構築
+            # 対話テキストを構築（読み方辞書を適用）
             dialogue_text = "\n".join([
-                f"{line['speaker']}: {line['text']}"
+                f"{line['speaker']}: {fix_reading(line['text'])}"
                 for line in dialogue_chunk
             ])
 
@@ -530,11 +557,16 @@ def generate_gemini_tts_chunk(dialogue_chunk: list, api_key: str, output_path: s
                 model=GEMINI_TTS_MODEL,
                 contents=f"""以下の会話をカツミとヒロシの声で読み上げてください。
 
-【読み上げ方】
-- ゆっくり、はっきり発音する（高齢者向けラジオ番組）
-- 句読点で適切に間を取る
-- 自然なポッドキャスト風の会話として
-- 1セリフ5〜10秒程度のペースで
+【重要：読み上げ速度】
+- 非常にゆっくり読む（通常の0.7倍速）
+- 高齢者が聞き取りやすいペース
+- 各セリフの後に2秒程度の間を取る
+- 句読点では1秒以上の間を取る
+
+【話し方】
+- はっきり、丁寧に発音
+- 落ち着いたラジオ番組風
+- 急がない、焦らない
 
 【会話】
 {dialogue_text}""",
@@ -724,7 +756,7 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
     if not successful_chunks:
         # フォールバック：gTTSで全体を生成
         print("    [フォールバック] gTTSで音声生成")
-        all_text = "。".join([line["text"] for line in dialogue])
+        all_text = "。".join([fix_reading(line["text"]) for line in dialogue])
         fallback_path = str(temp_dir / "fallback.wav")
         if generate_gtts_fallback(all_text, fallback_path):
             successful_chunks = [fallback_path]
