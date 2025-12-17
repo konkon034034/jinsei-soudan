@@ -1,8 +1,8 @@
-name: Daily Kayokyoku (懐かしの歌謡曲ch)
+name: Daily Kayokyoku (懐かしの歌謡曲ch) [無効]
 
 on:
-  schedule:
-    - cron: '20 0 * * *'
+  # schedule:
+  #   - cron: '20 0 * * *'
   workflow_dispatch:
 
 jobs:
