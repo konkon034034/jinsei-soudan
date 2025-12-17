@@ -142,63 +142,140 @@ def get_google_credentials():
     )
 
 
-def search_pension_news(key_manager: GeminiKeyManager) -> list:
-    """Gemini APIで年金関連ニュースを検索"""
+# 信頼度の高いソース（confirmed情報として扱う）
+TRUSTED_SOURCES = [
+    "厚生労働省", "mhlw.go.jp",
+    "日本年金機構", "nenkin.go.jp",
+    "NHK", "nhk.or.jp",
+    "日本経済新聞", "nikkei.com",
+    "読売新聞", "yomiuri.co.jp",
+    "朝日新聞", "asahi.com",
+]
+
+
+def is_trusted_source(source: str, url: str = "") -> bool:
+    """ソースが信頼できるかチェック"""
+    source_lower = source.lower()
+    url_lower = url.lower() if url else ""
+    for trusted in TRUSTED_SOURCES:
+        if trusted.lower() in source_lower or trusted.lower() in url_lower:
+            return True
+    return False
+
+
+def search_pension_news(key_manager: GeminiKeyManager) -> dict:
+    """Gemini APIで年金関連ニュースを検索（Web検索機能付き）
+
+    Returns:
+        dict: {"confirmed": [...], "rumor": [...], "sources": [...]}
+    """
     api_key, key_name = key_manager.get_working_key()
     if not api_key:
         print("❌ Gemini APIキーがありません")
-        return []
+        return {"confirmed": [], "rumor": [], "sources": []}
 
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    # google-genai クライアントを使用（Web検索対応）
+    client = genai_tts.Client(api_key=api_key)
 
     prompt = """
 あなたは年金ニュースの専門リサーチャーです。
-今日の日本の年金に関する最新ニュースを3つ調べて、以下のJSON形式で出力してください。
+今日の日本の年金に関する最新ニュースをWeb検索で調べて、以下のJSON形式で出力してください。
 
-情報源:
-- 厚生労働省
-- 日本年金機構
-- Yahoo!ニュース
-- NHKニュース
+【検索クエリ例】
+- 年金 最新ニュース 2024
+- 厚生年金 改正
+- 年金受給 変更
 
-出力形式:
+【優先する情報源】（信頼度高い順）
+1. 厚生労働省 (mhlw.go.jp)
+2. 日本年金機構 (nenkin.go.jp)
+3. NHK (nhk.or.jp)
+4. 日本経済新聞 (nikkei.com)
+5. 読売新聞 (yomiuri.co.jp)
+6. 朝日新聞 (asahi.com)
+7. Yahoo!ニュース（参考程度）
+
+【出力形式】
 ```json
-[
-  {
-    "title": "ニュースタイトル",
-    "summary": "ニュースの要約（100文字程度）",
-    "source": "情報源",
-    "impact": "年金受給者への影響（50文字程度）"
-  }
-]
+{
+  "news": [
+    {
+      "title": "ニュースタイトル",
+      "summary": "ニュースの要約（100文字程度）",
+      "source": "情報源名（例: 厚生労働省、NHK）",
+      "url": "参照元URL（わかる場合）",
+      "reliability": "high または low",
+      "impact": "年金受給者への影響（50文字程度）"
+    }
+  ]
+}
 ```
 
-注意:
-- 最新のニュースを優先
+【注意】
+- 最新のニュースを優先（過去1週間以内）
 - 年金受給者に関係する内容を選ぶ
-- デマや不確かな情報は含めない
+- 公式ソースからのニュースを2-3件
+- 噂・未確定情報も1件程度あれば含める（reliabilityをlowに）
+- URLは可能な限り含める
 """
 
     try:
-        response = model.generate_content(prompt)
+        # Gemini 2.0 Flash with Google Search grounding
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+            )
+        )
+
         text = response.text
+        print(f"  [Web検索] レスポンス取得完了")
 
         # JSON部分を抽出
-        json_match = re.search(r'\[[\s\S]*\]', text)
+        json_match = re.search(r'\{[\s\S]*\}', text)
         if json_match:
-            news_list = json.loads(json_match.group())
-            print(f"✓ {len(news_list)}件のニュースを取得")
-            return news_list
+            data = json.loads(json_match.group())
+            news_list = data.get("news", [])
+
+            # 信頼度で分類
+            confirmed = []
+            rumor = []
+            sources = []
+
+            for news in news_list:
+                source = news.get("source", "")
+                url = news.get("url", "")
+                reliability = news.get("reliability", "low")
+
+                # ソースの信頼度を再チェック
+                if is_trusted_source(source, url) or reliability == "high":
+                    news["type"] = "confirmed"
+                    confirmed.append(news)
+                else:
+                    news["type"] = "rumor"
+                    rumor.append(news)
+
+                # 参照元リストに追加
+                if url:
+                    sources.append({"source": source, "url": url})
+
+            print(f"✓ ニュース取得完了: 確定情報 {len(confirmed)}件, 噂 {len(rumor)}件")
+            return {"confirmed": confirmed, "rumor": rumor, "sources": sources}
+
     except Exception as e:
         print(f"❌ ニュース検索エラー: {e}")
         key_manager.mark_failed(key_name)
 
-    return []
+    return {"confirmed": [], "rumor": [], "sources": []}
 
 
-def generate_script(news_list: list, key_manager: GeminiKeyManager) -> dict:
-    """ニュースから台本を生成"""
+def generate_script(news_data: dict, key_manager: GeminiKeyManager) -> dict:
+    """ニュースから台本を生成
+
+    Args:
+        news_data: {"confirmed": [...], "rumor": [...], "sources": [...]}
+    """
     api_key, key_name = key_manager.get_working_key()
     if not api_key:
         return None
@@ -206,10 +283,21 @@ def generate_script(news_list: list, key_manager: GeminiKeyManager) -> dict:
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-2.0-flash")
 
-    news_text = "\n".join([
-        f"【ニュース{i+1}】{n['title']}\n{n['summary']}\n影響: {n['impact']}"
-        for i, n in enumerate(news_list)
-    ])
+    # 確定情報とうわさ情報を分けてテキスト化
+    confirmed_news = news_data.get("confirmed", [])
+    rumor_news = news_data.get("rumor", [])
+
+    confirmed_text = "\n".join([
+        f"【確定ニュース{i+1}】{n['title']}\n{n['summary']}\n影響: {n.get('impact', '不明')}\n出典: {n.get('source', '不明')}"
+        for i, n in enumerate(confirmed_news)
+    ]) if confirmed_news else "（確定情報なし）"
+
+    rumor_text = "\n".join([
+        f"【噂・参考情報{i+1}】{n['title']}\n{n['summary']}"
+        for i, n in enumerate(rumor_news)
+    ]) if rumor_news else "（噂情報なし）"
+
+    news_text = f"■ 確定情報（公式ソース）\n{confirmed_text}\n\n■ 噂・参考情報\n{rumor_text}"
 
     prompt = f"""
 あなたは年金ニュース番組の台本作家です。
@@ -219,13 +307,18 @@ def generate_script(news_list: list, key_manager: GeminiKeyManager) -> dict:
 - カツミ（女性）: 年金に詳しい説明役。落ち着いた優しい口調でわかりやすく解説する。
 - ヒロシ（男性）: 年金に詳しくない聞き役。ちょっとお馬鹿で素朴な疑問を聞く。視聴者目線で「え、それどういうこと？」と質問する。
 
-【ニュース】
+【ニュース情報】
 {news_text}
 
 【台本の流れ】
 1. オープニング: カツミが今日のニュースを紹介
-2. 本編: カツミが説明し、ヒロシが質問・リアクション
-3. エンディング: ヒロシがぼやき（愚痴っぽいコメント）→ カツミがなだめて締める
+2. 本編（確定情報）: カツミが公式ソースからのニュースを解説、ヒロシが質問
+3. 雑談パート（噂情報があれば）: ヒロシが「〜って話もあるらしいよ」と噂を紹介
+4. エンディング: ヒロシがぼやき → カツミがなだめて締める
+
+【噂情報の扱い方】
+- ヒロシが「ネットで見たんだけど、〜っていう話もあるらしいよ」と言う
+- カツミが「それはまだ確定じゃないけど、気になるわね」と返す
 
 【エンディング例】
 ヒロシ「はぁ〜、年金のこと考えると頭痛くなるわ...」
@@ -244,17 +337,21 @@ def generate_script(news_list: list, key_manager: GeminiKeyManager) -> dict:
   ],
   "news_sections": [
     {{
-      "news_title": "ニュース1のタイトル",
+      "news_title": "確定ニュースのタイトル",
       "dialogue": [
-        {{"speaker": "カツミ", "text": "ニュースの解説"}},
-        {{"speaker": "ヒロシ", "text": "え、それってどういうこと？（素朴な質問）"}},
+        {{"speaker": "カツミ", "text": "公式情報の解説"}},
+        {{"speaker": "ヒロシ", "text": "え、それってどういうこと？"}},
         {{"speaker": "カツミ", "text": "わかりやすく補足説明"}}
       ]
     }}
   ],
+  "rumor_section": [
+    {{"speaker": "ヒロシ", "text": "そういえば、〜って話もあるらしいよ"}},
+    {{"speaker": "カツミ", "text": "それはまだ確定じゃないけど、注目ね"}}
+  ],
   "ending": [
-    {{"speaker": "ヒロシ", "text": "はぁ〜、年金って難しいなぁ...（ぼやき）"}},
-    {{"speaker": "カツミ", "text": "まあまあ、少しずつ理解していきましょうね（なだめて締める）"}}
+    {{"speaker": "ヒロシ", "text": "はぁ〜、年金って難しいなぁ..."}},
+    {{"speaker": "カツミ", "text": "まあまあ、少しずつ理解していきましょうね"}}
   ]
 }}
 ```
@@ -263,7 +360,9 @@ def generate_script(news_list: list, key_manager: GeminiKeyManager) -> dict:
 - 各セリフは50文字以内
 - 難しい用語は分かりやすく言い換える
 - ヒロシは視聴者が思いそうな素朴な疑問を代弁する（ちょっとお馬鹿な感じで）
+- 確定情報をメインに、噂は「〜らしいよ」と軽く触れる程度に
 - エンディングは必ずヒロシのぼやき→カツミがなだめる、の順番で
+- rumor_sectionは噂情報がない場合は空配列[]にする
 """
 
     try:
@@ -788,9 +887,14 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     # オープニング
     all_dialogue.extend(script.get("opening", []))
 
-    # ニュースセクション
+    # ニュースセクション（確定情報）
     for section in script.get("news_sections", []):
         all_dialogue.extend(section.get("dialogue", []))
+
+    # 噂セクション（あれば）
+    rumor_section = script.get("rumor_section", [])
+    if rumor_section:
+        all_dialogue.extend(rumor_section)
 
     # エンディング
     all_dialogue.extend(script.get("ending", []))
@@ -1072,16 +1176,16 @@ def main():
     key_manager = GeminiKeyManager()
     print(f"利用可能なAPIキー: {len(key_manager.get_all_keys())}個")
 
-    # 1. ニュース検索
+    # 1. ニュース検索（Web検索機能付き）
     print("\n[1/4] 年金ニュースを検索中...")
-    news_list = search_pension_news(key_manager)
-    if not news_list:
+    news_data = search_pension_news(key_manager)
+    if not news_data.get("confirmed") and not news_data.get("rumor"):
         print("❌ ニュースが見つかりませんでした")
         return
 
     # 2. 台本生成
     print("\n[2/4] 台本を生成中...")
-    script = generate_script(news_list, key_manager)
+    script = generate_script(news_data, key_manager)
     if not script:
         print("❌ 台本生成に失敗しました")
         return
@@ -1105,10 +1209,26 @@ def main():
         print("\n[4/4] YouTubeに投稿中...")
         title = f"【{datetime.now().strftime('%Y/%m/%d')}】今日の年金ニュース"
 
-        # 概要欄（キャラ紹介 + 動画説明）
+        # 概要欄（キャラ紹介 + 動画説明 + 参照元）
         char_intro = "年金に詳しいカツミと、ちょっとお馬鹿なヒロシが年金ニュースをわかりやすく解説！毎朝届く年金情報で、あなたの老後を応援します。\n\n"
         script_desc = script.get("description", "今日の年金ニュースをお届けします。")
-        description = char_intro + script_desc
+
+        # 参照元リンクを追加
+        sources = news_data.get("sources", [])
+        source_text = ""
+        if sources:
+            source_lines = []
+            seen_urls = set()
+            for src in sources:
+                url = src.get("url", "")
+                if url and url not in seen_urls:
+                    source_name = src.get("source", "参照元")
+                    source_lines.append(f"・{source_name}\n  {url}")
+                    seen_urls.add(url)
+            if source_lines:
+                source_text = "\n\n【参照元】\n" + "\n".join(source_lines)
+
+        description = char_intro + script_desc + source_text
         tags = script.get("tags", ["年金", "ニュース", "シニア"])
 
         try:
