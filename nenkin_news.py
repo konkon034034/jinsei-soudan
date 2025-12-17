@@ -732,8 +732,8 @@ def generate_ass_subtitles(segments: list, output_path: str):
     背景バーはffmpegのdrawboxで描画するため、ここでは字幕テキストのみ
     """
     # 字幕設定
-    font_size = int(VIDEO_WIDTH * 0.045)  # 画面幅の4.5% ≈ 86px（大きめ）
-    margin_bottom = int(VIDEO_HEIGHT * 0.05)  # 下から5%（バーの中央に配置）
+    font_size = int(VIDEO_WIDTH * 0.09)  # 画面幅の9% ≈ 172px（2倍サイズ）
+    margin_bottom = int(VIDEO_HEIGHT * 0.08)  # 下から8%（35%バーの中央付近に配置）
     margin_side = 100  # 左右マージン
 
     # ASS色形式: &HAABBGGRR
@@ -750,7 +750,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Noto Sans CJK JP Bold,{font_size},{primary_color},&H000000FF,{outline_color},{shadow_color},-1,0,0,0,100,100,0,0,1,3,2,2,{margin_side},{margin_side},{margin_bottom},1
+Style: Default,Noto Sans CJK JP Bold,{font_size},{primary_color},&H000000FF,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,2,{margin_side},{margin_side},{margin_bottom},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -762,7 +762,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         end = f"0:{int(seg['end']//60):02d}:{int(seg['end']%60):02d}.{int((seg['end']%1)*100):02d}"
         # 話者名を含めたテキスト、長い場合は折り返し
         full_text = f"{seg['speaker']}：{seg['text']}"
-        wrapped_text = wrap_text(full_text, max_chars=22)  # 1行20〜25文字で折り返し
+        wrapped_text = wrap_text(full_text, max_chars=15)  # 1行14〜16文字で折り返し
         lines.append(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{wrapped_text}")
 
     with open(output_path, 'w', encoding='utf-8') as f:
@@ -878,13 +878,14 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     output_path = str(temp_dir / f"nenkin_news_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
 
     # 背景バーの設定
-    bar_height = int(VIDEO_HEIGHT * 0.18)  # 画面の18%
+    bar_height = int(VIDEO_HEIGHT * 0.35)  # 画面の35%（下1/3をカバー）
     bar_y = VIDEO_HEIGHT - bar_height  # バーのY座標（画面下部）
 
     # ffmpegフィルター: scale → 背景バー描画 → 字幕
+    # 茶色系: rgba(60,40,30,0.8) → ffmpegでは 0x3C281E@0.8
     vf_filter = (
         f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},"
-        f"drawbox=x=0:y={bar_y}:w={VIDEO_WIDTH}:h={bar_height}:color=black@0.7:t=fill,"
+        f"drawbox=x=0:y={bar_y}:w={VIDEO_WIDTH}:h={bar_height}:color=0x3C281E@0.8:t=fill,"
         f"ass={ass_path}"
     )
 
