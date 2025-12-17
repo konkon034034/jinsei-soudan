@@ -1151,6 +1151,131 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list)
     return url
 
 
+def generate_grandma_comment(script: dict, key_manager: GeminiKeyManager) -> str:
+    """おばあちゃんのコメントを生成（Gemini API）
+
+    Args:
+        script: 台本データ
+        key_manager: APIキーマネージャー
+
+    Returns:
+        str: おばあちゃんのコメント（50文字以内）
+    """
+    api_key, key_name = key_manager.get_working_key()
+    if not api_key:
+        print("  ⚠ Gemini APIキーがないためコメント生成をスキップ")
+        return ""
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-2.0-flash")
+
+    # 台本の内容を要約
+    dialogues = []
+    for section in script.get("news_sections", []):
+        for line in section.get("dialogue", []):
+            dialogues.append(f"{line['speaker']}: {line['text']}")
+
+    dialogue_text = "\n".join(dialogues[:10])  # 最初の10セリフ
+
+    prompt = f"""
+あなたはラジオを聴いているおばあちゃんです。
+カツミさんとヒロシさんの年金ニュースの対談を聞いて、一言感想を言ってください。
+
+【対談内容】
+{dialogue_text}
+
+【おばあちゃんの設定】
+- おっとりした優しい口調
+- 年金のことはよくわからないけど、毎日聴いている
+- 「〜わねぇ」「〜かしら」「〜だわ」などの語尾
+
+【コメント例】
+「あらあら、年金のこと、そんなものなのかしらねぇ...」
+「ヒロシさんの気持ち、わかるわぁ。私も年金のことよくわからないもの」
+「カツミさんの説明、わかりやすかったわねぇ」
+「今日も勉強になったわ。お茶でも飲みながらまた聞くわね」
+
+【出力】
+おばあちゃんの一言コメントを50文字以内で出力してください。
+コメントのみを出力し、他の説明は不要です。
+"""
+
+    try:
+        response = model.generate_content(prompt)
+        comment = response.text.strip()
+        # 余分な引用符を削除
+        comment = comment.strip('"\'「」『』')
+        # 50文字に制限
+        if len(comment) > 50:
+            comment = comment[:47] + "..."
+        print(f"  [コメント生成] おばあちゃん: {comment}")
+        return comment
+    except Exception as e:
+        print(f"  ⚠ コメント生成エラー: {e}")
+        return ""
+
+
+def post_youtube_comment(video_id: str, comment_text: str) -> bool:
+    """YouTubeに最初のコメントを投稿
+
+    Args:
+        video_id: 動画ID
+        comment_text: コメント内容
+
+    Returns:
+        bool: 成功したかどうか
+    """
+    if not comment_text:
+        print("  ⚠ コメントが空のためスキップ")
+        return False
+
+    client_id = os.environ.get("YOUTUBE_CLIENT_ID")
+    client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
+    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_23")
+
+    if not all([client_id, client_secret, refresh_token]):
+        print("  ⚠ YouTube認証情報が不足のためコメント投稿をスキップ")
+        return False
+
+    try:
+        # アクセストークン取得
+        response = requests.post("https://oauth2.googleapis.com/token", data={
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "refresh_token": refresh_token,
+            "grant_type": "refresh_token"
+        })
+        access_token = response.json()["access_token"]
+
+        from google.oauth2.credentials import Credentials as OAuthCredentials
+        creds = OAuthCredentials(token=access_token)
+        youtube = build("youtube", "v3", credentials=creds)
+
+        # コメント投稿
+        comment_body = {
+            "snippet": {
+                "videoId": video_id,
+                "topLevelComment": {
+                    "snippet": {
+                        "textOriginal": comment_text
+                    }
+                }
+            }
+        }
+
+        youtube.commentThreads().insert(
+            part="snippet",
+            body=comment_body
+        ).execute()
+
+        print(f"  ✓ YouTubeコメント投稿完了")
+        return True
+
+    except Exception as e:
+        print(f"  ⚠ YouTubeコメント投稿エラー: {e}")
+        return False
+
+
 def send_slack_notification(title: str, url: str, video_duration: float, processing_time: float):
     """Slack通知を送信"""
     webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
@@ -1309,11 +1434,22 @@ def main():
         try:
             video_url = upload_to_youtube(video_path, title, description, tags)
 
+            # 動画IDを抽出
+            video_id = video_url.split("v=")[-1] if "v=" in video_url else ""
+
+            # おばあちゃんコメントを生成・投稿
+            grandma_comment = ""
+            if video_id:
+                print("\n[5/6] おばあちゃんコメントを生成・投稿中...")
+                grandma_comment = generate_grandma_comment(script, key_manager)
+                if grandma_comment:
+                    post_youtube_comment(video_id, grandma_comment)
+
             # 処理時間を計算
             processing_time = time.time() - start_time
 
             # 通知を送信
-            print("\n[5/5] 通知を送信中...")
+            print("\n[6/6] 通知を送信中...")
             send_slack_notification(title, video_url, video_duration, processing_time)
             send_discord_notification(title, video_url, video_duration, processing_time)
 
@@ -1325,6 +1461,10 @@ def main():
                 news_count=news_count,
                 processing_time=processing_time
             )
+
+            # コメント内容を表示
+            if grandma_comment:
+                print(f"\n📝 おばあちゃんコメント: {grandma_comment}")
 
         except Exception as e:
             print(f"❌ YouTube投稿エラー: {e}")
