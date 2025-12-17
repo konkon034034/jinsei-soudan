@@ -1,0 +1,23 @@
+name: スプレッドシート確認
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python環境をセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 依存関係をインストール
+        run: pip install google-api-python-client google-auth
+
+      - name: スプレッドシート構成を確認
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+        run: python scripts/check_spreadsheet.py
