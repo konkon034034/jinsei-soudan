@@ -33,6 +33,10 @@ VIDEO_WIDTH = 1920
 VIDEO_HEIGHT = 1080
 CHANNEL = "23"  # TOKEN_23固定
 
+# ===== チャンネル情報 =====
+CHANNEL_NAME = "毎朝届く！おはよう年金ニュース"
+CHANNEL_DESCRIPTION = "毎朝7時、年金に関する最新ニュースをお届けします"
+
 # ===== Gemini TTS設定 =====
 GEMINI_TTS_MODEL = "gemini-2.5-flash-preview-tts"
 
