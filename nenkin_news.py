@@ -137,9 +137,77 @@ def get_google_credentials():
         key_data,
         scopes=[
             "https://www.googleapis.com/auth/youtube.upload",
-            "https://www.googleapis.com/auth/drive"
+            "https://www.googleapis.com/auth/drive",
+            "https://www.googleapis.com/auth/spreadsheets"
         ]
     )
+
+
+# ===== スプレッドシートログ設定 =====
+LOG_SPREADSHEET_ID = "15_ixYlyRp9sOlS0tdklhz6wQmwRxWlOL9cPndFWwOFo"
+LOG_SHEET_NAME = "実行ログ"
+
+
+def log_to_spreadsheet(status: str, title: str = "", url: str = "", news_count: int = 0,
+                       processing_time: float = 0, error_message: str = ""):
+    """スプレッドシートに実行ログを記録
+
+    Args:
+        status: "処理開始", "成功", "エラー"
+        title: 動画タイトル
+        url: 動画URL
+        news_count: ニュースソース数
+        processing_time: 生成時間（秒）
+        error_message: エラー内容
+    """
+    try:
+        creds = get_google_credentials()
+        service = build('sheets', 'v4', credentials=creds)
+
+        # シートが存在するか確認、なければ作成
+        spreadsheet = service.spreadsheets().get(spreadsheetId=LOG_SPREADSHEET_ID).execute()
+        existing_sheets = [s['properties']['title'] for s in spreadsheet['sheets']]
+
+        if LOG_SHEET_NAME not in existing_sheets:
+            # シート作成
+            request = {
+                "requests": [{
+                    "addSheet": {
+                        "properties": {"title": LOG_SHEET_NAME}
+                    }
+                }]
+            }
+            service.spreadsheets().batchUpdate(
+                spreadsheetId=LOG_SPREADSHEET_ID,
+                body=request
+            ).execute()
+
+            # ヘッダー追加
+            headers = ["日時", "ステータス", "動画タイトル", "動画URL", "ニュースソース数", "生成時間(秒)", "エラー内容"]
+            service.spreadsheets().values().update(
+                spreadsheetId=LOG_SPREADSHEET_ID,
+                range=f"{LOG_SHEET_NAME}!A1:G1",
+                valueInputOption="RAW",
+                body={"values": [headers]}
+            ).execute()
+            print(f"  [ログ] シート '{LOG_SHEET_NAME}' を作成しました")
+
+        # ログデータを追加
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        row = [now, status, title, url, news_count, round(processing_time, 1), error_message]
+
+        service.spreadsheets().values().append(
+            spreadsheetId=LOG_SPREADSHEET_ID,
+            range=f"{LOG_SHEET_NAME}!A:G",
+            valueInputOption="RAW",
+            insertDataOption="INSERT_ROWS",
+            body={"values": [row]}
+        ).execute()
+
+        print(f"  [ログ] 記録完了: {status}")
+
+    except Exception as e:
+        print(f"  ⚠ ログ記録エラー: {e}")
 
 
 # 信頼度の高いソース（confirmed情報として扱う）
@@ -1176,11 +1244,17 @@ def main():
     key_manager = GeminiKeyManager()
     print(f"利用可能なAPIキー: {len(key_manager.get_all_keys())}個")
 
+    # 処理開始をログに記録
+    log_to_spreadsheet(status="処理開始")
+
     # 1. ニュース検索（Web検索機能付き）
     print("\n[1/4] 年金ニュースを検索中...")
     news_data = search_pension_news(key_manager)
+    news_count = len(news_data.get("confirmed", [])) + len(news_data.get("rumor", []))
+
     if not news_data.get("confirmed") and not news_data.get("rumor"):
         print("❌ ニュースが見つかりませんでした")
+        log_to_spreadsheet(status="エラー", error_message="ニュースが見つかりませんでした")
         return
 
     # 2. 台本生成
@@ -1188,6 +1262,7 @@ def main():
     script = generate_script(news_data, key_manager)
     if not script:
         print("❌ 台本生成に失敗しました")
+        log_to_spreadsheet(status="エラー", news_count=news_count, error_message="台本生成に失敗しました")
         return
 
     # 3. 動画生成
@@ -1232,18 +1307,36 @@ def main():
         tags = script.get("tags", ["年金", "ニュース", "シニア"])
 
         try:
-            url = upload_to_youtube(video_path, title, description, tags)
+            video_url = upload_to_youtube(video_path, title, description, tags)
 
             # 処理時間を計算
             processing_time = time.time() - start_time
 
             # 通知を送信
             print("\n[5/5] 通知を送信中...")
-            send_slack_notification(title, url, video_duration, processing_time)
-            send_discord_notification(title, url, video_duration, processing_time)
+            send_slack_notification(title, video_url, video_duration, processing_time)
+            send_discord_notification(title, video_url, video_duration, processing_time)
+
+            # 成功をログに記録
+            log_to_spreadsheet(
+                status="成功",
+                title=title,
+                url=video_url,
+                news_count=news_count,
+                processing_time=processing_time
+            )
 
         except Exception as e:
             print(f"❌ YouTube投稿エラー: {e}")
+            # エラーをログに記録
+            processing_time = time.time() - start_time
+            log_to_spreadsheet(
+                status="エラー",
+                title=title,
+                news_count=news_count,
+                processing_time=processing_time,
+                error_message=str(e)
+            )
             # ローカルに保存
             import shutil
             output_file = f"nenkin_news_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
