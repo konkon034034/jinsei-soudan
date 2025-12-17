@@ -941,7 +941,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         start = f"0:{int(seg['start']//60):02d}:{int(seg['start']%60):02d}.{int((seg['start']%1)*100):02d}"
         end = f"0:{int(seg['end']//60):02d}:{int(seg['end']%60):02d}.{int((seg['end']%1)*100):02d}"
         # セリフのみ表示（話者名なし）、長い場合は折り返し
-        wrapped_text = wrap_text(seg['text'], max_chars=18)  # 1行18文字で折り返し（2行に収まりやすく）
+        wrapped_text = wrap_text(seg['text'], max_chars=15)  # 1行15文字で折り返し（左右余白確保）
         lines.append(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{wrapped_text}")
 
     with open(output_path, 'w', encoding='utf-8') as f:
