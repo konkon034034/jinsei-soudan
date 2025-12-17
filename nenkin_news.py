@@ -1750,6 +1750,13 @@ def main():
                 source_text = "\n\n【参照元】\n" + "\n".join(source_lines)
 
         description = char_intro + script_desc + source_text
+
+        # YouTube説明文の制限（5000文字、無効文字除去）
+        description = description.replace("<", "").replace(">", "")  # 無効文字除去
+        if len(description) > 4900:
+            description = description[:4900] + "\n\n..."
+        print(f"  説明文: {len(description)}文字")
+
         tags = script.get("tags", ["年金", "ニュース", "シニア"])
 
         try:
