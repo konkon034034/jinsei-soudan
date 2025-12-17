@@ -680,6 +680,7 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
 
     # 順次処理でチャンクを生成（429対策）
     chunk_files = [None] * len(chunks)
+    chunk_durations = [0.0] * len(chunks)  # 各チャンクの音声長
     successful_chunk_indices = []  # 成功したチャンクのインデックス
 
     for i, chunk in enumerate(chunks):
@@ -697,7 +698,13 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
 
         if success and os.path.exists(chunk_path):
             chunk_files[i] = chunk_path
-            successful_chunk_indices.append(i)  # 成功したインデックスを記録
+            successful_chunk_indices.append(i)
+            # チャンクの音声長を取得
+            result = subprocess.run([
+                'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                '-of', 'default=noprint_wrappers=1:nokey=1', chunk_path
+            ], capture_output=True, text=True)
+            chunk_durations[i] = float(result.stdout.strip()) if result.stdout.strip() else 0.0
 
         # 次のチャンクの前に待機（最後のチャンク以外）
         if i < len(chunks) - 1:
@@ -723,6 +730,14 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
             successful_chunks = [fallback_path]
             # gTTSは全セリフを生成するので、全チャンクを成功扱い
             successful_chunk_indices = list(range(len(chunks)))
+            # gTTS全体の長さを取得して各チャンクに均等分配
+            result = subprocess.run([
+                'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                '-of', 'default=noprint_wrappers=1:nokey=1', fallback_path
+            ], capture_output=True, text=True)
+            gtts_duration = float(result.stdout.strip()) if result.stdout.strip() else 0.0
+            per_chunk = gtts_duration / len(chunks) if len(chunks) > 0 else 0.0
+            chunk_durations = [per_chunk] * len(chunks)
         else:
             return None, [], 0.0
 
@@ -750,26 +765,28 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
     ], capture_output=True, text=True)
     total_duration = float(result.stdout.strip()) if result.stdout.strip() else 0.0
 
-    # 成功したチャンクのセリフのみを抽出
-    successful_dialogues = []
+    # 成功したチャンクごとにセグメントを生成（チャンクの実際の音声長を使用）
+    successful_dialogue_count = 0
     for idx in successful_chunk_indices:
-        successful_dialogues.extend(chunks[idx])
+        chunk = chunks[idx]
+        chunk_duration = chunk_durations[idx]
 
-    print(f"    [字幕] 成功したセリフ数: {len(successful_dialogues)}/{len(dialogue)}")
+        # チャンク内のセリフを文字数比で分配
+        chunk_chars = sum(len(line["text"]) for line in chunk)
+        for line in chunk:
+            ratio = len(line["text"]) / chunk_chars if chunk_chars > 0 else 1/len(chunk)
+            duration = chunk_duration * ratio
+            segments.append({
+                "speaker": line["speaker"],
+                "text": line["text"],
+                "start": current_time,
+                "end": current_time + duration,
+                "color": CHARACTERS[line["speaker"]]["color"]
+            })
+            current_time += duration
+            successful_dialogue_count += 1
 
-    # セグメント情報を推定（成功したセリフのみ）
-    total_chars = sum(len(line["text"]) for line in successful_dialogues)
-    for line in successful_dialogues:
-        ratio = len(line["text"]) / total_chars if total_chars > 0 else 1/len(successful_dialogues)
-        duration = total_duration * ratio
-        segments.append({
-            "speaker": line["speaker"],
-            "text": line["text"],
-            "start": current_time,
-            "end": current_time + duration,
-            "color": CHARACTERS[line["speaker"]]["color"]
-        })
-        current_time += duration
+    print(f"    [字幕] 成功したセリフ数: {successful_dialogue_count}/{len(dialogue)}")
 
     # 一時ファイル削除
     for af in successful_chunks:
@@ -1009,6 +1026,15 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
 
     # エンディング
     all_dialogue.extend(script.get("ending", []))
+
+    # 空や無効なセリフを除外
+    original_count = len(all_dialogue)
+    all_dialogue = [
+        d for d in all_dialogue
+        if d.get("text") and len(d["text"].strip()) > 3 and d["text"].strip() not in ["...", "…", "。", "、"]
+    ]
+    if len(all_dialogue) < original_count:
+        print(f"  [フィルタ] {original_count - len(all_dialogue)}件の空セリフを除外")
 
     print(f"  セリフ数: {len(all_dialogue)}")
 
