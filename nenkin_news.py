@@ -944,8 +944,50 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list)
     return url
 
 
+def send_slack_notification(title: str, url: str, video_duration: float, processing_time: float):
+    """Slack通知を送信"""
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+    if not webhook_url:
+        print("  ⚠ SLACK_WEBHOOK_URL未設定のため通知をスキップ")
+        return
+
+    # 処理時間をフォーマット
+    proc_minutes = int(processing_time // 60)
+    proc_seconds = int(processing_time % 60)
+    proc_time_str = f"{proc_minutes}分{proc_seconds}秒" if proc_minutes > 0 else f"{proc_seconds}秒"
+
+    # 動画長をフォーマット
+    vid_minutes = int(video_duration // 60)
+    vid_seconds = int(video_duration % 60)
+    vid_time_str = f"{vid_minutes}分{vid_seconds}秒" if vid_minutes > 0 else f"{vid_seconds}秒"
+
+    message = f"""🎬 年金ニュース投稿完了！
+━━━━━━━━━━━━━━━━━━
+📺 タイトル: {title}
+🔗 URL: {url}
+⏱️ 動画長: {vid_time_str}
+🕐 処理時間: {proc_time_str}
+━━━━━━━━━━━━━━━━━━"""
+
+    try:
+        response = requests.post(
+            webhook_url,
+            json={"text": message},
+            headers={"Content-Type": "application/json"},
+            timeout=30
+        )
+        if response.status_code == 200:
+            print("  ✓ Slack通知送信完了")
+        else:
+            print(f"  ⚠ Slack通知失敗: {response.status_code}")
+    except Exception as e:
+        print(f"  ⚠ Slack通知エラー: {e}")
+
+
 def main():
     """メイン処理"""
+    start_time = time.time()  # 処理開始時刻
+
     print("=" * 50)
     print("年金ニュース動画生成システム")
     print(f"実行日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -972,9 +1014,18 @@ def main():
 
     # 3. 動画生成
     print("\n[3/4] 動画を生成中...")
+    video_duration = 0.0
+
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
         video_path, _ = create_video(script, temp_path, key_manager)
+
+        # 動画の長さを取得
+        result = subprocess.run([
+            'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1', video_path
+        ], capture_output=True, text=True)
+        video_duration = float(result.stdout.strip()) if result.stdout.strip() else 0.0
 
         # 4. YouTube投稿
         print("\n[4/4] YouTubeに投稿中...")
@@ -984,7 +1035,14 @@ def main():
 
         try:
             url = upload_to_youtube(video_path, title, description, tags)
-            # アップロード完了メッセージは upload_to_youtube 内で表示済み
+
+            # 処理時間を計算
+            processing_time = time.time() - start_time
+
+            # Slack通知を送信
+            print("\n[5/5] Slack通知を送信中...")
+            send_slack_notification(title, url, video_duration, processing_time)
+
         except Exception as e:
             print(f"❌ YouTube投稿エラー: {e}")
             # ローカルに保存
