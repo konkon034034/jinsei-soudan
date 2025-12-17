@@ -913,7 +913,7 @@ def generate_ass_subtitles(segments: list, output_path: str):
     # 字幕設定
     font_size = int(VIDEO_WIDTH * 0.09)  # 画面幅の9% ≈ 172px（2倍サイズ）
     margin_bottom = int(VIDEO_HEIGHT * 0.05)  # 下から5%（38%バー内に収まるよう調整）
-    margin_side = int(VIDEO_WIDTH * 0.08)  # 左右マージン（画面幅の8% ≈ 154px）
+    margin_side = int(VIDEO_WIDTH * 0.12)  # 左右マージン（画面幅の12% ≈ 230px）
 
     # ASS色形式: &HAABBGGRR
     primary_color = "&H00FFFFFF"  # 白文字
