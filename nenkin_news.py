@@ -733,7 +733,7 @@ def generate_ass_subtitles(segments: list, output_path: str):
     """
     # 字幕設定
     font_size = int(VIDEO_WIDTH * 0.09)  # 画面幅の9% ≈ 172px（2倍サイズ）
-    margin_bottom = int(VIDEO_HEIGHT * 0.08)  # 下から8%（35%バーの中央付近に配置）
+    margin_bottom = int(VIDEO_HEIGHT * 0.05)  # 下から5%（38%バー内に収まるよう調整）
     margin_side = 100  # 左右マージン
 
     # ASS色形式: &HAABBGGRR
@@ -762,7 +762,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         end = f"0:{int(seg['end']//60):02d}:{int(seg['end']%60):02d}.{int((seg['end']%1)*100):02d}"
         # 話者名を含めたテキスト、長い場合は折り返し
         full_text = f"{seg['speaker']}：{seg['text']}"
-        wrapped_text = wrap_text(full_text, max_chars=15)  # 1行14〜16文字で折り返し
+        wrapped_text = wrap_text(full_text, max_chars=18)  # 1行18文字で折り返し（2行に収まりやすく）
         lines.append(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{wrapped_text}")
 
     with open(output_path, 'w', encoding='utf-8') as f:
@@ -878,7 +878,7 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     output_path = str(temp_dir / f"nenkin_news_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
 
     # 背景バーの設定
-    bar_height = int(VIDEO_HEIGHT * 0.30)  # 画面の30%
+    bar_height = int(VIDEO_HEIGHT * 0.38)  # 画面の38%（3行字幕も収まる高さ）
     bar_y = VIDEO_HEIGHT - bar_height  # バーのY座標（画面下部）
 
     # ffmpegフィルター: scale → 背景バー描画 → 字幕
