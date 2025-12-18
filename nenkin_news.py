@@ -512,10 +512,10 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager, test_mode: b
 ```
 
 {"【テストモード：短縮版】" if test_mode else "【重要：30分のラジオ番組を作成】"}
-{'''- 合計5〜10セリフで簡潔に
-- オープニング: 2セリフ
-- ニュース解説: 3〜5セリフ
-- エンディング: なし''' if test_mode else '''- 合計150〜200セリフ以上を生成（30分番組相当）
+{'''- 合計10〜15セリフで簡潔に
+- オープニング: 2〜3セリフ
+- ニュース解説: 5〜8セリフ
+- エンディング: 2〜3セリフ''' if test_mode else '''- 合計150〜200セリフ以上を生成（30分番組相当）
 - 各ニュースについて15〜25セリフで詳しく解説
 - オープニング: 5〜10セリフ
 - 各ニュースセクション: 15〜25セリフ（深掘り解説）
@@ -1777,13 +1777,13 @@ def main():
     print("\n[1/4] 年金ニュースを検索中...")
     news_data = search_pension_news(key_manager)
 
-    # テストモード: ニュースを1件に制限
+    # テストモード: ニュースを3件に制限（本番と同じ流れで短縮版）
     if TEST_MODE:
         if news_data.get("confirmed"):
-            news_data["confirmed"] = news_data["confirmed"][:1]
+            news_data["confirmed"] = news_data["confirmed"][:3]
         if news_data.get("rumor"):
-            news_data["rumor"] = []  # 噂は削除
-        print("  [テスト] ニュースを1件に制限")
+            news_data["rumor"] = news_data["rumor"][:1]  # 噂は1件
+        print("  [テスト] ニュースを3件+噂1件に制限")
 
     news_count = len(news_data.get("confirmed", [])) + len(news_data.get("rumor", []))
 
@@ -1809,16 +1809,16 @@ def main():
     print(f"  生成されたセリフ数: {dialogue_count}セリフ")
 
     # テストモード: 台本を短縮（安全措置として残す）
-    if TEST_MODE and dialogue_count > 15:
+    if TEST_MODE and dialogue_count > 20:
         if script.get("opening"):
-            script["opening"] = script["opening"][:2]
+            script["opening"] = script["opening"][:3]
         if script.get("news_sections"):
             for section in script["news_sections"]:
                 if section.get("dialogue"):
-                    section["dialogue"] = section["dialogue"][:3]
+                    section["dialogue"] = section["dialogue"][:4]
         if script.get("ending"):
-            script["ending"] = []
-        print("  [テスト] 台本を短縮（約5セリフ）")
+            script["ending"] = script["ending"][:2]
+        print("  [テスト] 台本を短縮（約12〜15セリフ）")
 
     # 3. 動画生成
     print("\n[3/4] 動画を生成中...")
