@@ -114,7 +114,7 @@ def generate_pattern_audio(client, pattern: dict, temp_dir: Path) -> str:
 
 
 def create_pattern_title_video(pattern: dict, duration: float, temp_dir: Path) -> str:
-    """パターンタイトル動画を生成"""
+    """パターンタイトル動画を生成（無音音声トラック付き）"""
     title_path = str(temp_dir / f"title_{pattern['name']}.mp4")
 
     # タイトルテキスト
@@ -129,14 +129,17 @@ def create_pattern_title_video(pattern: dict, duration: float, temp_dir: Path) -
     if not os.path.exists(font_path):
         font_path = "/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc"  # macOS
 
-    # 動画生成
+    # 動画生成（無音音声トラック付き）
     subprocess.run([
         'ffmpeg', '-y',
         '-f', 'lavfi', '-i', f'color=c=0x1a1a2e:s=1920x1080:d={duration}',
+        '-f', 'lavfi', '-i', f'anullsrc=r=48000:cl=stereo:d={duration}',
         '-vf', f"drawtext=text='{title_text}':fontfile='{font_path}':fontsize=120:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2-100,"
                f"drawtext=text='{subtitle}':fontfile='{font_path}':fontsize=48:fontcolor=0xcccccc:x=(w-text_w)/2:y=(h-text_h)/2+50,"
                f"drawtext=text='{detail}':fontfile='{font_path}':fontsize=40:fontcolor=0x888888:x=(w-text_w)/2:y=(h-text_h)/2+120",
         '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+        '-c:a', 'aac', '-b:a', '192k',
+        '-t', str(duration),
         '-pix_fmt', 'yuv420p',
         title_path
     ], capture_output=True)
@@ -231,7 +234,7 @@ def main():
                 '-f', 'lavfi', '-i', f'color=c=0x2C2C2C:s=1920x1080:d={audio_duration}',
                 '-i', pattern_audio,
                 '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
-                '-c:a', 'aac', '-b:a', '192k',
+                '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',
                 '-shortest', '-pix_fmt', 'yuv420p',
                 audio_video
             ], capture_output=True)
