@@ -94,13 +94,28 @@ jobs:
           retention-days: 3
           if-no-files-found: ignore
 
-      - name: エラー時にSlack通知
+      - name: 成功時にDiscord通知
+        if: success()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"content\": \"✅ **年金ニュース動画生成完了**\n━━━━━━━━━━━━━━━━━━\n\n📺 動画が正常に生成されました\n🎤 TTS: ${{ github.event.inputs.tts_mode || 'google_cloud' }}\n🧪 テストモード: ${{ github.event.inputs.test_mode || 'false' }}\n\n🔗 ワークフロー: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\n━━━━━━━━━━━━━━━━━━\"
+              }"
+          fi
+
+      - name: エラー時にDiscord通知
         if: failure()
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          if [ -n "$SLACK_WEBHOOK_URL" ]; then
-            curl -X POST -H 'Content-type: application/json' \
-              --data "{\"text\":\":x: *年金ニュース動画生成に失敗しました*\n\nワークフロー: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
-              "$SLACK_WEBHOOK_URL"
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"content\": \"❌ **年金ニュース動画生成に失敗しました**\n━━━━━━━━━━━━━━━━━━\n\n🔗 ワークフロー: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\n━━━━━━━━━━━━━━━━━━\"
+              }"
           fi
