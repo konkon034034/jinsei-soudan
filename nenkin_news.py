@@ -1655,6 +1655,77 @@ def generate_grandma_comment(script: dict, key_manager: GeminiKeyManager) -> str
         return ""
 
 
+def generate_first_comment(script: dict, news_data: dict, key_manager: GeminiKeyManager) -> str:
+    """最初のコメントを生成（70代老夫婦の視点）
+
+    Args:
+        script: 台本データ
+        news_data: ニュースデータ
+        key_manager: APIキーマネージャー
+
+    Returns:
+        str: 老夫婦のコメント（50〜100文字）
+    """
+    api_key, key_name = key_manager.get_working_key()
+    if not api_key:
+        print("  ⚠ Gemini APIキーがないためコメント生成をスキップ")
+        return ""
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-2.0-flash")
+
+    # ニュース要約を取得
+    news_summary_lines = []
+    confirmed_news = news_data.get("confirmed", [])
+    rumor_news = news_data.get("rumor", [])
+
+    for news in confirmed_news[:3]:
+        news_summary_lines.append(f"・{news.get('title', '')}")
+    for news in rumor_news[:1]:
+        news_summary_lines.append(f"・{news.get('title', '')}（参考情報）")
+
+    news_summary = "\n".join(news_summary_lines) if news_summary_lines else "今日の年金ニュース"
+
+    prompt = f"""あなたは70代の老夫婦です。年金ニュースラジオを聞いた感想をコメントしてください。
+
+【今日のニュース内容】
+{news_summary}
+
+【パーソナリティ】
+- カツミ（女性）: 年金に詳しく、わかりやすく解説してくれる
+- ヒロシ（男性）: ちょっとお馬鹿だけど、視聴者目線で素朴な質問をしてくれる
+
+【コメントの条件】
+- 70代老夫婦が一緒にラジオを聴いた温かみのある感想
+- 50〜100文字程度
+- 絵文字を1〜2個使用
+- ニュースの内容やカツミ・ヒロシへの感想を自然に入れる
+- 「私たち夫婦」「うちのおじいさん/おばあさん」などの表現OK
+
+【コメント例】
+「今日も勉強になりました😊 ヒロシさんの質問、うちのおじいさんも同じこと言ってました笑」
+「年金の話、難しいけどカツミさんの説明でよくわかりました✨ 夫婦で毎日聴いてます」
+「ヒロシさん面白い🤣 カツミさんの丁寧な解説に感謝です」
+
+【出力】
+老夫婦のコメントのみを出力してください。他の説明は不要です。
+"""
+
+    try:
+        response = model.generate_content(prompt)
+        comment = response.text.strip()
+        # 余分な引用符を削除
+        comment = comment.strip('"\'「」『』')
+        # 100文字に制限
+        if len(comment) > 100:
+            comment = comment[:97] + "..."
+        print(f"  [コメント生成] 老夫婦: {comment}")
+        return comment
+    except Exception as e:
+        print(f"  ⚠ コメント生成エラー: {e}")
+        return ""
+
+
 # ===== サムネイル設定 =====
 THUMBNAIL_WIDTH = 1280
 THUMBNAIL_HEIGHT = 720
@@ -2175,13 +2246,13 @@ def main():
                 print("\n[6/7] サムネイルを設定中...")
                 set_youtube_thumbnail(video_id, thumbnail_path)
 
-            # おばあちゃんコメントを生成・投稿
-            grandma_comment = ""
+            # 最初のコメントを生成・投稿（70代老夫婦の視点）
+            first_comment = ""
             if video_id:
-                print("\n[6.5/7] おばあちゃんコメントを生成・投稿中...")
-                grandma_comment = generate_grandma_comment(script, key_manager)
-                if grandma_comment:
-                    post_youtube_comment(video_id, grandma_comment)
+                print("\n[6.5/7] 最初のコメントを生成・投稿中...")
+                first_comment = generate_first_comment(script, news_data, key_manager)
+                if first_comment:
+                    post_youtube_comment(video_id, first_comment)
 
             # 処理時間を計算
             processing_time = time.time() - start_time
@@ -2201,8 +2272,8 @@ def main():
             )
 
             # コメント内容を表示
-            if grandma_comment:
-                print(f"\n📝 おばあちゃんコメント: {grandma_comment}")
+            if first_comment:
+                print(f"\n📝 最初のコメント: {first_comment}")
 
         except Exception as e:
             print(f"❌ YouTube投稿エラー: {e}")
