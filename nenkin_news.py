@@ -1673,7 +1673,10 @@ def post_youtube_comment(video_id: str, comment_text: str) -> bool:
 
 
 def send_slack_notification(title: str, url: str, video_duration: float, processing_time: float):
-    """Slack通知を送信"""
+    """Slack通知を送信（無効化済み）"""
+    print("  ⚠ Slack通知は無効化されています")
+    return
+    # 以下は無効化
     webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
     if not webhook_url:
         print("  ⚠ SLACK_WEBHOOK_URL未設定のため通知をスキップ")
