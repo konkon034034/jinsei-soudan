@@ -60,7 +60,8 @@ CHARACTERS = {
 }
 
 # チャンク設定（長い台本を分割するサイズ）
-MAX_LINES_PER_CHUNK = 8
+# 429エラー対策: 8→5に削減（API負荷軽減）
+MAX_LINES_PER_CHUNK = 5
 
 # ===== 読み方辞書（TTS用） =====
 # デフォルト辞書（スプレッドシートから取得失敗時のフォールバック）
@@ -742,7 +743,7 @@ def split_dialogue_into_chunks(dialogue: list, max_lines: int = MAX_LINES_PER_CH
 
 
 def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir: Path, key_manager: GeminiKeyManager,
-                                     chunk_interval: int = 10) -> tuple:
+                                     chunk_interval: int = 30) -> tuple:
     """対話音声を順次生成（429エラー対策版）
 
     Args:
@@ -750,7 +751,7 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
         output_path: 出力パス
         temp_dir: 一時ディレクトリ
         key_manager: APIキーマネージャー
-        chunk_interval: チャンク間の待機秒数（デフォルト10秒）
+        chunk_interval: チャンク間の待機秒数（デフォルト30秒）429対策で延長
 
     Returns:
         tuple: (output_path, segments, total_duration)
@@ -770,7 +771,7 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
         return None, [], 0.0
 
     print(f"    [Gemini TTS] {len(api_keys)}個のAPIキーで順次処理（429対策）")
-    print(f"    [設定] チャンク間待機: {chunk_interval}秒, リトライ待機: 60秒, 最大リトライ: 3回")
+    print(f"    [設定] チャンク間待機: {chunk_interval}秒, リトライ待機: 120秒, 最大リトライ: 3回")
 
     # 順次処理でチャンクを生成（429対策）
     chunk_files = [None] * len(chunks)
@@ -787,7 +788,7 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
             chunk, api_key, chunk_path, i,
             key_manager=key_manager,
             max_retries=3,
-            retry_wait=60
+            retry_wait=120  # 429対策: 60→120秒に延長
         )
 
         if success and os.path.exists(chunk_path):
