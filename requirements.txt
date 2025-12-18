@@ -16,3 +16,4 @@ unidic-lite>=1.0.8
 janome>=0.5.0
 gtts>=2.3.0
 google-cloud-texttospeech>=2.14.0
+modal>=0.64.0
