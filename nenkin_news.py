@@ -632,10 +632,7 @@ def generate_gemini_tts_chunk(dialogue_chunk: list, api_key: str, output_path: s
 
             response = client.models.generate_content(
                 model=GEMINI_TTS_MODEL,
-                contents=f"""以下の会話をカツミとヒロシの声で読み上げてください。
-
-【会話】
-{dialogue_text}""",
+                contents=f"以下の会話をカツミとヒロシの声で読み上げてください。自然なポッドキャスト風の会話として:\n\n{dialogue_text}",
                 config=types.GenerateContentConfig(
                     response_modalities=["AUDIO"],
                     speech_config=types.SpeechConfig(
