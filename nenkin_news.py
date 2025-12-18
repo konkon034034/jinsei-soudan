@@ -1535,7 +1535,7 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list)
     """YouTubeにアップロード（TOKEN_23、限定公開）"""
     client_id = os.environ.get("YOUTUBE_CLIENT_ID")
     client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
-    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_23")
+    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_27")
 
     if not all([client_id, client_secret, refresh_token]):
         raise ValueError("YouTube認証情報が不足しています")
@@ -1907,7 +1907,7 @@ def set_youtube_thumbnail(video_id: str, thumbnail_path: str) -> bool:
 
     client_id = os.environ.get("YOUTUBE_CLIENT_ID")
     client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
-    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_23")
+    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_27")
 
     if not all([client_id, client_secret, refresh_token]):
         print("  ⚠ YouTube認証情報が不足のためサムネイル設定をスキップ")
@@ -1957,7 +1957,7 @@ def post_youtube_comment(video_id: str, comment_text: str) -> bool:
 
     client_id = os.environ.get("YOUTUBE_CLIENT_ID")
     client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
-    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_23")
+    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_27")
 
     if not all([client_id, client_secret, refresh_token]):
         print("  ⚠ YouTube認証情報が不足のためコメント投稿をスキップ")

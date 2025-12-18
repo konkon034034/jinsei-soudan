@@ -12,8 +12,12 @@ import json
 import os
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-# YouTube API scope for uploading videos
-SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
+# YouTube API scopes (upload + comments + full access)
+SCOPES = [
+    'https://www.googleapis.com/auth/youtube.upload',      # 動画アップロード
+    'https://www.googleapis.com/auth/youtube.force-ssl',   # コメント投稿
+    'https://www.googleapis.com/auth/youtube',             # フルアクセス
+]
 
 def get_client_config():
     """Get client config from environment variables."""
@@ -85,9 +89,15 @@ def main():
     print("SUCCESS! Token obtained.")
     print("=" * 60)
     print()
-    print("Add this line to your .env file:")
+    print("【Refresh Token】")
+    print(credentials.refresh_token)
     print()
-    print(f"TOKEN_1={token_json}")
+    print("【GitHub Secrets に設定】")
+    print("  gh secret set YOUTUBE_REFRESH_TOKEN_23")
+    print("  # 上記コマンド実行後、Refresh Token を貼り付け")
+    print()
+    print("【.env ファイル用（オプション）】")
+    print(f"TOKEN_23={token_json}")
     print()
     print("=" * 60)
 
