@@ -799,7 +799,7 @@ def generate_gcloud_tts_single(text: str, speaker: str, output_path: str) -> boo
         audio_config = texttospeech.AudioConfig(
             audio_encoding=texttospeech.AudioEncoding.LINEAR16,
             sample_rate_hertz=24000,
-            speaking_rate=0.9  # 少しゆっくり
+            speaking_rate=1.15  # 少し速め
         )
 
         # 音声を合成
