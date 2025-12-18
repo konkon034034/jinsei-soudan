@@ -63,7 +63,8 @@ CHARACTERS = {
 MAX_LINES_PER_CHUNK = 8
 
 # ===== 読み方辞書（TTS用） =====
-READING_DICT = {
+# デフォルト辞書（スプレッドシートから取得失敗時のフォールバック）
+DEFAULT_READING_DICT = {
     "iDeCo": "イデコ",
     "IDECO": "イデコ",
     "ideco": "イデコ",
@@ -80,12 +81,63 @@ READING_DICT = {
     "DB": "ディービー",
     "GDP": "ジーディーピー",
     "CPI": "シーピーアイ",
+    "頭痛く": "あたまいたく",
+    "頭痛い": "あたまいたい",
 }
+
+# スプレッドシートから読み込む辞書（キャッシュ）
+_reading_dict_cache = None
+
+READING_DICT_SPREADSHEET_ID = "15_ixYlyRp9sOlS0tdklhz6wQmwRxWlOL9cPndFWwOFo"
+READING_DICT_SHEET_NAME = "読み方辞書"
+
+
+def load_reading_dict_from_spreadsheet() -> dict:
+    """スプレッドシートから読み方辞書を読み込む"""
+    global _reading_dict_cache
+    if _reading_dict_cache is not None:
+        return _reading_dict_cache
+
+    try:
+        key_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_KEY")
+        if not key_json:
+            print("  [読み方辞書] 認証情報なし、デフォルト使用")
+            _reading_dict_cache = DEFAULT_READING_DICT.copy()
+            return _reading_dict_cache
+
+        key_data = json.loads(key_json)
+        creds = Credentials.from_service_account_info(
+            key_data,
+            scopes=['https://www.googleapis.com/auth/spreadsheets.readonly']
+        )
+        service = build('sheets', 'v4', credentials=creds)
+
+        result = service.spreadsheets().values().get(
+            spreadsheetId=READING_DICT_SPREADSHEET_ID,
+            range=f"{READING_DICT_SHEET_NAME}!A2:B1000"
+        ).execute()
+
+        values = result.get('values', [])
+        reading_dict = DEFAULT_READING_DICT.copy()
+
+        for row in values:
+            if len(row) >= 2 and row[0] and row[1]:
+                reading_dict[row[0].strip()] = row[1].strip()
+
+        print(f"  [読み方辞書] スプレッドシートから{len(values)}件追加読込")
+        _reading_dict_cache = reading_dict
+        return _reading_dict_cache
+
+    except Exception as e:
+        print(f"  [読み方辞書] 読込エラー: {e}、デフォルト使用")
+        _reading_dict_cache = DEFAULT_READING_DICT.copy()
+        return _reading_dict_cache
 
 
 def fix_reading(text: str) -> str:
     """読み方辞書でテキストを変換（TTS用）"""
-    for word, reading in READING_DICT.items():
+    reading_dict = load_reading_dict_from_spreadsheet()
+    for word, reading in reading_dict.items():
         text = text.replace(word, reading)
     return text
 
@@ -593,14 +645,16 @@ def generate_gemini_tts_chunk(dialogue_chunk: list, api_key: str, output_path: s
         except Exception as e:
             error_str = str(e)
             is_429 = "429" in error_str or "RESOURCE_EXHAUSTED" in error_str
+            is_500 = "500" in error_str or "INTERNAL" in error_str
 
-            if is_429:
-                print(f"      ✗ チャンク{chunk_index + 1} 429エラー (KEY_{key_index}): レート制限超過")
+            if is_429 or is_500:
+                error_type = "429" if is_429 else "500"
+                print(f"      ✗ チャンク{chunk_index + 1} {error_type}エラー (KEY_{key_index})")
 
-                # 429エラーを記録
-                if key_manager:
+                # エラーを記録
+                if key_manager and is_429:
                     key_manager.mark_429_error(current_key)
-                    tried_keys.add(current_key)
+                tried_keys.add(current_key)
 
                 # リトライ可能か確認
                 if attempt < max_retries:
@@ -613,14 +667,19 @@ def generate_gemini_tts_chunk(dialogue_chunk: list, api_key: str, output_path: s
                             continue  # 待機なしでリトライ
 
                     # 同じキーしかない場合は待機
-                    print(f"        → {retry_wait}秒待機後にリトライ...")
-                    time.sleep(retry_wait)
+                    wait_time = retry_wait if is_429 else 10  # 500エラーは短めに待機
+                    print(f"        → {wait_time}秒待機後にリトライ...")
+                    time.sleep(wait_time)
                 else:
-                    print(f"      ✗ チャンク{chunk_index + 1} 最大リトライ回数超過")
+                    print(f"      ✗ チャンク{chunk_index + 1} 最大リトライ回数超過（{error_type}エラー）")
             else:
                 print(f"      ✗ チャンク{chunk_index + 1} エラー: {e}")
-                # 429以外のエラーはリトライしない
-                break
+                # その他のエラーも1回はリトライ
+                if attempt < max_retries:
+                    print(f"        → 10秒待機後にリトライ...")
+                    time.sleep(10)
+                else:
+                    break
 
     return False
 
@@ -777,10 +836,11 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
             return None, [], 0.0
 
     # 音声を結合
+    combined_path = str(temp_dir / "combined.wav")
     if len(successful_chunks) == 1:
         # 1つだけなら結合不要
         import shutil
-        shutil.copy(successful_chunks[0], output_path)
+        shutil.copy(successful_chunks[0], combined_path)
     else:
         # ffmpegで結合
         list_file = temp_dir / "concat.txt"
@@ -790,8 +850,21 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
 
         subprocess.run([
             'ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', str(list_file),
-            '-acodec', 'pcm_s16le', '-ar', '24000', '-ac', '1', output_path
+            '-acodec', 'pcm_s16le', '-ar', '24000', '-ac', '1', combined_path
         ], capture_output=True)
+
+    # 速度調整 (0.85倍速 = ゆっくり読み上げ)
+    SPEED_FACTOR = 0.85
+    print(f"    [速度調整] {SPEED_FACTOR}倍速に変換中...")
+    subprocess.run([
+        'ffmpeg', '-y', '-i', combined_path,
+        '-filter:a', f'atempo={SPEED_FACTOR}',
+        '-acodec', 'pcm_s16le', '-ar', '24000', '-ac', '1', output_path
+    ], capture_output=True)
+
+    # 一時ファイル削除
+    if os.path.exists(combined_path):
+        os.remove(combined_path)
 
     # 長さ取得
     result = subprocess.run([
@@ -799,6 +872,10 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
         '-of', 'default=noprint_wrappers=1:nokey=1', output_path
     ], capture_output=True, text=True)
     total_duration = float(result.stdout.strip()) if result.stdout.strip() else 0.0
+    print(f"    [速度調整後] 音声長: {total_duration:.1f}秒")
+
+    # チャンクの音声長も速度調整を反映
+    chunk_durations = [d / SPEED_FACTOR for d in chunk_durations]
 
     # 成功したチャンクごとにセグメントを生成（チャンクの実際の音声長を使用）
     successful_dialogue_count = 0
