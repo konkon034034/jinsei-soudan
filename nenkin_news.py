@@ -14,6 +14,7 @@ import tempfile
 import requests
 import subprocess
 import wave
+import base64
 from datetime import datetime
 from pathlib import Path
 # Note: 順次処理に変更したため ThreadPoolExecutor は未使用だが、将来のために残す
@@ -43,6 +44,11 @@ TEST_MODE = os.environ.get("TEST_MODE", "").lower() == "true"
 # TTS_MODE=google_cloud: Google Cloud TTS（WaveNet）
 # TTS_MODE=gemini: Gemini TTS（デフォルト）
 TTS_MODE = os.environ.get("TTS_MODE", "gemini").lower()
+
+# Modal GPUエンコード（環境変数で制御）
+# USE_MODAL_GPU=true: Modal T4 GPU (h264_nvenc)
+# USE_MODAL_GPU=false または未設定: ローカル CPU (libx264)
+USE_MODAL_GPU = os.environ.get("USE_MODAL_GPU", "").lower() == "true"
 
 # ===== チャンネル情報 =====
 CHANNEL_NAME = "毎朝届く！おはよう年金ニュースラジオ"
@@ -1466,33 +1472,58 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     # 動画生成
     output_path = str(temp_dir / f"nenkin_news_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
 
-    # 背景バーの設定
-    bar_height = int(VIDEO_HEIGHT * 0.45)  # 画面の45%（3行字幕も収まる高さ）
-    bar_y = VIDEO_HEIGHT - bar_height  # バーのY座標（画面下部）
+    if USE_MODAL_GPU:
+        # Modal GPU エンコード (T4 GPU, h264_nvenc)
+        print("  [動画生成] Modal GPU エンコード開始...")
+        from modal_video import encode_video_gpu
 
-    # ffmpegフィルター: scale → 背景バー描画 → 字幕
-    # 茶色系: rgba(60,40,30,0.8) → ffmpegでは 0x3C281E@0.8
-    vf_filter = (
-        f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},"
-        f"drawbox=x=0:y={bar_y}:w={VIDEO_WIDTH}:h={bar_height}:color=0x3C281E@0.8:t=fill,"
-        f"ass={ass_path}"
-    )
+        # ファイルをbase64エンコード
+        with open(bg_path, "rb") as f:
+            bg_base64 = base64.b64encode(f.read()).decode()
+        with open(audio_path, "rb") as f:
+            audio_base64 = base64.b64encode(f.read()).decode()
+        with open(ass_path, "r", encoding="utf-8") as f:
+            ass_content = f.read()
 
-    cmd = [
-        'ffmpeg', '-y',
-        '-loop', '1', '-i', bg_path,
-        '-i', audio_path,
-        '-vf', vf_filter,
-        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
-        '-c:a', 'aac', '-b:a', '192k',
-        '-shortest',
-        '-pix_fmt', 'yuv420p',
-        '-movflags', '+faststart',
-        output_path
-    ]
+        output_name = os.path.basename(output_path)
 
-    subprocess.run(cmd, capture_output=True, check=True)
-    print(f"✓ 動画生成完了: {output_path}")
+        # Modal リモート呼び出し
+        video_bytes = encode_video_gpu.remote(bg_base64, audio_base64, ass_content, output_name)
+
+        # 結果をファイルに書き込み
+        with open(output_path, "wb") as f:
+            f.write(video_bytes)
+
+        print(f"✓ 動画生成完了 (Modal GPU): {output_path}")
+    else:
+        # ローカル CPU エンコード (libx264)
+        # 背景バーの設定
+        bar_height = int(VIDEO_HEIGHT * 0.45)  # 画面の45%（3行字幕も収まる高さ）
+        bar_y = VIDEO_HEIGHT - bar_height  # バーのY座標（画面下部）
+
+        # ffmpegフィルター: scale → 背景バー描画 → 字幕
+        # 茶色系: rgba(60,40,30,0.8) → ffmpegでは 0x3C281E@0.8
+        vf_filter = (
+            f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},"
+            f"drawbox=x=0:y={bar_y}:w={VIDEO_WIDTH}:h={bar_height}:color=0x3C281E@0.8:t=fill,"
+            f"ass={ass_path}"
+        )
+
+        cmd = [
+            'ffmpeg', '-y',
+            '-loop', '1', '-i', bg_path,
+            '-i', audio_path,
+            '-vf', vf_filter,
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+            '-c:a', 'aac', '-b:a', '192k',
+            '-shortest',
+            '-pix_fmt', 'yuv420p',
+            '-movflags', '+faststart',
+            output_path
+        ]
+
+        subprocess.run(cmd, capture_output=True, check=True)
+        print(f"✓ 動画生成完了 (ローカル CPU): {output_path}")
 
     return output_path, ass_path
 

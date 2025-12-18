@@ -102,6 +102,9 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
           TTS_MODE: ${{ github.event.inputs.tts_mode || 'google_cloud' }}
+          USE_MODAL_GPU: 'true'
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
         run: |
           python nenkin_news.py
 
