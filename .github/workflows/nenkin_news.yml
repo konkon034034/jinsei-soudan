@@ -7,13 +7,21 @@ on:
   workflow_dispatch:
     inputs:
       test_mode:
-        description: 'テストモード（短縮版: 1ニュース、5セリフ、約20秒）'
+        description: 'テストモード（短縮版: 10〜15セリフ）'
         required: false
         default: 'true'
         type: choice
         options:
           - 'true'
           - 'false'
+      tts_mode:
+        description: 'TTSエンジン'
+        required: false
+        default: 'google_cloud'
+        type: choice
+        options:
+          - 'google_cloud'
+          - 'gemini'
 
 env:
   PYTHON_VERSION: '3.11'
@@ -72,6 +80,7 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
+          TTS_MODE: ${{ github.event.inputs.tts_mode || 'google_cloud' }}
         run: |
           python nenkin_news.py
 
