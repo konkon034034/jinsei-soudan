@@ -660,7 +660,9 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list,
 
 
 def send_slack_notification(message: str, success: bool = True):
-    """Slack通知"""
+    """Slack通知（無効化済み）"""
+    return
+    # 以下は無効化
     webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
     if not webhook_url:
         return
