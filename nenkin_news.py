@@ -931,16 +931,43 @@ def split_dialogue_into_chunks(dialogue: list, max_lines: int = MAX_LINES_PER_CH
     return chunks
 
 
+def _process_chunk_parallel(args: tuple) -> dict:
+    """パラレル処理用のチャンク処理関数（ThreadPoolExecutor用）"""
+    chunk, api_key, chunk_path, chunk_index, key_manager = args
+
+    success = generate_gemini_tts_chunk(
+        chunk, api_key, chunk_path, chunk_index,
+        key_manager=key_manager,
+        max_retries=3,
+        retry_wait=30  # パラレル処理では短めに
+    )
+
+    duration = 0.0
+    if success and os.path.exists(chunk_path):
+        result = subprocess.run([
+            'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1', chunk_path
+        ], capture_output=True, text=True)
+        duration = float(result.stdout.strip()) if result.stdout.strip() else 0.0
+
+    return {
+        "index": chunk_index,
+        "success": success,
+        "path": chunk_path if success else None,
+        "duration": duration
+    }
+
+
 def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir: Path, key_manager: GeminiKeyManager,
                                      chunk_interval: int = 30) -> tuple:
-    """対話音声を順次生成（429エラー対策版）
+    """対話音声をパラレル生成（29個のAPIキーを同時使用）
 
     Args:
         dialogue: 対話リスト
         output_path: 出力パス
         temp_dir: 一時ディレクトリ
         key_manager: APIキーマネージャー
-        chunk_interval: チャンク間の待機秒数（デフォルト30秒）429対策で延長
+        chunk_interval: 未使用（互換性のために残す）
 
     Returns:
         tuple: (output_path, segments, total_duration)
@@ -959,41 +986,40 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
         print("    ❌ Gemini APIキーがありません")
         return None, [], 0.0
 
-    print(f"    [Gemini TTS] {len(api_keys)}個のAPIキーで順次処理（429対策）")
-    print(f"    [設定] チャンク間待機: {chunk_interval}秒, リトライ待機: 120秒, 最大リトライ: 3回")
+    # パラレル処理のワーカー数（APIキー数とチャンク数の小さい方）
+    max_workers = min(len(api_keys), len(chunks), 29)
+    print(f"    [Gemini TTS] {len(api_keys)}個のAPIキーで並列処理（max_workers={max_workers}）")
 
-    # 順次処理でチャンクを生成（429対策）
-    chunk_files = [None] * len(chunks)
-    chunk_durations = [0.0] * len(chunks)  # 各チャンクの音声長
-    successful_chunk_indices = []  # 成功したチャンクのインデックス
-
+    # パラレル処理用のタスクを準備
+    tasks = []
     for i, chunk in enumerate(chunks):
-        # APIキーをラウンドロビンで選択
         api_key = api_keys[i % len(api_keys)]
         chunk_path = str(temp_dir / f"chunk_{i:03d}.wav")
+        tasks.append((chunk, api_key, chunk_path, i, key_manager))
 
-        print(f"    チャンク {i + 1}/{len(chunks)} 処理中...")
-        success = generate_gemini_tts_chunk(
-            chunk, api_key, chunk_path, i,
-            key_manager=key_manager,
-            max_retries=3,
-            retry_wait=120  # 429対策: 60→120秒に延長
-        )
+    # ThreadPoolExecutorでパラレル処理
+    chunk_files = [None] * len(chunks)
+    chunk_durations = [0.0] * len(chunks)
+    successful_chunk_indices = []
 
-        if success and os.path.exists(chunk_path):
-            chunk_files[i] = chunk_path
-            successful_chunk_indices.append(i)
-            # チャンクの音声長を取得
-            result = subprocess.run([
-                'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-                '-of', 'default=noprint_wrappers=1:nokey=1', chunk_path
-            ], capture_output=True, text=True)
-            chunk_durations[i] = float(result.stdout.strip()) if result.stdout.strip() else 0.0
+    print(f"    [パラレル処理] {len(chunks)}チャンクを{max_workers}並列で処理開始...")
 
-        # 次のチャンクの前に待機（最後のチャンク以外）
-        if i < len(chunks) - 1:
-            print(f"      → {chunk_interval}秒待機（API制限回避）...")
-            time.sleep(chunk_interval)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_process_chunk_parallel, task): task[3] for task in tasks}
+
+        for future in as_completed(futures):
+            chunk_index = futures[future]
+            try:
+                result = future.result()
+                if result["success"]:
+                    chunk_files[result["index"]] = result["path"]
+                    chunk_durations[result["index"]] = result["duration"]
+                    successful_chunk_indices.append(result["index"])
+                    print(f"    ✓ チャンク {result['index'] + 1}/{len(chunks)} 完了 ({result['duration']:.1f}秒)")
+                else:
+                    print(f"    ✗ チャンク {result['index'] + 1}/{len(chunks)} 失敗")
+            except Exception as e:
+                print(f"    ✗ チャンク {chunk_index + 1}/{len(chunks)} 例外: {e}")
 
     # 成功したチャンクを確認
     successful_chunks = [f for f in chunk_files if f is not None]
