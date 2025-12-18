@@ -27,6 +27,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from PIL import Image, ImageDraw, ImageFont
 from gtts import gTTS
+from google.cloud import texttospeech
 
 # ===== 定数 =====
 VIDEO_WIDTH = 1920
@@ -37,6 +38,11 @@ CHANNEL = "23"  # TOKEN_23固定
 # TEST_MODE=true: 短縮版（1ニュース、5セリフ、約20秒）
 # TEST_MODE=false または未設定: フル版
 TEST_MODE = os.environ.get("TEST_MODE", "").lower() == "true"
+
+# TTSモード（環境変数で制御）
+# TTS_MODE=google_cloud: Google Cloud TTS（WaveNet）
+# TTS_MODE=gemini: Gemini TTS（デフォルト）
+TTS_MODE = os.environ.get("TTS_MODE", "gemini").lower()
 
 # ===== チャンネル情報 =====
 CHANNEL_NAME = "毎朝届く！おはよう年金ニュースラジオ"
@@ -54,9 +60,23 @@ GEMINI_VOICE_KATSUMI = "Kore"
 # ボイス: Puck - 明るくアップビートな声
 GEMINI_VOICE_HIROSHI = "Puck"
 
+# ===== Google Cloud TTS設定 =====
+# カツミ（女性）: ja-JP-Wavenet-A
+GCLOUD_VOICE_KATSUMI = "ja-JP-Wavenet-A"
+# ヒロシ（男性）: ja-JP-Wavenet-D
+GCLOUD_VOICE_HIROSHI = "ja-JP-Wavenet-D"
+
 CHARACTERS = {
-    "カツミ": {"voice": GEMINI_VOICE_KATSUMI, "color": "#4169E1"},  # 説明役
-    "ヒロシ": {"voice": GEMINI_VOICE_HIROSHI, "color": "#FF6347"}   # 聞き役
+    "カツミ": {
+        "gemini_voice": GEMINI_VOICE_KATSUMI,
+        "gcloud_voice": GCLOUD_VOICE_KATSUMI,
+        "color": "#4169E1"
+    },  # 説明役
+    "ヒロシ": {
+        "gemini_voice": GEMINI_VOICE_HIROSHI,
+        "gcloud_voice": GCLOUD_VOICE_HIROSHI,
+        "color": "#FF6347"
+    }   # 聞き役
 }
 
 # チャンク設定（長い台本を分割するサイズ）
@@ -734,6 +754,188 @@ def generate_gtts_fallback(text: str, output_path: str) -> bool:
         return False
 
 
+# ===== Google Cloud TTS 関数 =====
+
+def get_gcloud_tts_client():
+    """Google Cloud TTS クライアントを取得"""
+    key_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_KEY")
+    if not key_json:
+        raise ValueError("GOOGLE_SERVICE_ACCOUNT_KEY が設定されていません")
+
+    key_data = json.loads(key_json)
+    credentials = Credentials.from_service_account_info(key_data)
+    return texttospeech.TextToSpeechClient(credentials=credentials)
+
+
+def generate_gcloud_tts_single(text: str, speaker: str, output_path: str) -> bool:
+    """Google Cloud TTSで単一音声を生成
+
+    Args:
+        text: 読み上げるテキスト
+        speaker: 話者名（カツミ or ヒロシ）
+        output_path: 出力ファイルパス
+
+    Returns:
+        bool: 成功したかどうか
+    """
+    try:
+        client = get_gcloud_tts_client()
+
+        # 話者に応じたボイスを選択
+        voice_name = CHARACTERS.get(speaker, {}).get("gcloud_voice", GCLOUD_VOICE_KATSUMI)
+
+        # 読み方辞書を適用
+        text = fix_reading(text)
+
+        # 音声合成リクエストを作成
+        synthesis_input = texttospeech.SynthesisInput(text=text)
+
+        voice = texttospeech.VoiceSelectionParams(
+            language_code="ja-JP",
+            name=voice_name
+        )
+
+        # オーディオ設定（WAV形式、24000Hz）
+        audio_config = texttospeech.AudioConfig(
+            audio_encoding=texttospeech.AudioEncoding.LINEAR16,
+            sample_rate_hertz=24000,
+            speaking_rate=0.9  # 少しゆっくり
+        )
+
+        # 音声を合成
+        response = client.synthesize_speech(
+            input=synthesis_input,
+            voice=voice,
+            audio_config=audio_config
+        )
+
+        # ファイルに保存
+        with open(output_path, "wb") as out:
+            out.write(response.audio_content)
+
+        return True
+
+    except Exception as e:
+        print(f"      [Google Cloud TTS] エラー: {e}")
+        return False
+
+
+def generate_gcloud_tts_dialogue(dialogue: list, output_path: str, temp_dir: Path) -> tuple:
+    """Google Cloud TTSで対話音声を生成
+
+    Args:
+        dialogue: 対話リスト [{"speaker": "カツミ", "text": "..."}, ...]
+        output_path: 出力ファイルパス
+        temp_dir: 一時ディレクトリ
+
+    Returns:
+        tuple: (output_path, segments, total_duration)
+    """
+    segments = []
+    current_time = 0.0
+    audio_files = []
+
+    print(f"    [Google Cloud TTS] {len(dialogue)}セリフを生成中...")
+    print(f"    [ボイス設定] カツミ={GCLOUD_VOICE_KATSUMI}, ヒロシ={GCLOUD_VOICE_HIROSHI}")
+
+    for i, line in enumerate(dialogue):
+        speaker = line.get("speaker", "カツミ")
+        text = line.get("text", "")
+
+        if not text or len(text.strip()) < 2:
+            continue
+
+        # 一時ファイルパス
+        temp_audio_path = str(temp_dir / f"gcloud_tts_{i:03d}.wav")
+
+        # 音声生成
+        success = generate_gcloud_tts_single(text, speaker, temp_audio_path)
+
+        if success and os.path.exists(temp_audio_path):
+            audio_files.append(temp_audio_path)
+
+            # 音声の長さを取得
+            result = subprocess.run([
+                'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                '-of', 'default=noprint_wrappers=1:nokey=1', temp_audio_path
+            ], capture_output=True, text=True)
+            duration = float(result.stdout.strip()) if result.stdout.strip() else 2.0
+
+            # セグメント情報を追加
+            segments.append({
+                "speaker": speaker,
+                "text": text,
+                "start": current_time,
+                "end": current_time + duration,
+                "color": CHARACTERS[speaker]["color"]
+            })
+            current_time += duration
+
+            if (i + 1) % 5 == 0:
+                print(f"      ✓ {i + 1}/{len(dialogue)} セリフ生成完了")
+        else:
+            print(f"      ✗ セリフ{i + 1}の生成に失敗")
+
+    print(f"    [Google Cloud TTS] {len(audio_files)}/{len(dialogue)} セリフ成功")
+
+    if not audio_files:
+        return None, [], 0.0
+
+    # 音声を結合
+    combined_path = str(temp_dir / "gcloud_combined.wav")
+    if len(audio_files) == 1:
+        import shutil
+        shutil.copy(audio_files[0], combined_path)
+    else:
+        # ffmpegで結合
+        list_file = temp_dir / "gcloud_concat.txt"
+        with open(list_file, 'w') as f:
+            for af in audio_files:
+                f.write(f"file '{af}'\n")
+
+        subprocess.run([
+            'ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', str(list_file),
+            '-acodec', 'pcm_s16le', '-ar', '24000', '-ac', '1', combined_path
+        ], capture_output=True)
+
+    # 速度調整 (0.85倍速 = ゆっくり読み上げ)
+    SPEED_FACTOR = 0.85
+    print(f"    [速度調整] {SPEED_FACTOR}倍速に変換中...")
+    subprocess.run([
+        'ffmpeg', '-y', '-i', combined_path,
+        '-filter:a', f'atempo={SPEED_FACTOR}',
+        '-acodec', 'pcm_s16le', '-ar', '24000', '-ac', '1', output_path
+    ], capture_output=True)
+
+    # 長さ取得
+    result = subprocess.run([
+        'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+        '-of', 'default=noprint_wrappers=1:nokey=1', output_path
+    ], capture_output=True, text=True)
+    total_duration = float(result.stdout.strip()) if result.stdout.strip() else 0.0
+    print(f"    [速度調整後] 音声長: {total_duration:.1f}秒")
+
+    # 速度調整を反映してセグメントのタイミングを再計算
+    for seg in segments:
+        seg["start"] /= SPEED_FACTOR
+        seg["end"] /= SPEED_FACTOR
+
+    # 一時ファイル削除
+    for af in audio_files:
+        if os.path.exists(af):
+            try:
+                os.remove(af)
+            except:
+                pass
+    if os.path.exists(combined_path):
+        try:
+            os.remove(combined_path)
+        except:
+            pass
+
+    return output_path, segments, total_duration
+
+
 def split_dialogue_into_chunks(dialogue: list, max_lines: int = MAX_LINES_PER_CHUNK) -> list:
     """対話をチャンクに分割"""
     chunks = []
@@ -1151,9 +1353,18 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
 
     print(f"  セリフ数: {len(all_dialogue)}")
 
-    # 音声生成（Gemini TTSでパラレル処理）
+    # 音声生成（TTS_MODEに応じて切り替え）
     tts_audio_path = str(temp_dir / "tts_audio.wav")
-    _, segments, tts_duration = generate_dialogue_audio_parallel(all_dialogue, tts_audio_path, temp_dir, key_manager)
+
+    if TTS_MODE == "google_cloud":
+        # Google Cloud TTS
+        print(f"  [TTS] Google Cloud TTS を使用")
+        _, segments, tts_duration = generate_gcloud_tts_dialogue(all_dialogue, tts_audio_path, temp_dir)
+    else:
+        # Gemini TTS（デフォルト）
+        print(f"  [TTS] Gemini TTS を使用")
+        _, segments, tts_duration = generate_dialogue_audio_parallel(all_dialogue, tts_audio_path, temp_dir, key_manager)
+
     all_segments = segments
 
     if tts_duration == 0:
@@ -1763,8 +1974,12 @@ def main():
     print("年金ニュース動画生成システム")
     print(f"実行日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"モード: {'🧪 テストモード（短縮版）' if TEST_MODE else '📺 本番モード（フル版）'}")
-    print("TTS: Google Gemini TTS (gemini-2.5-flash-preview-tts)")
-    print(f"ボイス: カツミ={GEMINI_VOICE_KATSUMI}, ヒロシ={GEMINI_VOICE_HIROSHI}")
+    if TTS_MODE == "google_cloud":
+        print(f"TTS: Google Cloud TTS (WaveNet)")
+        print(f"ボイス: カツミ={GCLOUD_VOICE_KATSUMI}, ヒロシ={GCLOUD_VOICE_HIROSHI}")
+    else:
+        print(f"TTS: Gemini TTS ({GEMINI_TTS_MODEL})")
+        print(f"ボイス: カツミ={GEMINI_VOICE_KATSUMI}, ヒロシ={GEMINI_VOICE_HIROSHI}")
     print("=" * 50)
 
     key_manager = GeminiKeyManager()
