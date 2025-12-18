@@ -2108,13 +2108,33 @@ def main():
         print("\n[5/7] YouTubeに投稿中...")
         title = f"【{datetime.now().strftime('%Y/%m/%d')}】今日の年金ニュース"
 
-        # 概要欄（キャラ紹介 + 動画説明 + 参照元）
-        char_intro = "年金に詳しいカツミと、ちょっとお馬鹿なヒロシが年金ニュースをわかりやすく解説！毎朝届く年金情報で、あなたの老後を応援します。\n\n"
-        script_desc = script.get("description", "今日の年金ニュースをお届けします。")
+        # 概要欄（海外メディア超多読ラジオ風フォーマット）
+        date_str = datetime.now().strftime('%Y年%m月%d日')
 
-        # 参照元リンクを追加
+        # 1. 冒頭（ヘッダー + チャンネル紹介）
+        header = f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n📺 年金ニュース解説チャンネル\n📅 {date_str}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+        # 2. 本文（動画の概要）
+        script_desc = script.get("description", "今日の年金ニュースをお届けします。")
+        summary_section = f"【今日の内容】\n{script_desc}\n\n"
+
+        # 3. 主要ポイント（ニュースの見出しから抽出）
+        key_points_lines = []
+        confirmed_news = news_data.get("confirmed", [])
+        rumor_news = news_data.get("rumor", [])
+
+        for i, news in enumerate(confirmed_news[:5]):  # 最大5件
+            key_points_lines.append(f"✅ {news.get('title', '')}")
+        for news in rumor_news[:2]:  # 噂は最大2件
+            key_points_lines.append(f"💭 {news.get('title', '')}（参考情報）")
+
+        key_points_section = ""
+        if key_points_lines:
+            key_points_section = "【主要ポイント】\n" + "\n".join(key_points_lines) + "\n\n"
+
+        # 4. 参考ソース
         sources = news_data.get("sources", [])
-        source_text = ""
+        source_section = ""
         if sources:
             source_lines = []
             seen_urls = set()
@@ -2122,12 +2142,19 @@ def main():
                 url = src.get("url", "")
                 if url and url not in seen_urls:
                     source_name = src.get("source", "参照元")
-                    source_lines.append(f"・{source_name}\n  {url}")
+                    source_lines.append(f"📰 {source_name}\n   {url}")
                     seen_urls.add(url)
             if source_lines:
-                source_text = "\n\n【参照元】\n" + "\n".join(source_lines)
+                source_section = "【参考ソース】\n" + "\n".join(source_lines) + "\n\n"
 
-        description = char_intro + script_desc + source_text
+        # 5. ハッシュタグ
+        hashtags = "#年金 #年金ニュース #厚生年金 #国民年金 #老後 #シニア #iDeCo #NISA #年金解説 #社会保険"
+
+        # 6. 免責事項
+        disclaimer = "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n⚠️ 免責事項\nこの動画は一般的な情報提供を目的としており、個別の年金相談や専門的なアドバイスを行うものではありません。正確な情報は年金事務所や専門家にご確認ください。\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+        # 概要欄を組み立て
+        description = header + summary_section + key_points_section + source_section + hashtags + disclaimer
 
         # YouTube説明文の制限（5000文字、無効文字除去）
         description = description.replace("<", "").replace(">", "")  # 無効文字除去
