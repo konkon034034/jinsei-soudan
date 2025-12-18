@@ -1475,7 +1475,10 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     if USE_MODAL_GPU:
         # Modal GPU エンコード (T4 GPU, h264_nvenc)
         print("  [動画生成] Modal GPU エンコード開始...")
-        from modal_video import encode_video_gpu
+        import modal
+
+        # デプロイ済み関数をルックアップ
+        encode_video_gpu = modal.Function.from_name("nenkin-video", "encode_video_gpu")
 
         # ファイルをbase64エンコード
         with open(bg_path, "rb") as f:
