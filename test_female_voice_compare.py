@@ -31,13 +31,13 @@ VOICE_PATTERNS = [
     {"name": "パターン1",  "katsumi_voice": "ja-JP-Wavenet-A",  "katsumi_pitch": 0},
     {"name": "パターン2",  "katsumi_voice": "ja-JP-Wavenet-A",  "katsumi_pitch": -2},
     {"name": "パターン3",  "katsumi_voice": "ja-JP-Wavenet-A",  "katsumi_pitch": -4},
-    {"name": "パターン4",  "katsumi_voice": "ja-JP-Wavenet-A",  "katsumi_pitch": -6},
-    {"name": "パターン5",  "katsumi_voice": "ja-JP-Wavenet-B",  "katsumi_pitch": 0},
-    {"name": "パターン6",  "katsumi_voice": "ja-JP-Wavenet-B",  "katsumi_pitch": -2},
-    {"name": "パターン7",  "katsumi_voice": "ja-JP-Wavenet-B",  "katsumi_pitch": -4},
-    {"name": "パターン8",  "katsumi_voice": "ja-JP-Wavenet-B",  "katsumi_pitch": -6},
+    {"name": "パターン4",  "katsumi_voice": "ja-JP-Wavenet-B",  "katsumi_pitch": 0},
+    {"name": "パターン5",  "katsumi_voice": "ja-JP-Wavenet-B",  "katsumi_pitch": -2},
+    {"name": "パターン6",  "katsumi_voice": "ja-JP-Wavenet-B",  "katsumi_pitch": -4},
+    {"name": "パターン7",  "katsumi_voice": "ja-JP-Neural2-B",  "katsumi_pitch": -4},
+    {"name": "パターン8",  "katsumi_voice": "ja-JP-Neural2-B",  "katsumi_pitch": -6},
     {"name": "パターン9",  "katsumi_voice": "ja-JP-Standard-A", "katsumi_pitch": -2},
-    {"name": "パターン10", "katsumi_voice": "ja-JP-Standard-A", "katsumi_pitch": -4},
+    {"name": "パターン10", "katsumi_voice": "ja-JP-Standard-B", "katsumi_pitch": -2},
 ]
 
 
