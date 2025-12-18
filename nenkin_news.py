@@ -104,6 +104,7 @@ DEFAULT_READING_DICT = {
     "CPI": "シーピーアイ",
     "頭痛く": "あたまいたく",
     "頭痛い": "あたまいたい",
+    "入れる": "はいれる",
 }
 
 # スプレッドシートから読み込む辞書（キャッシュ）
@@ -632,17 +633,6 @@ def generate_gemini_tts_chunk(dialogue_chunk: list, api_key: str, output_path: s
             response = client.models.generate_content(
                 model=GEMINI_TTS_MODEL,
                 contents=f"""以下の会話をカツミとヒロシの声で読み上げてください。
-
-【重要：読み上げ速度】
-- 非常にゆっくり読む（通常の0.7倍速）
-- 高齢者が聞き取りやすいペース
-- 各セリフの後に2秒程度の間を取る
-- 句読点では1秒以上の間を取る
-
-【話し方】
-- はっきり、丁寧に発音
-- 落ち着いたラジオ番組風
-- 急がない、焦らない
 
 【会話】
 {dialogue_text}""",
