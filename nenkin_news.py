@@ -2020,49 +2020,6 @@ def post_youtube_comment(video_id: str, comment_text: str) -> bool:
         return False
 
 
-def send_slack_notification(title: str, url: str, video_duration: float, processing_time: float):
-    """Slack通知を送信（無効化済み）"""
-    print("  ⚠ Slack通知は無効化されています")
-    return
-    # 以下は無効化
-    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
-    if not webhook_url:
-        print("  ⚠ SLACK_WEBHOOK_URL未設定のため通知をスキップ")
-        return
-
-    # 処理時間をフォーマット
-    proc_minutes = int(processing_time // 60)
-    proc_seconds = int(processing_time % 60)
-    proc_time_str = f"{proc_minutes}分{proc_seconds}秒" if proc_minutes > 0 else f"{proc_seconds}秒"
-
-    # 動画長をフォーマット
-    vid_minutes = int(video_duration // 60)
-    vid_seconds = int(video_duration % 60)
-    vid_time_str = f"{vid_minutes}分{vid_seconds}秒" if vid_minutes > 0 else f"{vid_seconds}秒"
-
-    message = f"""🎬 年金ニュース投稿完了！
-━━━━━━━━━━━━━━━━━━
-📺 タイトル: {title}
-🔗 URL: {url}
-⏱️ 動画長: {vid_time_str}
-🕐 処理時間: {proc_time_str}
-━━━━━━━━━━━━━━━━━━"""
-
-    try:
-        response = requests.post(
-            webhook_url,
-            json={"text": message},
-            headers={"Content-Type": "application/json"},
-            timeout=30
-        )
-        if response.status_code == 200:
-            print("  ✓ Slack通知送信完了")
-        else:
-            print(f"  ⚠ Slack通知失敗: {response.status_code}")
-    except Exception as e:
-        print(f"  ⚠ Slack通知エラー: {e}")
-
-
 def send_discord_notification(title: str, url: str, video_duration: float, processing_time: float):
     """Discord通知を送信"""
     webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
@@ -2279,9 +2236,8 @@ def main():
             # 処理時間を計算
             processing_time = time.time() - start_time
 
-            # 通知を送信
-            print("\n[7/7] 通知を送信中...")
-            send_slack_notification(title, video_url, video_duration, processing_time)
+            # Discord通知を送信
+            print("\n[7/7] Discord通知を送信中...")
             send_discord_notification(title, video_url, video_duration, processing_time)
 
             # 成功をログに記録
