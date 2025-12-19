@@ -1550,7 +1550,13 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list)
     access_token = response.json()["access_token"]
 
     from google.oauth2.credentials import Credentials as OAuthCredentials
-    creds = OAuthCredentials(token=access_token)
+    creds = OAuthCredentials(
+        token=access_token,
+        refresh_token=refresh_token,
+        client_id=client_id,
+        client_secret=client_secret,
+        token_uri="https://oauth2.googleapis.com/token"
+    )
     youtube = build("youtube", "v3", credentials=creds)
 
     body = {
@@ -1924,7 +1930,13 @@ def set_youtube_thumbnail(video_id: str, thumbnail_path: str) -> bool:
         access_token = response.json()["access_token"]
 
         from google.oauth2.credentials import Credentials as OAuthCredentials
-        creds = OAuthCredentials(token=access_token)
+        creds = OAuthCredentials(
+            token=access_token,
+            refresh_token=refresh_token,
+            client_id=client_id,
+            client_secret=client_secret,
+            token_uri="https://oauth2.googleapis.com/token"
+        )
         youtube = build("youtube", "v3", credentials=creds)
 
         # サムネイルをアップロード
@@ -1974,7 +1986,13 @@ def post_youtube_comment(video_id: str, comment_text: str) -> bool:
         access_token = response.json()["access_token"]
 
         from google.oauth2.credentials import Credentials as OAuthCredentials
-        creds = OAuthCredentials(token=access_token)
+        creds = OAuthCredentials(
+            token=access_token,
+            refresh_token=refresh_token,
+            client_id=client_id,
+            client_secret=client_secret,
+            token_uri="https://oauth2.googleapis.com/token"
+        )
         youtube = build("youtube", "v3", credentials=creds)
 
         # コメント投稿
