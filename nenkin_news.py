@@ -1195,22 +1195,30 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
         chunk = chunks[idx]
         line_timings = chunk_line_timings[idx]  # 無音検出によるタイミング
 
+        # 実際のチャンク音声長を取得（重要: チャンク境界のズレ防止）
+        actual_chunk_duration = chunk_durations[idx]
+
         # 無音検出タイミングが有効な場合はそれを使用
         if line_timings and len(line_timings) == len(chunk):
+            # 無音検出タイミングを実際の音声長にスケーリング
+            detected_duration = line_timings[-1][1] if line_timings else actual_chunk_duration
+            scale_factor = actual_chunk_duration / detected_duration if detected_duration > 0 else 1.0
+
             for i, line in enumerate(chunk):
                 start, end = line_timings[i]
-                duration = end - start
+                # スケーリングして実際の音声長に合わせる
+                scaled_start = start * scale_factor
+                scaled_end = end * scale_factor
                 segments.append({
                     "speaker": line["speaker"],
                     "text": line["text"],
-                    "start": current_time + start,
-                    "end": current_time + end,
+                    "start": current_time + scaled_start,
+                    "end": current_time + scaled_end,
                     "color": CHARACTERS[line["speaker"]]["color"]
                 })
                 successful_dialogue_count += 1
-            # チャンクの長さ分を加算
-            if line_timings:
-                current_time += line_timings[-1][1]  # 最後のセリフの終了時刻
+            # 実際のチャンク音声長を加算（これが重要！）
+            current_time += actual_chunk_duration
         else:
             # フォールバック: 文字数比で分配
             chunk_duration = chunk_durations[idx]
