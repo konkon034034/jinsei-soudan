@@ -8,9 +8,14 @@ import modal
 
 app = modal.App("nenkin-video")
 
-# FFmpegをインストールしたイメージ（NVIDIA GPU対応）
+# FFmpegと日本語フォントをインストールしたイメージ（NVIDIA GPU対応）
 image = modal.Image.debian_slim().apt_install(
-    "ffmpeg"
+    "ffmpeg",
+    "fonts-noto-cjk",
+    "fonts-noto-cjk-extra",
+    "fontconfig"
+).run_commands(
+    "fc-cache -f -v"  # フォントキャッシュを更新
 ).pip_install(
     "numpy"
 )
