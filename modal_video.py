@@ -59,10 +59,11 @@ def encode_video_gpu(bg_base64: str, audio_base64: str, ass_content: str, output
         bar_y = 1080 - bar_height  # 594
 
         # GPU エンコード（h264_nvenc）
+        # fontsdir でフォントディレクトリを明示的に指定
         vf_filter = (
             f"scale=1920:1080,"
             f"drawbox=x=0:y={bar_y}:w=1920:h={bar_height}:color=0x3C281E@0.8:t=fill,"
-            f"ass={ass_path}"
+            f"ass={ass_path}:fontsdir=/usr/share/fonts"
         )
 
         cmd = [
@@ -118,10 +119,11 @@ def encode_video_cpu(bg_base64: str, audio_base64: str, ass_content: str, output
         bar_height = int(1080 * 0.45)
         bar_y = 1080 - bar_height
 
+        # fontsdir でフォントディレクトリを明示的に指定
         vf_filter = (
             f"scale=1920:1080,"
             f"drawbox=x=0:y={bar_y}:w=1920:h={bar_height}:color=0x3C281E@0.8:t=fill,"
-            f"ass={ass_path}"
+            f"ass={ass_path}:fontsdir=/usr/share/fonts"
         )
 
         cmd = [
