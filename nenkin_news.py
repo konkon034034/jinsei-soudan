@@ -91,8 +91,8 @@ CHARACTERS = {
 }
 
 # チャンク設定（長い台本を分割するサイズ）
-# 429エラー対策: 8→5に削減（API負荷軽減）
-MAX_LINES_PER_CHUNK = 5
+# 声質統一のため大きめに設定（29個のAPIキーで並列処理するため429対策は不要）
+MAX_LINES_PER_CHUNK = 15
 
 # ===== 読み方辞書（TTS用） =====
 # デフォルト辞書（スプレッドシートから取得失敗時のフォールバック）
@@ -641,9 +641,21 @@ def generate_gemini_tts_chunk(dialogue_chunk: list, api_key: str, output_path: s
                 # 最初のチャンクでボイス設定をログ出力
                 print(f"      [ボイス設定] カツミ={GEMINI_VOICE_KATSUMI}, ヒロシ={GEMINI_VOICE_HIROSHI}")
 
+            # 台本どおりに読み上げるプロンプト
+            tts_prompt = f"""以下の台本を正確に読み上げてください。
+
+【重要】
+- 台本の順番どおりに読み上げる
+- 各行の「話者名:」の後のテキストをそのまま読む
+- カツミは明るく元気な女性、ヒロシは落ち着いた男性
+- 自然なポッドキャスト風の会話トーンで
+
+【台本】
+{dialogue_text}"""
+
             response = client.models.generate_content(
                 model=GEMINI_TTS_MODEL,
-                contents=f"以下の会話をカツミとヒロシの声で読み上げてください。自然なポッドキャスト風の会話として:\n\n{dialogue_text}",
+                contents=tts_prompt,
                 config=types.GenerateContentConfig(
                     response_modalities=["AUDIO"],
                     speech_config=types.SpeechConfig(
@@ -1177,8 +1189,9 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
     print(f"    [音声長] {total_duration:.1f}秒")
 
     # 成功したチャンクごとにセグメントを生成（無音検出タイミングを使用）
+    # 重要: successful_chunk_indices は完了順なのでソートして正しい順序に
     successful_dialogue_count = 0
-    for idx in successful_chunk_indices:
+    for idx in sorted(successful_chunk_indices):
         chunk = chunks[idx]
         line_timings = chunk_line_timings[idx]  # 無音検出によるタイミング
 
