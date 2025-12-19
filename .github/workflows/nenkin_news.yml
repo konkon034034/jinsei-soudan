@@ -27,6 +27,24 @@ on:
         required: false
         default: 'true'
         type: boolean
+      tts_voice_female:
+        description: 'TTS女性音声 (Kore/Aoede等)'
+        required: false
+        default: 'Kore'
+        type: choice
+        options:
+          - 'Kore'
+          - 'Aoede'
+          - 'Charon'
+      tts_voice_male:
+        description: 'TTS男性音声 (Puck/Fenrir等)'
+        required: false
+        default: 'Puck'
+        type: choice
+        options:
+          - 'Puck'
+          - 'Fenrir'
+          - 'Charon'
 
 env:
   PYTHON_VERSION: '3.11'
@@ -106,6 +124,8 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
           TTS_MODE: ${{ github.event.inputs.tts_mode || 'gemini' }}
+          TTS_VOICE_FEMALE: ${{ github.event.inputs.tts_voice_female || 'Kore' }}
+          TTS_VOICE_MALE: ${{ github.event.inputs.tts_voice_male || 'Puck' }}
           USE_MODAL_GPU: ${{ github.event.inputs.use_modal_gpu || '' }}
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}

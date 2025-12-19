@@ -57,14 +57,48 @@ CHANNEL_DESCRIPTION = "毎朝7時、年金に関する最新ニュースをお�
 # ===== Gemini TTS設定 =====
 GEMINI_TTS_MODEL = "gemini-2.5-flash-preview-tts"
 
+# TTS音声設定（環境変数でカスタマイズ可能）
+# 利用可能: Puck, Charon, Kore, Fenrir, Aoede
+TTS_VOICE_FEMALE = os.environ.get("TTS_VOICE_FEMALE", "Kore")
+TTS_VOICE_MALE = os.environ.get("TTS_VOICE_MALE", "Puck")
+
+# TTS指示文（環境変数でカスタマイズ可能）
+# 声質・トーン・スピードを詳細に指定して一貫性を確保
+DEFAULT_TTS_INSTRUCTION = """あなたはプロフェッショナルな年金ニュース番組のパーソナリティです。
+
+【重要な指示 - 必ず従ってください】
+- 番組全体を通して、各キャラクターの声質・トーン・スピードを完全に一貫させてください
+- 途中で声の高さや話し方が変わらないように注意してください
+- 自然で聞き取りやすい日本語で話してください
+
+【カツミの声の特徴（{voice_female}音声を使用）】
+- 60代女性の落ち着いた声
+- トーン: 低め、温かみがある、信頼感がある
+- スピード: ゆっくり目（1.0倍速）
+- 感情: 穏やか、優しい、説明的
+- 話し方: 丁寧語、専門家らしい説得力
+
+【ヒロシの声の特徴（{voice_male}音声を使用）】
+- 60代男性の素朴な声
+- トーン: 中程度、明るい、親しみやすい
+- スピード: 普通（1.0倍速）
+- 感情: 興味津々、驚き、共感
+- 話し方: カジュアル、素朴な疑問を投げかける
+
+【台本の読み上げルール】
+- [カツミ] で始まる行はカツミの声で読む
+- [ヒロシ] で始まる行はヒロシの声で読む
+- 話者名は読み上げず、セリフ部分のみ読む
+- セリフ間に適切な間を入れる"""
+
+TTS_INSTRUCTION = os.environ.get("TTS_INSTRUCTION", DEFAULT_TTS_INSTRUCTION)
+
 # ===== キャラクター設定 =====
 # カツミ（女性）: 年金に詳しい説明役。落ち着いた優しい口調。
-# ボイス: Kore - 落ち着いた信頼感ある声
-GEMINI_VOICE_KATSUMI = "Kore"
+GEMINI_VOICE_KATSUMI = TTS_VOICE_FEMALE
 
 # ヒロシ（男性）: 年金に詳しくない聞き役。ちょっとお馬鹿で素朴な疑問を聞く。
-# ボイス: Puck - 明るくアップビートな声
-GEMINI_VOICE_HIROSHI = "Puck"
+GEMINI_VOICE_HIROSHI = TTS_VOICE_MALE
 
 # ===== Google Cloud TTS設定 =====
 # カツミ（女性）: ja-JP-Wavenet-A
@@ -669,34 +703,13 @@ def generate_gemini_tts_chunk(dialogue_chunk: list, api_key: str, output_path: s
                 # 最初のチャンクでボイス設定をログ出力
                 print(f"      [ボイス設定] カツミ={GEMINI_VOICE_KATSUMI}, ヒロシ={GEMINI_VOICE_HIROSHI}")
 
-            # 台本どおりに読み上げるプロンプト（声質安定のため詳細指定）
-            tts_prompt = f"""あなたは年金ニュース番組のパーソナリティです。
-この番組は毎日放送されており、視聴者はカツミとヒロシの声を楽しみにしています。
-台本を最初から最後まで一貫した声で読み上げてください。
-
-【キャラクター設定 - 必ず最初から最後まで同じ声質を維持】
-
-■ カツミ（Kore音声）
-- 60代女性、年金アドバイザー歴30年
-- 声質: 低めの落ち着いたトーン、温かみがある
-- 話し方: ゆっくり丁寧、専門家らしい信頼感
-- 感情: 穏やかで安心感を与える
-- 特徴: 「ですね」「ですよ」など柔らかい語尾
-
-■ ヒロシ（Puck音声）
-- 60代男性、リスナー代表の一般人
-- 声質: やや高めの明るいトーン、親しみやすい
-- 話し方: 素朴で自然体、時々驚いたり感心したり
-- 感情: 好奇心旺盛、視聴者目線で質問
-- 特徴: 「へぇ〜」「なるほど」など相槌
-
-【読み上げルール】
-1. 台本の順番どおりに読む
-2. 話者名の後のテキストをそのまま読む
-3. アドリブや追加セリフは絶対に入れない
-4. 最初から最後まで同じ声のトーン・速度・感情を維持
-5. 句読点で適度な間を取る
-6. 数字や専門用語はゆっくり明確に
+            # 台本どおりに読み上げるプロンプト（TTS_INSTRUCTIONを使用）
+            # 環境変数で声質を詳細にカスタマイズ可能
+            instruction = TTS_INSTRUCTION.format(
+                voice_female=TTS_VOICE_FEMALE,
+                voice_male=TTS_VOICE_MALE
+            )
+            tts_prompt = f"""{instruction}
 
 【台本】
 {dialogue_text}"""
