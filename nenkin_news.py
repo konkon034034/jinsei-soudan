@@ -86,8 +86,9 @@ CHARACTERS = {
 }
 
 # チャンク設定（長い台本を分割するサイズ）
-# 声質統一のため大きめに設定（29個のAPIキーで並列処理するため429対策は不要）
-MAX_LINES_PER_CHUNK = 15
+# 声質統一のため大きめに設定（チャンク数を減らすことで声質のブレを最小化）
+# 158セリフ ÷ 30 ≈ 6チャンク（以前は11チャンク）
+MAX_LINES_PER_CHUNK = 30
 
 # ===== 読み方辞書（TTS用） =====
 # デフォルト辞書（スプレッドシートから取得失敗時のフォールバック）
@@ -111,6 +112,7 @@ DEFAULT_READING_DICT = {
     "頭痛く": "あたまいたく",
     "頭痛い": "あたまいたい",
     "入れる": "はいれる",
+    "高所得": "こうしょとく",
 }
 
 # スプレッドシートから読み込む辞書（キャッシュ）
@@ -666,14 +668,23 @@ def generate_gemini_tts_chunk(dialogue_chunk: list, api_key: str, output_path: s
                 # 最初のチャンクでボイス設定をログ出力
                 print(f"      [ボイス設定] カツミ={GEMINI_VOICE_KATSUMI}, ヒロシ={GEMINI_VOICE_HIROSHI}")
 
-            # 台本どおりに読み上げるプロンプト
+            # 台本どおりに読み上げるプロンプト（声質安定のため詳細指定）
             tts_prompt = f"""以下の台本を正確に読み上げてください。
 
-【重要】
+【必須ルール】
 - 台本の順番どおりに読み上げる
 - 各行の「話者名:」の後のテキストをそのまま読む
-- カツミは明るく元気な女性、ヒロシは落ち着いた男性
-- 自然なポッドキャスト風の会話トーンで
+- 絶対にアドリブや追加のセリフを入れない
+
+【話者の声質】
+- カツミ（60代女性）: 落ち着いた優しいトーン、年金の専門家らしい信頼感のある話し方、ゆっくりめで聞き取りやすく
+- ヒロシ（60代男性）: 明るく親しみやすいトーン、少しのんびりした感じ、視聴者代表として素朴に
+
+【読み上げスタイル】
+- NHKのニュース解説番組のような丁寧で聞きやすいトーン
+- 読み上げ速度: やや遅め（0.9倍速相当）
+- 句読点で適度な間を取る
+- 数字や専門用語はゆっくり明確に
 
 【台本】
 {dialogue_text}"""
@@ -1381,34 +1392,40 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
     total_duration = float(result.stdout.strip()) if result.stdout.strip() else 0.0
     print(f"    [音声長] {total_duration:.1f}秒")
 
-    # 成功したセリフを正しい順序で取得
-    successful_lines = []
-    for idx in sorted(successful_chunk_indices):
-        for line in chunks[idx]:
-            successful_lines.append(line)
+    # チャンク単位のタイミングを計算（Whisperより正確）
+    print("    [字幕] チャンク単位でタイミング計算...")
 
-    # Whisperで結合音声全体の正確なタイミングを取得
-    print("    [字幕] Whisperで正確なタイミングを検出中...")
-    whisper_timings = detect_timing_with_whisper(output_path, successful_lines)
-
-    # Whisperタイミングをセグメントに変換
+    current_time = 0.0
     successful_dialogue_count = 0
-    for i, line in enumerate(successful_lines):
-        if i < len(whisper_timings):
-            start, end = whisper_timings[i]
-        else:
-            # フォールバック: 均等分配
-            start = (i / len(successful_lines)) * total_duration
-            end = ((i + 1) / len(successful_lines)) * total_duration
 
-        segments.append({
-            "speaker": line["speaker"],
-            "text": line["text"],
-            "start": start,
-            "end": end,
-            "color": CHARACTERS[line["speaker"]]["color"]
-        })
-        successful_dialogue_count += 1
+    for idx in sorted(successful_chunk_indices):
+        chunk_lines = chunks[idx]
+        chunk_duration = chunk_durations.get(idx, 0.0)
+
+        if chunk_duration <= 0:
+            continue
+
+        # チャンク内のセリフにテキスト長比例でタイミング割り当て
+        total_text_len = sum(len(line.get("text", "")) for line in chunk_lines) or 1
+
+        chunk_start = current_time
+        for line in chunk_lines:
+            text_len = len(line.get("text", ""))
+            line_duration = (text_len / total_text_len) * chunk_duration
+
+            segments.append({
+                "speaker": line["speaker"],
+                "text": line["text"],
+                "start": current_time,
+                "end": current_time + line_duration,
+                "color": CHARACTERS[line["speaker"]]["color"],
+                "section": line.get("section", ""),  # セクション情報
+            })
+            current_time += line_duration
+            successful_dialogue_count += 1
+
+        # チャンク境界を厳密に合わせる
+        current_time = chunk_start + chunk_duration
 
     print(f"    [字幕] 成功したセリフ数: {successful_dialogue_count}/{len(dialogue)}")
 
@@ -1588,21 +1605,25 @@ def wrap_text(text: str, max_chars: int = 30) -> str:
     return "\\N".join(lines)
 
 
-def generate_ass_subtitles(segments: list, output_path: str):
-    """ASS字幕を生成（大きめフォント、シンプルスタイル）
+def generate_ass_subtitles(segments: list, output_path: str, section_markers: list = None):
+    """ASS字幕を生成（大きめフォント、シンプルスタイル + トピック字幕）
 
     背景バーはffmpegのdrawboxで描画するため、ここでは字幕テキストのみ
     """
     # 字幕設定
     font_size = int(VIDEO_WIDTH * 0.075)  # 画面幅の7.5% ≈ 144px（3行対応で少し小さく）
+    topic_font_size = int(VIDEO_WIDTH * 0.04)  # トピック字幕は小さめ
     margin_bottom = int(VIDEO_HEIGHT * 0.05)  # 下から5%（38%バー内に収まるよう調整）
     margin_left = int(VIDEO_WIDTH * 0.15)   # 左マージン（画面幅の15% ≈ 288px）
     margin_right = int(VIDEO_WIDTH * 0.15)  # 右マージン（画面幅の15% ≈ 288px）
+    topic_margin_v = int(VIDEO_HEIGHT * 0.35)  # トピック字幕は画面中央やや上
 
     # ASS色形式: &HAABBGGRR
     primary_color = "&H00FFFFFF"  # 白文字
     outline_color = "&H00000000"  # 黒アウトライン
     shadow_color = "&H80000000"   # 半透明黒シャドウ
+    topic_bg_color = "&H80000000"  # トピック背景（半透明黒）
+    topic_primary = "&H00FFFFFF"  # トピック文字（白）
 
     header = f"""[Script Info]
 Title: 年金ニュース
@@ -1614,12 +1635,48 @@ WrapStyle: 0
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
+Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_primary},&H000000FF,{outline_color},{topic_bg_color},-1,0,0,0,100,100,0,0,3,2,0,8,50,50,{topic_margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
     lines = [header]
+
+    # トピック字幕のタイミングを計算
+    topic_timings = []
+    if section_markers and segments:
+        for i, marker in enumerate(section_markers):
+            start_idx = marker["start_idx"]
+            # このセクションの開始時間を取得
+            if start_idx < len(segments):
+                start_time = segments[start_idx]["start"]
+                # 次のセクションの開始時間または最後まで
+                if i + 1 < len(section_markers):
+                    next_idx = section_markers[i + 1]["start_idx"]
+                    if next_idx < len(segments):
+                        end_time = segments[next_idx]["start"]
+                    else:
+                        end_time = segments[-1]["end"] if segments else start_time + 5
+                else:
+                    end_time = segments[-1]["end"] if segments else start_time + 5
+                topic_timings.append({
+                    "title": marker["title"],
+                    "start": start_time,
+                    "end": end_time,
+                })
+
+    # トピック字幕を追加（レイヤー1で下の字幕より前面に）
+    for topic in topic_timings:
+        start = f"0:{int(topic['start']//60):02d}:{int(topic['start']%60):02d}.{int((topic['start']%1)*100):02d}"
+        # トピックは最初の5秒間だけ表示（フェードアウト効果）
+        topic_end = min(topic['start'] + 5.0, topic['end'])
+        end = f"0:{int(topic_end//60):02d}:{int(topic_end%60):02d}.{int((topic_end%1)*100):02d}"
+        # トピックタイトル（絵文字除去して表示）
+        title_text = topic["title"]
+        lines.append(f"Dialogue: 1,{start},{end},Topic,,0,0,0,,{title_text}")
+
+    # セリフ字幕を追加
     for seg in segments:
         start = f"0:{int(seg['start']//60):02d}:{int(seg['start']%60):02d}.{int((seg['start']%1)*100):02d}"
         end = f"0:{int(seg['end']//60):02d}:{int(seg['end']%60):02d}.{int((seg['end']%1)*100):02d}"
@@ -1635,21 +1692,57 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     """動画を作成"""
     all_dialogue = []
     all_segments = []
+    section_markers = []  # トピック字幕用のマーカー
 
     # オープニング
-    all_dialogue.extend(script.get("opening", []))
+    opening = script.get("opening", [])
+    for d in opening:
+        d["section"] = "オープニング"
+    all_dialogue.extend(opening)
+    if opening:
+        section_markers.append({"title": "🎙️ オープニング", "start_idx": 0})
 
     # ニュースセクション（確定情報）
-    for section in script.get("news_sections", []):
-        all_dialogue.extend(section.get("dialogue", []))
+    for i, section in enumerate(script.get("news_sections", [])):
+        news_title = section.get("news_title", f"ニュース{i+1}")
+        dialogue = section.get("dialogue", [])
+        for d in dialogue:
+            d["section"] = news_title
+        if dialogue:
+            section_markers.append({"title": f"📰 {news_title}", "start_idx": len(all_dialogue)})
+        all_dialogue.extend(dialogue)
+
+    # 深掘りコーナー
+    deep_dive = script.get("deep_dive", [])
+    for d in deep_dive:
+        d["section"] = "深掘り"
+    if deep_dive:
+        section_markers.append({"title": "🔍 深掘りコーナー", "start_idx": len(all_dialogue)})
+    all_dialogue.extend(deep_dive)
+
+    # 雑談まとめ
+    chat_summary = script.get("chat_summary", [])
+    for d in chat_summary:
+        d["section"] = "まとめ"
+    if chat_summary:
+        section_markers.append({"title": "💬 今日のまとめ", "start_idx": len(all_dialogue)})
+    all_dialogue.extend(chat_summary)
 
     # 噂セクション（あれば）
     rumor_section = script.get("rumor_section", [])
     if rumor_section:
+        for d in rumor_section:
+            d["section"] = "噂"
+        section_markers.append({"title": "🗣️ 噂・参考情報", "start_idx": len(all_dialogue)})
         all_dialogue.extend(rumor_section)
 
     # エンディング
-    all_dialogue.extend(script.get("ending", []))
+    ending = script.get("ending", [])
+    for d in ending:
+        d["section"] = "エンディング"
+    if ending:
+        section_markers.append({"title": "👋 エンディング", "start_idx": len(all_dialogue)})
+    all_dialogue.extend(ending)
 
     # 空や無効なセリフを除外
     original_count = len(all_dialogue)
@@ -1659,6 +1752,29 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     ]
     if len(all_dialogue) < original_count:
         print(f"  [フィルタ] {original_count - len(all_dialogue)}件の空セリフを除外")
+
+    # フィルタリング後にsection_markersを再計算
+    section_markers_filtered = []
+    current_section = None
+    for i, d in enumerate(all_dialogue):
+        section = d.get("section", "")
+        if section != current_section:
+            # セクションタイトルを生成
+            if section == "オープニング":
+                title = "🎙️ オープニング"
+            elif section == "深掘り":
+                title = "🔍 深掘りコーナー"
+            elif section == "まとめ":
+                title = "💬 今日のまとめ"
+            elif section == "噂":
+                title = "🗣️ 噂・参考情報"
+            elif section == "エンディング":
+                title = "👋 エンディング"
+            else:
+                title = f"📰 {section}"
+            section_markers_filtered.append({"title": title, "start_idx": i})
+            current_section = section
+    section_markers = section_markers_filtered
 
     print(f"  セリフ数: {len(all_dialogue)}")
 
@@ -1755,9 +1871,9 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     if not os.path.exists(bg_path):
         raise ValueError(f"背景画像の生成に失敗しました: {bg_path}")
 
-    # ASS字幕
+    # ASS字幕（トピック字幕含む）
     ass_path = str(temp_dir / "subtitles.ass")
-    generate_ass_subtitles(all_segments, ass_path)
+    generate_ass_subtitles(all_segments, ass_path, section_markers)
 
     # 動画生成
     output_path = str(temp_dir / f"nenkin_news_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
