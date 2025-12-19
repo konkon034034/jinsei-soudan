@@ -1400,7 +1400,7 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
 
     for idx in sorted(successful_chunk_indices):
         chunk_lines = chunks[idx]
-        chunk_duration = chunk_durations.get(idx, 0.0)
+        chunk_duration = chunk_durations[idx] if idx < len(chunk_durations) else 0.0
 
         if chunk_duration <= 0:
             continue
