@@ -45,15 +45,10 @@ TEST_MODE = os.environ.get("TEST_MODE", "").lower() == "true"
 # TTS_MODE=gemini: Gemini TTS（デフォルト）
 TTS_MODE = os.environ.get("TTS_MODE", "gemini").lower()
 
-# Modal GPUエンコード（TEST_MODEで自動制御）
-# TEST_MODE=true → Modal GPU (高速、テスト向き)
-# TEST_MODE=false → ローカル CPU (遅いが本番用、GitHub Actions向き)
-# USE_MODAL_GPU 環境変数でオーバーライド可能
-_modal_override = os.environ.get("USE_MODAL_GPU", "")
-if _modal_override:
-    USE_MODAL_GPU = _modal_override.lower() == "true"
-else:
-    USE_MODAL_GPU = TEST_MODE  # テストモードならModal GPU使用
+# Modal GPUエンコード
+# USE_MODAL_GPU=true（デフォルト） → Modal GPU (高速)
+# USE_MODAL_GPU=false → ローカル CPU (遅い)
+USE_MODAL_GPU = os.environ.get("USE_MODAL_GPU", "true").lower() == "true"
 
 # ===== チャンネル情報 =====
 CHANNEL_NAME = "毎朝届く！おはよう年金ニュースラジオ"
