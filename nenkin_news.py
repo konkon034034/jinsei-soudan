@@ -544,6 +544,7 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager, test_mode: b
   "news_sections": [
     {{
       "news_title": "ニュースのタイトル",
+      "source": "出典名 YYYY/MM/DD",
       "dialogue": [
         {{"speaker": "カツミ", "text": "○月○日、厚生労働省によりますと..."}},
         {{"speaker": "ヒロシ", "text": "それって私たちにどう影響するの？"}},
@@ -1662,18 +1663,24 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     end_time = segments[-1]["end"] if segments else start_time + 5
                 topic_timings.append({
                     "title": marker["title"],
+                    "source": marker.get("source", ""),
                     "start": start_time,
                     "end": end_time,
                 })
 
     # トピック字幕を追加（レイヤー1で下の字幕より前面に）
+    source_font_size = int(topic_font_size * 0.6)  # 出典は60%のサイズ
     for topic in topic_timings:
         start = f"0:{int(topic['start']//60):02d}:{int(topic['start']%60):02d}.{int((topic['start']%1)*100):02d}"
         # トピックは最初の5秒間だけ表示（フェードアウト効果）
         topic_end = min(topic['start'] + 5.0, topic['end'])
         end = f"0:{int(topic_end//60):02d}:{int(topic_end%60):02d}.{int((topic_end%1)*100):02d}"
-        # トピックタイトル（絵文字除去して表示）
+        # トピックタイトル + 出典（あれば）
         title_text = topic["title"]
+        source_text = topic.get("source", "")
+        if source_text:
+            # 出典を小さいフォントで改行して表示（ASS override tag使用）
+            title_text = f"{title_text}\\N{{\\fs{source_font_size}}}出典: {source_text}"
         lines.append(f"Dialogue: 1,{start},{end},Topic,,0,0,0,,{title_text}")
 
     # セリフ字幕を追加
@@ -1709,7 +1716,8 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
         for d in dialogue:
             d["section"] = news_title
         if dialogue:
-            section_markers.append({"title": f"📰 {news_title}", "start_idx": len(all_dialogue)})
+            source = section.get("source", "")
+            section_markers.append({"title": f"📰 {news_title}", "source": source, "start_idx": len(all_dialogue)})
         all_dialogue.extend(dialogue)
 
     # 深掘りコーナー
