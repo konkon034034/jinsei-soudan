@@ -45,10 +45,15 @@ TEST_MODE = os.environ.get("TEST_MODE", "").lower() == "true"
 # TTS_MODE=gemini: Gemini TTS（デフォルト）
 TTS_MODE = os.environ.get("TTS_MODE", "gemini").lower()
 
-# Modal GPUエンコード（環境変数で制御）
-# USE_MODAL_GPU=true: Modal T4 GPU (h264_nvenc)
-# USE_MODAL_GPU=false または未設定: ローカル CPU (libx264)
-USE_MODAL_GPU = os.environ.get("USE_MODAL_GPU", "").lower() == "true"
+# Modal GPUエンコード（TEST_MODEで自動制御）
+# TEST_MODE=true → Modal GPU (高速、テスト向き)
+# TEST_MODE=false → ローカル CPU (遅いが本番用、GitHub Actions向き)
+# USE_MODAL_GPU 環境変数でオーバーライド可能
+_modal_override = os.environ.get("USE_MODAL_GPU", "")
+if _modal_override:
+    USE_MODAL_GPU = _modal_override.lower() == "true"
+else:
+    USE_MODAL_GPU = TEST_MODE  # テストモードならModal GPU使用
 
 # ===== チャンネル情報 =====
 CHANNEL_NAME = "毎朝届く！おはよう年金ニュースラジオ"
@@ -929,6 +934,78 @@ def generate_gcloud_tts_dialogue(dialogue: list, output_path: str, temp_dir: Pat
     return output_path, segments, total_duration
 
 
+def detect_silence_points(audio_path: str, num_lines: int) -> list:
+    """音声ファイルの無音区間を検出してセリフ境界を推定
+
+    Args:
+        audio_path: 音声ファイルパス
+        num_lines: チャンク内のセリフ数
+
+    Returns:
+        list: 各セリフの (start, end) タプルのリスト
+    """
+    import re
+
+    # 音声の長さを取得
+    result = subprocess.run([
+        'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+        '-of', 'default=noprint_wrappers=1:nokey=1', audio_path
+    ], capture_output=True, text=True)
+    total_duration = float(result.stdout.strip()) if result.stdout.strip() else 0.0
+
+    if total_duration == 0 or num_lines <= 1:
+        return [(0.0, total_duration)]
+
+    # ffmpeg silencedetect で無音区間を検出
+    # noise=-35dB: 無音と判定する音量閾値
+    # d=0.2: 0.2秒以上の無音を検出
+    cmd = [
+        'ffmpeg', '-i', audio_path,
+        '-af', 'silencedetect=noise=-35dB:d=0.2',
+        '-f', 'null', '-'
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    # 無音区間の終了時点（= 次のセリフの開始時点）を抽出
+    # フォーマット: [silencedetect @ xxx] silence_end: 1.234 | silence_duration: 0.567
+    silence_ends = []
+    for line in result.stderr.split('\n'):
+        match = re.search(r'silence_end:\s*([\d.]+)', line)
+        if match:
+            silence_ends.append(float(match.group(1)))
+
+    # セリフの境界を計算
+    # silence_ends は各無音区間の終了点 = 次の発話の開始点
+    boundaries = [0.0]  # 最初のセリフは0秒から開始
+
+    if len(silence_ends) >= num_lines - 1:
+        # 十分な無音区間が見つかった場合、最初の (num_lines-1) 個を使用
+        boundaries.extend(silence_ends[:num_lines - 1])
+    else:
+        # 無音区間が不足している場合、見つかった分 + 残りは均等分配
+        boundaries.extend(silence_ends)
+        remaining_lines = num_lines - len(boundaries)
+        if remaining_lines > 0:
+            last_boundary = boundaries[-1] if boundaries else 0.0
+            remaining_duration = total_duration - last_boundary
+            step = remaining_duration / (remaining_lines + 1)
+            for i in range(1, remaining_lines + 1):
+                boundaries.append(last_boundary + step * i)
+
+    boundaries.append(total_duration)  # 最後のセリフの終了点
+
+    # (start, end) ペアを作成
+    segments = []
+    for i in range(num_lines):
+        if i < len(boundaries) - 1:
+            segments.append((boundaries[i], boundaries[i + 1]))
+        else:
+            # フォールバック: 残り時間を均等分配
+            segments.append((boundaries[-1], total_duration))
+
+    return segments
+
+
 def split_dialogue_into_chunks(dialogue: list, max_lines: int = MAX_LINES_PER_CHUNK) -> list:
     """対話をチャンクに分割"""
     chunks = []
@@ -949,6 +1026,7 @@ def _process_chunk_parallel(args: tuple) -> dict:
     )
 
     duration = 0.0
+    line_timings = []  # 各セリフの (start, end) タイミング
     if success and os.path.exists(chunk_path):
         result = subprocess.run([
             'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
@@ -956,11 +1034,15 @@ def _process_chunk_parallel(args: tuple) -> dict:
         ], capture_output=True, text=True)
         duration = float(result.stdout.strip()) if result.stdout.strip() else 0.0
 
+        # 無音検出でセリフ境界を取得
+        line_timings = detect_silence_points(chunk_path, len(chunk))
+
     return {
         "index": chunk_index,
         "success": success,
         "path": chunk_path if success else None,
-        "duration": duration
+        "duration": duration,
+        "line_timings": line_timings  # 無音検出によるセリフタイミング
     }
 
 
@@ -1006,6 +1088,7 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
     # ThreadPoolExecutorでパラレル処理
     chunk_files = [None] * len(chunks)
     chunk_durations = [0.0] * len(chunks)
+    chunk_line_timings = [[] for _ in range(len(chunks))]  # 無音検出によるセリフタイミング
     successful_chunk_indices = []
 
     print(f"    [パラレル処理] {len(chunks)}チャンクを{max_workers}並列で処理開始...")
@@ -1020,6 +1103,7 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
                 if result["success"]:
                     chunk_files[result["index"]] = result["path"]
                     chunk_durations[result["index"]] = result["duration"]
+                    chunk_line_timings[result["index"]] = result.get("line_timings", [])
                     successful_chunk_indices.append(result["index"])
                     print(f"    ✓ チャンク {result['index'] + 1}/{len(chunks)} 完了 ({result['duration']:.1f}秒)")
                 else:
@@ -1075,14 +1159,10 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
             '-acodec', 'pcm_s16le', '-ar', '24000', '-ac', '1', combined_path
         ], capture_output=True)
 
-    # 速度調整 (0.85倍速 = ゆっくり読み上げ)
-    SPEED_FACTOR = 0.85
-    print(f"    [速度調整] {SPEED_FACTOR}倍速に変換中...")
-    subprocess.run([
-        'ffmpeg', '-y', '-i', combined_path,
-        '-filter:a', f'atempo={SPEED_FACTOR}',
-        '-acodec', 'pcm_s16le', '-ar', '24000', '-ac', '1', output_path
-    ], capture_output=True)
+    # 速度調整なし（Gemini TTSは自然な速度で生成）
+    # combined.wav をそのまま output_path にコピー
+    import shutil
+    shutil.copy(combined_path, output_path)
 
     # 一時ファイル削除
     if os.path.exists(combined_path):
@@ -1094,31 +1174,46 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
         '-of', 'default=noprint_wrappers=1:nokey=1', output_path
     ], capture_output=True, text=True)
     total_duration = float(result.stdout.strip()) if result.stdout.strip() else 0.0
-    print(f"    [速度調整後] 音声長: {total_duration:.1f}秒")
+    print(f"    [音声長] {total_duration:.1f}秒")
 
-    # チャンクの音声長も速度調整を反映
-    chunk_durations = [d / SPEED_FACTOR for d in chunk_durations]
-
-    # 成功したチャンクごとにセグメントを生成（チャンクの実際の音声長を使用）
+    # 成功したチャンクごとにセグメントを生成（無音検出タイミングを使用）
     successful_dialogue_count = 0
     for idx in successful_chunk_indices:
         chunk = chunks[idx]
-        chunk_duration = chunk_durations[idx]
+        line_timings = chunk_line_timings[idx]  # 無音検出によるタイミング
 
-        # チャンク内のセリフを文字数比で分配
-        chunk_chars = sum(len(line["text"]) for line in chunk)
-        for line in chunk:
-            ratio = len(line["text"]) / chunk_chars if chunk_chars > 0 else 1/len(chunk)
-            duration = chunk_duration * ratio
-            segments.append({
-                "speaker": line["speaker"],
-                "text": line["text"],
-                "start": current_time,
-                "end": current_time + duration,
-                "color": CHARACTERS[line["speaker"]]["color"]
-            })
-            current_time += duration
-            successful_dialogue_count += 1
+        # 無音検出タイミングが有効な場合はそれを使用
+        if line_timings and len(line_timings) == len(chunk):
+            for i, line in enumerate(chunk):
+                start, end = line_timings[i]
+                duration = end - start
+                segments.append({
+                    "speaker": line["speaker"],
+                    "text": line["text"],
+                    "start": current_time + start,
+                    "end": current_time + end,
+                    "color": CHARACTERS[line["speaker"]]["color"]
+                })
+                successful_dialogue_count += 1
+            # チャンクの長さ分を加算
+            if line_timings:
+                current_time += line_timings[-1][1]  # 最後のセリフの終了時刻
+        else:
+            # フォールバック: 文字数比で分配
+            chunk_duration = chunk_durations[idx]
+            chunk_chars = sum(len(line["text"]) for line in chunk)
+            for line in chunk:
+                ratio = len(line["text"]) / chunk_chars if chunk_chars > 0 else 1/len(chunk)
+                duration = chunk_duration * ratio
+                segments.append({
+                    "speaker": line["speaker"],
+                    "text": line["text"],
+                    "start": current_time,
+                    "end": current_time + duration,
+                    "color": CHARACTERS[line["speaker"]]["color"]
+                })
+                current_time += duration
+                successful_dialogue_count += 1
 
     print(f"    [字幕] 成功したセリフ数: {successful_dialogue_count}/{len(dialogue)}")
 
@@ -1506,10 +1601,11 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
 
         # ffmpegフィルター: scale → 背景バー描画 → 字幕
         # 茶色系: rgba(60,40,30,0.8) → ffmpegでは 0x3C281E@0.8
+        # fontsdir でフォントディレクトリを明示的に指定（日本語フォント対応）
         vf_filter = (
             f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},"
             f"drawbox=x=0:y={bar_y}:w={VIDEO_WIDTH}:h={bar_height}:color=0x3C281E@0.8:t=fill,"
-            f"ass={ass_path}"
+            f"ass={ass_path}:fontsdir=/usr/share/fonts"
         )
 
         cmd = [
