@@ -22,6 +22,14 @@ on:
         options:
           - 'gemini'
           - 'google_cloud'
+      use_modal_gpu:
+        description: 'Modal GPU使用（本番モードでGPU高速エンコード）'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 
 env:
   PYTHON_VERSION: '3.11'
@@ -101,7 +109,7 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
           TTS_MODE: ${{ github.event.inputs.tts_mode || 'gemini' }}
-          # USE_MODAL_GPU は TEST_MODE に連動（test=Modal GPU, 本番=ローカルCPU）
+          USE_MODAL_GPU: ${{ github.event.inputs.use_modal_gpu || '' }}
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
         run: |
@@ -134,7 +142,7 @@ jobs:
               curl -X POST "$DISCORD_WEBHOOK_URL" \
                 -H "Content-Type: application/json" \
                 -d "{
-                  \"content\": \"✅ **年金ニュース投稿完了！**\n━━━━━━━━━━━━━━━━━━\n\n📺 動画URL: ${VIDEO_URL}\n🎤 TTS: ${{ github.event.inputs.tts_mode || 'google_cloud' }}\n🧪 テストモード: ${{ github.event.inputs.test_mode || 'false' }}\n\n━━━━━━━━━━━━━━━━━━\"
+                  \"content\": \"✅ **年金ニュース投稿完了！**\n━━━━━━━━━━━━━━━━━━\n\n📺 動画URL: ${VIDEO_URL}\n🎤 TTS: ${{ github.event.inputs.tts_mode || 'gemini' }}\n🧪 テストモード: ${{ github.event.inputs.test_mode || 'false' }}\n🖥️ Modal GPU: ${{ github.event.inputs.use_modal_gpu || 'auto' }}\n\n━━━━━━━━━━━━━━━━━━\"
                 }"
             else
               curl -X POST "$DISCORD_WEBHOOK_URL" \
