@@ -946,8 +946,192 @@ def generate_gcloud_tts_dialogue(dialogue: list, output_path: str, temp_dir: Pat
     return output_path, segments, total_duration
 
 
-def detect_silence_points(audio_path: str, num_lines: int) -> list:
-    """音声ファイルの無音区間を検出してセリフ境界を推定
+def detect_timing_with_whisper(audio_path: str, script_lines: list) -> list:
+    """Whisperを使用して音声から正確なセリフタイミングを検出
+
+    Args:
+        audio_path: 音声ファイルパス
+        script_lines: 台本のセリフリスト [{"speaker": "カツミ", "text": "..."}, ...]
+
+    Returns:
+        list: 各セリフの (start, end) タプルのリスト
+    """
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError:
+        print("    [Whisper] faster-whisper未インストール、フォールバック使用")
+        return detect_silence_points_fallback(audio_path, len(script_lines))
+
+    # 音声の総長を取得
+    result = subprocess.run([
+        'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+        '-of', 'default=noprint_wrappers=1:nokey=1', audio_path
+    ], capture_output=True, text=True)
+    total_duration = float(result.stdout.strip()) if result.stdout.strip() else 0.0
+
+    num_lines = len(script_lines)
+    if total_duration == 0 or num_lines == 0:
+        return [(0.0, total_duration)] if num_lines <= 1 else [(0.0, total_duration)]
+
+    try:
+        # Whisperモデルをロード（small = 高精度かつ高速）
+        # int8量子化でメモリ節約 & 高速化
+        print("    [Whisper] モデルロード中 (small)...")
+        model = WhisperModel("small", device="cpu", compute_type="int8")
+
+        # 音声を文字起こし（word_timestamps=True で単語レベルのタイミング取得）
+        print("    [Whisper] 音声解析中...")
+        segments, info = model.transcribe(
+            audio_path,
+            language="ja",
+            word_timestamps=True,
+            vad_filter=True,  # 音声区間検出で精度向上
+            vad_parameters=dict(
+                min_silence_duration_ms=200,  # 200ms以上の無音で区切り
+                speech_pad_ms=100,  # 発話前後に100msのパディング
+            )
+        )
+
+        # Whisperのセグメントをリストに変換
+        whisper_segments = []
+        for segment in segments:
+            whisper_segments.append({
+                "start": segment.start,
+                "end": segment.end,
+                "text": segment.text.strip(),
+                "words": [{"start": w.start, "end": w.end, "word": w.word} for w in (segment.words or [])]
+            })
+
+        print(f"    [Whisper] {len(whisper_segments)}セグメント検出")
+
+        # Whisperセグメントをスクリプトのセリフ数に合わせてマッピング
+        timings = _map_whisper_to_script(whisper_segments, script_lines, total_duration)
+
+        return timings
+
+    except Exception as e:
+        print(f"    [Whisper] エラー: {e}、フォールバック使用")
+        return detect_silence_points_fallback(audio_path, num_lines)
+
+
+def _map_whisper_to_script(whisper_segments: list, script_lines: list, total_duration: float) -> list:
+    """Whisperのセグメントをスクリプトのセリフにマッピング
+
+    戦略:
+    1. Whisperセグメントが台本セリフ数より多い場合 → 隣接セグメントを結合
+    2. Whisperセグメントが台本セリフ数より少ない場合 → 長いセグメントを分割
+    3. セリフのテキスト長で比例配分
+    """
+    num_lines = len(script_lines)
+
+    if not whisper_segments:
+        # Whisperが何も検出しなかった場合、均等分配
+        step = total_duration / num_lines
+        return [(i * step, (i + 1) * step) for i in range(num_lines)]
+
+    # 全Whisperセグメントを結合したリストを作成
+    all_boundaries = []
+    for seg in whisper_segments:
+        all_boundaries.append({"time": seg["start"], "type": "start"})
+        all_boundaries.append({"time": seg["end"], "type": "end"})
+
+    # スクリプトの各セリフのテキスト長を計算（タイミング比例配分用）
+    text_lengths = [len(line.get("text", "")) for line in script_lines]
+    total_text_len = sum(text_lengths) or 1
+
+    # Whisperセグメント数と台本セリフ数を比較
+    num_whisper = len(whisper_segments)
+
+    if num_whisper == num_lines:
+        # ぴったり一致 - 直接マッピング
+        return [(seg["start"], seg["end"]) for seg in whisper_segments]
+
+    elif num_whisper > num_lines:
+        # Whisperセグメントが多い → セリフ数に合わせて結合
+        # 各セリフに割り当てるセグメント数を計算（テキスト長比例）
+        timings = []
+        seg_idx = 0
+
+        for line_idx, text_len in enumerate(text_lengths):
+            # このセリフに割り当てるセグメント数（比例配分）
+            remaining_lines = num_lines - line_idx
+            remaining_segs = num_whisper - seg_idx
+
+            if remaining_lines == 1:
+                # 最後のセリフは残り全部
+                segs_for_line = remaining_segs
+            else:
+                # テキスト長に基づいて比例配分
+                ratio = text_len / (sum(text_lengths[line_idx:]) or 1)
+                segs_for_line = max(1, round(remaining_segs * ratio))
+                segs_for_line = min(segs_for_line, remaining_segs - remaining_lines + 1)
+
+            # 割り当てるセグメントの開始・終了を取得
+            start_seg = whisper_segments[seg_idx]
+            end_seg = whisper_segments[min(seg_idx + segs_for_line - 1, num_whisper - 1)]
+
+            timings.append((start_seg["start"], end_seg["end"]))
+            seg_idx += segs_for_line
+
+        return timings
+
+    else:
+        # Whisperセグメントが少ない → 長いセグメントを分割
+        # まずWhisperセグメントを使い、足りない分は長いセグメントを分割
+        timings = []
+        seg_idx = 0
+
+        for line_idx in range(num_lines):
+            if seg_idx < num_whisper:
+                seg = whisper_segments[seg_idx]
+                remaining_lines = num_lines - line_idx
+                remaining_segs = num_whisper - seg_idx
+
+                if remaining_lines <= remaining_segs:
+                    # 1セグメント = 1セリフ
+                    timings.append((seg["start"], seg["end"]))
+                    seg_idx += 1
+                else:
+                    # このセグメントを複数セリフに分割
+                    lines_for_this_seg = remaining_lines - remaining_segs + 1
+                    seg_duration = seg["end"] - seg["start"]
+
+                    # テキスト長に基づいて分割
+                    sub_text_lens = text_lengths[line_idx:line_idx + lines_for_this_seg]
+                    sub_total = sum(sub_text_lens) or 1
+
+                    current_time = seg["start"]
+                    for i, sub_len in enumerate(sub_text_lens):
+                        ratio = sub_len / sub_total
+                        sub_duration = seg_duration * ratio
+                        end_time = current_time + sub_duration if i < len(sub_text_lens) - 1 else seg["end"]
+                        timings.append((current_time, end_time))
+                        current_time = end_time
+
+                    seg_idx += 1
+                    # 分割で追加したセリフ数を考慮
+                    continue
+            else:
+                # Whisperセグメントを使い切った → 残り時間を均等分配
+                remaining_duration = total_duration - (timings[-1][1] if timings else 0)
+                remaining_lines = num_lines - line_idx
+                step = remaining_duration / remaining_lines
+                start = timings[-1][1] if timings else 0
+                for i in range(remaining_lines):
+                    timings.append((start + i * step, start + (i + 1) * step))
+                break
+
+        # タイミング数が足りない場合の調整
+        while len(timings) < num_lines:
+            last_end = timings[-1][1] if timings else 0
+            remaining = total_duration - last_end
+            timings.append((last_end, last_end + remaining / (num_lines - len(timings) + 1)))
+
+        return timings[:num_lines]
+
+
+def detect_silence_points_fallback(audio_path: str, num_lines: int) -> list:
+    """フォールバック: ffmpeg silencedetectを使用した無音検出
 
     Args:
         audio_path: 音声ファイルパス
@@ -969,32 +1153,25 @@ def detect_silence_points(audio_path: str, num_lines: int) -> list:
         return [(0.0, total_duration)]
 
     # ffmpeg silencedetect で無音区間を検出
-    # noise=-35dB: 無音と判定する音量閾値
-    # d=0.2: 0.2秒以上の無音を検出
     cmd = [
         'ffmpeg', '-i', audio_path,
-        '-af', 'silencedetect=noise=-35dB:d=0.2',
+        '-af', 'silencedetect=noise=-35dB:d=0.15',  # より短い無音も検出
         '-f', 'null', '-'
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
 
-    # 無音区間の終了時点（= 次のセリフの開始時点）を抽出
-    # フォーマット: [silencedetect @ xxx] silence_end: 1.234 | silence_duration: 0.567
+    # 無音区間の終了時点を抽出
     silence_ends = []
     for line in result.stderr.split('\n'):
         match = re.search(r'silence_end:\s*([\d.]+)', line)
         if match:
             silence_ends.append(float(match.group(1)))
 
-    # セリフの境界を計算
-    # silence_ends は各無音区間の終了点 = 次の発話の開始点
-    boundaries = [0.0]  # 最初のセリフは0秒から開始
+    boundaries = [0.0]
 
     if len(silence_ends) >= num_lines - 1:
-        # 十分な無音区間が見つかった場合、最初の (num_lines-1) 個を使用
         boundaries.extend(silence_ends[:num_lines - 1])
     else:
-        # 無音区間が不足している場合、見つかった分 + 残りは均等分配
         boundaries.extend(silence_ends)
         remaining_lines = num_lines - len(boundaries)
         if remaining_lines > 0:
@@ -1004,15 +1181,13 @@ def detect_silence_points(audio_path: str, num_lines: int) -> list:
             for i in range(1, remaining_lines + 1):
                 boundaries.append(last_boundary + step * i)
 
-    boundaries.append(total_duration)  # 最後のセリフの終了点
+    boundaries.append(total_duration)
 
-    # (start, end) ペアを作成
     segments = []
     for i in range(num_lines):
         if i < len(boundaries) - 1:
             segments.append((boundaries[i], boundaries[i + 1]))
         else:
-            # フォールバック: 残り時間を均等分配
             segments.append((boundaries[-1], total_duration))
 
     return segments
@@ -1038,7 +1213,6 @@ def _process_chunk_parallel(args: tuple) -> dict:
     )
 
     duration = 0.0
-    line_timings = []  # 各セリフの (start, end) タイミング
     if success and os.path.exists(chunk_path):
         result = subprocess.run([
             'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
@@ -1046,15 +1220,11 @@ def _process_chunk_parallel(args: tuple) -> dict:
         ], capture_output=True, text=True)
         duration = float(result.stdout.strip()) if result.stdout.strip() else 0.0
 
-        # 無音検出でセリフ境界を取得
-        line_timings = detect_silence_points(chunk_path, len(chunk))
-
     return {
         "index": chunk_index,
         "success": success,
         "path": chunk_path if success else None,
-        "duration": duration,
-        "line_timings": line_timings  # 無音検出によるセリフタイミング
+        "duration": duration
     }
 
 
@@ -1100,7 +1270,6 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
     # ThreadPoolExecutorでパラレル処理
     chunk_files = [None] * len(chunks)
     chunk_durations = [0.0] * len(chunks)
-    chunk_line_timings = [[] for _ in range(len(chunks))]  # 無音検出によるセリフタイミング
     successful_chunk_indices = []
 
     print(f"    [パラレル処理] {len(chunks)}チャンクを{max_workers}並列で処理開始...")
@@ -1115,7 +1284,6 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
                 if result["success"]:
                     chunk_files[result["index"]] = result["path"]
                     chunk_durations[result["index"]] = result["duration"]
-                    chunk_line_timings[result["index"]] = result.get("line_timings", [])
                     successful_chunk_indices.append(result["index"])
                     print(f"    ✓ チャンク {result['index'] + 1}/{len(chunks)} 完了 ({result['duration']:.1f}秒)")
                 else:
@@ -1188,53 +1356,34 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
     total_duration = float(result.stdout.strip()) if result.stdout.strip() else 0.0
     print(f"    [音声長] {total_duration:.1f}秒")
 
-    # 成功したチャンクごとにセグメントを生成（無音検出タイミングを使用）
-    # 重要: successful_chunk_indices は完了順なのでソートして正しい順序に
-    successful_dialogue_count = 0
+    # 成功したセリフを正しい順序で取得
+    successful_lines = []
     for idx in sorted(successful_chunk_indices):
-        chunk = chunks[idx]
-        line_timings = chunk_line_timings[idx]  # 無音検出によるタイミング
+        for line in chunks[idx]:
+            successful_lines.append(line)
 
-        # 実際のチャンク音声長を取得（重要: チャンク境界のズレ防止）
-        actual_chunk_duration = chunk_durations[idx]
+    # Whisperで結合音声全体の正確なタイミングを取得
+    print("    [字幕] Whisperで正確なタイミングを検出中...")
+    whisper_timings = detect_timing_with_whisper(output_path, successful_lines)
 
-        # 無音検出タイミングが有効な場合はそれを使用
-        if line_timings and len(line_timings) == len(chunk):
-            # 無音検出タイミングを実際の音声長にスケーリング
-            detected_duration = line_timings[-1][1] if line_timings else actual_chunk_duration
-            scale_factor = actual_chunk_duration / detected_duration if detected_duration > 0 else 1.0
-
-            for i, line in enumerate(chunk):
-                start, end = line_timings[i]
-                # スケーリングして実際の音声長に合わせる
-                scaled_start = start * scale_factor
-                scaled_end = end * scale_factor
-                segments.append({
-                    "speaker": line["speaker"],
-                    "text": line["text"],
-                    "start": current_time + scaled_start,
-                    "end": current_time + scaled_end,
-                    "color": CHARACTERS[line["speaker"]]["color"]
-                })
-                successful_dialogue_count += 1
-            # 実際のチャンク音声長を加算（これが重要！）
-            current_time += actual_chunk_duration
+    # Whisperタイミングをセグメントに変換
+    successful_dialogue_count = 0
+    for i, line in enumerate(successful_lines):
+        if i < len(whisper_timings):
+            start, end = whisper_timings[i]
         else:
-            # フォールバック: 文字数比で分配
-            chunk_duration = chunk_durations[idx]
-            chunk_chars = sum(len(line["text"]) for line in chunk)
-            for line in chunk:
-                ratio = len(line["text"]) / chunk_chars if chunk_chars > 0 else 1/len(chunk)
-                duration = chunk_duration * ratio
-                segments.append({
-                    "speaker": line["speaker"],
-                    "text": line["text"],
-                    "start": current_time,
-                    "end": current_time + duration,
-                    "color": CHARACTERS[line["speaker"]]["color"]
-                })
-                current_time += duration
-                successful_dialogue_count += 1
+            # フォールバック: 均等分配
+            start = (i / len(successful_lines)) * total_duration
+            end = ((i + 1) / len(successful_lines)) * total_duration
+
+        segments.append({
+            "speaker": line["speaker"],
+            "text": line["text"],
+            "start": start,
+            "end": end,
+            "color": CHARACTERS[line["speaker"]]["color"]
+        })
+        successful_dialogue_count += 1
 
     print(f"    [字幕] 成功したセリフ数: {successful_dialogue_count}/{len(dialogue)}")
 
