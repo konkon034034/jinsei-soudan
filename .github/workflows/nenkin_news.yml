@@ -23,13 +23,10 @@ on:
           - 'gemini'
           - 'google_cloud'
       use_modal_gpu:
-        description: 'Modal GPU使用（本番モードでGPU高速エンコード）'
+        description: 'Modal GPUを使用する'
         required: false
-        default: 'false'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
+        default: 'true'
+        type: boolean
 
 env:
   PYTHON_VERSION: '3.11'
