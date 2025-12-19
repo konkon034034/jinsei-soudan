@@ -1613,18 +1613,17 @@ def generate_ass_subtitles(segments: list, output_path: str, section_markers: li
     """
     # 字幕設定
     font_size = int(VIDEO_WIDTH * 0.075)  # 画面幅の7.5% ≈ 144px（3行対応で少し小さく）
-    topic_font_size = int(VIDEO_WIDTH * 0.04)  # トピック字幕は小さめ
+    topic_font_size = int(VIDEO_WIDTH * 0.035)  # トピック字幕は小さめ（3.5%）
+    source_font_size = int(VIDEO_WIDTH * 0.022)  # 出典はさらに小さく（2.2%）
     margin_bottom = int(VIDEO_HEIGHT * 0.05)  # 下から5%（38%バー内に収まるよう調整）
     margin_left = int(VIDEO_WIDTH * 0.15)   # 左マージン（画面幅の15% ≈ 288px）
     margin_right = int(VIDEO_WIDTH * 0.15)  # 右マージン（画面幅の15% ≈ 288px）
-    topic_margin_v = int(VIDEO_HEIGHT * 0.35)  # トピック字幕は画面中央やや上
+    topic_margin_v = int(VIDEO_HEIGHT * 0.08)  # トピック字幕は上から8%
+    topic_margin_r = int(VIDEO_WIDTH * 0.03)  # 右マージン3%
 
     # ASS色形式: &HAABBGGRR
     primary_color = "&H00FFFFFF"  # 白文字
-    outline_color = "&H00000000"  # 黒アウトライン
     shadow_color = "&H80000000"   # 半透明黒シャドウ
-    topic_bg_color = "&H80000000"  # トピック背景（半透明黒）
-    topic_primary = "&H00FFFFFF"  # トピック文字（白）
 
     header = f"""[Script Info]
 Title: 年金ニュース
@@ -1636,7 +1635,7 @@ WrapStyle: 0
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
-Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_primary},&H000000FF,{outline_color},{topic_bg_color},-1,0,0,0,100,100,0,0,3,2,0,8,50,50,{topic_margin_v},1
+Style: Topic,Noto Sans CJK JP,{topic_font_size},{primary_color},&H000000FF,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,3,50,{topic_margin_r},{topic_margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -1669,12 +1668,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 })
 
     # トピック字幕を追加（レイヤー1で下の字幕より前面に）
-    source_font_size = int(topic_font_size * 0.6)  # 出典は60%のサイズ
     for topic in topic_timings:
         start = f"0:{int(topic['start']//60):02d}:{int(topic['start']%60):02d}.{int((topic['start']%1)*100):02d}"
-        # トピックは最初の5秒間だけ表示（フェードアウト効果）
-        topic_end = min(topic['start'] + 5.0, topic['end'])
-        end = f"0:{int(topic_end//60):02d}:{int(topic_end%60):02d}.{int((topic_end%1)*100):02d}"
+        # トピックはセクション全体で表示（次のトピックまで）
+        end = f"0:{int(topic['end']//60):02d}:{int(topic['end']%60):02d}.{int((topic['end']%1)*100):02d}"
         # トピックタイトル + 出典（あれば）
         title_text = topic["title"]
         source_text = topic.get("source", "")
@@ -1707,7 +1704,7 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
         d["section"] = "オープニング"
     all_dialogue.extend(opening)
     if opening:
-        section_markers.append({"title": "🎙️ オープニング", "start_idx": 0})
+        section_markers.append({"title": "オープニング", "start_idx": 0})
 
     # ニュースセクション（確定情報）
     for i, section in enumerate(script.get("news_sections", [])):
@@ -1717,7 +1714,7 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
             d["section"] = news_title
         if dialogue:
             source = section.get("source", "")
-            section_markers.append({"title": f"📰 {news_title}", "source": source, "start_idx": len(all_dialogue)})
+            section_markers.append({"title": news_title, "source": source, "start_idx": len(all_dialogue)})
         all_dialogue.extend(dialogue)
 
     # 深掘りコーナー
@@ -1725,7 +1722,7 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     for d in deep_dive:
         d["section"] = "深掘り"
     if deep_dive:
-        section_markers.append({"title": "🔍 深掘りコーナー", "start_idx": len(all_dialogue)})
+        section_markers.append({"title": "深掘りコーナー", "start_idx": len(all_dialogue)})
     all_dialogue.extend(deep_dive)
 
     # 雑談まとめ
@@ -1733,7 +1730,7 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     for d in chat_summary:
         d["section"] = "まとめ"
     if chat_summary:
-        section_markers.append({"title": "💬 今日のまとめ", "start_idx": len(all_dialogue)})
+        section_markers.append({"title": "今日のまとめ", "start_idx": len(all_dialogue)})
     all_dialogue.extend(chat_summary)
 
     # 噂セクション（あれば）
@@ -1741,7 +1738,7 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     if rumor_section:
         for d in rumor_section:
             d["section"] = "噂"
-        section_markers.append({"title": "🗣️ 噂・参考情報", "start_idx": len(all_dialogue)})
+        section_markers.append({"title": "噂・参考情報", "start_idx": len(all_dialogue)})
         all_dialogue.extend(rumor_section)
 
     # エンディング
@@ -1749,7 +1746,7 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     for d in ending:
         d["section"] = "エンディング"
     if ending:
-        section_markers.append({"title": "👋 エンディング", "start_idx": len(all_dialogue)})
+        section_markers.append({"title": "エンディング", "start_idx": len(all_dialogue)})
     all_dialogue.extend(ending)
 
     # 空や無効なセリフを除外
