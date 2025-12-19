@@ -17,11 +17,11 @@ on:
       tts_mode:
         description: 'TTSエンジン'
         required: false
-        default: 'google_cloud'
+        default: 'gemini'
         type: choice
         options:
-          - 'google_cloud'
           - 'gemini'
+          - 'google_cloud'
 
 env:
   PYTHON_VERSION: '3.11'
@@ -100,7 +100,7 @@ jobs:
           BACKGROUND_IMAGE_ID: ${{ secrets.BACKGROUND_IMAGE_ID }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
-          TTS_MODE: ${{ github.event.inputs.tts_mode || 'google_cloud' }}
+          TTS_MODE: ${{ github.event.inputs.tts_mode || 'gemini' }}
           USE_MODAL_GPU: 'true'
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
