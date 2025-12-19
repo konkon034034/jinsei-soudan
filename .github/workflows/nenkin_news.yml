@@ -124,11 +124,26 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           if [ -n "$DISCORD_WEBHOOK_URL" ]; then
-            curl -X POST "$DISCORD_WEBHOOK_URL" \
-              -H "Content-Type: application/json" \
-              -d "{
-                \"content\": \"✅ **年金ニュース動画生成完了**\n━━━━━━━━━━━━━━━━━━\n\n📺 動画が正常に生成されました\n🎤 TTS: ${{ github.event.inputs.tts_mode || 'google_cloud' }}\n🧪 テストモード: ${{ github.event.inputs.test_mode || 'false' }}\n\n🔗 ワークフロー: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\n━━━━━━━━━━━━━━━━━━\"
-              }"
+            # 動画URLを読み込み
+            VIDEO_URL=""
+            if [ -f "video_url.txt" ]; then
+              VIDEO_URL=$(cat video_url.txt)
+            fi
+
+            # 動画URLがある場合は含める
+            if [ -n "$VIDEO_URL" ]; then
+              curl -X POST "$DISCORD_WEBHOOK_URL" \
+                -H "Content-Type: application/json" \
+                -d "{
+                  \"content\": \"✅ **年金ニュース投稿完了！**\n━━━━━━━━━━━━━━━━━━\n\n📺 動画URL: ${VIDEO_URL}\n🎤 TTS: ${{ github.event.inputs.tts_mode || 'google_cloud' }}\n🧪 テストモード: ${{ github.event.inputs.test_mode || 'false' }}\n\n━━━━━━━━━━━━━━━━━━\"
+                }"
+            else
+              curl -X POST "$DISCORD_WEBHOOK_URL" \
+                -H "Content-Type: application/json" \
+                -d "{
+                  \"content\": \"⚠️ **年金ニュース動画生成完了（投稿なし）**\n━━━━━━━━━━━━━━━━━━\n\n📺 動画は生成されましたがYouTube投稿に失敗しました\n🔗 ワークフロー: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\n━━━━━━━━━━━━━━━━━━\"
+                }"
+            fi
           fi
 
       - name: エラー時にDiscord通知
