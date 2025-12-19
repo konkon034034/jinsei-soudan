@@ -2256,6 +2256,10 @@ def main():
         try:
             video_url = upload_to_youtube(video_path, title, description, tags)
 
+            # 動画URLをファイルに保存（ワークフロー通知用）
+            with open("video_url.txt", "w") as f:
+                f.write(video_url)
+
             # 動画IDを抽出
             video_id = video_url.split("v=")[-1] if "v=" in video_url else ""
 
