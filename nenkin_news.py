@@ -1645,12 +1645,14 @@ def generate_ass_subtitles(segments: list, output_path: str, section_markers: li
     margin_bottom = int(VIDEO_HEIGHT * 0.05)  # 下から5%（38%バー内に収まるよう調整）
     margin_left = int(VIDEO_WIDTH * 0.15)   # 左マージン（画面幅の15% ≈ 288px）
     margin_right = int(VIDEO_WIDTH * 0.15)  # 右マージン（画面幅の15% ≈ 288px）
-    topic_margin_v = int(VIDEO_HEIGHT * 0.47)  # トピック字幕は下から47%（45%バーのすぐ上）
-    topic_margin_r = int(VIDEO_WIDTH * 0.03)  # 右マージン3%
+    topic_margin_l = 30  # トピック左マージン（30px）
+    topic_margin_v = int(VIDEO_HEIGHT * 0.48)  # トピック字幕は上から48%（画面中央やや上）
 
     # ASS色形式: &HAABBGGRR
     primary_color = "&H00FFFFFF"  # 白文字
     shadow_color = "&H80000000"   # 半透明黒シャドウ
+    topic_text_color = "&H00000000"  # 黒文字（トピック用）
+    topic_back_color = "&H80FFFFFF"  # 半透明白背景（トピック用）
 
     header = f"""[Script Info]
 Title: 年金ニュース
@@ -1662,7 +1664,7 @@ WrapStyle: 0
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
-Style: Topic,Noto Sans CJK JP,{topic_font_size},{primary_color},&H000000FF,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,3,50,{topic_margin_r},{topic_margin_v},1
+Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_text_color},&H000000FF,&H00000000,{topic_back_color},-1,0,0,0,100,100,0,0,3,2,0,7,{topic_margin_l},0,{topic_margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -1704,8 +1706,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         source_text = topic.get("source", "")
         if source_text:
             # 出典を小さいフォントで改行して表示（ASS override tag使用）
-            # 黒文字(\c&H00000000&) + 半透明白背景(\3c&H80FFFFFF&\bord4)
-            title_text = f"{title_text}\\N{{\\fs{source_font_size}\\c&H00000000&\\3c&H80FFFFFF&\\bord4}}出典: {source_text}"
+            # スタイルで既に黒文字+背景ボックスが設定済み
+            title_text = f"{title_text}\\N{{\\fs{source_font_size}}}出典: {source_text}"
         lines.append(f"Dialogue: 1,{start},{end},Topic,,0,0,0,,{title_text}")
 
     # セリフ字幕を追加
