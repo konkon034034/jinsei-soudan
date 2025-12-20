@@ -2042,16 +2042,16 @@ def generate_ass_subtitles(segments: list, output_path: str, section_markers: li
     gold_color = "&H0000D7FF&"     # #FFD700 → BGR: 00D7FF（ゴールド）
 
     # 出典表示設定（右揃え、白文字、縁取りなし）
-    source_font_size = 90  # さらに大きく
+    source_font_size = 72
     bar_height = int(VIDEO_HEIGHT * 0.45)  # 透かしバーの高さ（画面の45%）
     source_margin_bottom = bar_height + 10  # 透かしの上10px
 
     # トピック縦書き設定（画面左端）
-    topic_font_size = 36
+    topic_font_size = 90
 
     # 控室タイトル設定（右上寄り、白文字）
-    backroom_title_size = 240  # 5倍サイズ
-    backroom_title_margin_v = 150  # 上寄り
+    backroom_title_size = 180
+    backroom_title_margin_v = 250  # もっと上
 
     header = f"""[Script Info]
 Title: 年金ニュース
@@ -2065,7 +2065,7 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF&,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
 Style: Backroom,Noto Sans CJK JP,{font_size},{gold_color},&H000000FF&,&H80000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,1,0,1,{margin_left},{margin_right},{margin_bottom},1
 Style: Source,Noto Sans CJK JP,{source_font_size},{primary_color},&H000000FF&,&H00FFFFFF&,&H00000000&,0,0,0,0,100,100,0,0,1,0,0,3,0,30,{source_margin_bottom},1
-Style: BackroomTitle,Noto Sans CJK JP,{backroom_title_size},&H00FFFFFF&,&H000000FF&,&H00FFFFFF&,&H00000000&,-1,0,0,0,100,100,0,0,1,2,0,6,0,50,{backroom_title_margin_v},1
+Style: BackroomTitle,Noto Sans CJK JP,{backroom_title_size},&H00FFFFFF&,&H000000FF&,&H00FFFFFF&,&H00000000&,-1,0,0,0,100,100,0,0,1,2,0,6,0,150,{backroom_title_margin_v},1
 Style: TopicVertical,Noto Sans CJK JP,{topic_font_size},{primary_color},&H000000FF&,&H80000000&,&H00000000&,0,0,0,0,100,100,0,0,1,1,0,7,30,0,50,1
 
 [Events]
@@ -2229,7 +2229,7 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
         section_markers.append({"title": "エンディング", "start_idx": len(all_dialogue)})
     all_dialogue.extend(ending)
 
-    # エンディングと控室の間に無音（間）を挿入
+    # 控え室パート
     green_room = script.get("green_room", [])
 
     # 控室の固定開始フレーズを先頭に挿入
@@ -2239,16 +2239,6 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
             {"speaker": "ヒロシ", "text": "お疲れ様〜〜"},
         ]
         green_room = fixed_greeting + green_room
-
-    if ending and green_room:
-        silence_segment = {
-            "speaker": "（間）",
-            "text": "（間）",  # フィルタで除外されないよう4文字以上
-            "section": "間",
-            "is_silence": True,
-            "silence_duration_ms": 3000  # 3秒の無音
-        }
-        all_dialogue.append(silence_segment)
 
     # 控え室（素のボヤキ）※エンディングジングルの後に再生
     for d in green_room:
