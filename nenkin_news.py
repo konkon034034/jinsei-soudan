@@ -1761,51 +1761,6 @@ def generate_gradient_background(output_path: str, title: str = ""):
     print(f"    [背景] ✓ フォールバック背景生成完了")
 
 
-def wrap_text(text: str, max_chars: int = 30) -> str:
-    """長いテキストを自動折り返し（ASS用）"""
-    if len(text) <= max_chars:
-        return text
-
-    # 句読点や助詞で区切りを見つける
-    break_chars = ['、', '。', '！', '？', 'は', 'が', 'を', 'に', 'で', 'と', 'の']
-    lines = []
-    current = ""
-
-    for char in text:
-        current += char
-        if len(current) >= max_chars:
-            # 区切り文字を探す
-            for bc in break_chars:
-                idx = current.rfind(bc)
-                if idx > 0 and idx < len(current) - 1:
-                    lines.append(current[:idx + 1])
-                    current = current[idx + 1:]
-                    break
-            else:
-                # 区切りが見つからない場合は強制改行
-                lines.append(current)
-                current = ""
-
-    if current:
-        lines.append(current)
-
-    # 最大3行まで
-    if len(lines) > 3:
-        lines = lines[:3]
-        lines[-1] = lines[-1][:max_chars - 3] + "..."
-
-    return "\\N".join(lines)
-
-
-def to_vertical(text: str) -> str:
-    """テキストを縦書き用に変換（ASS用）
-
-    各文字を \\N で区切ることで縦書き表示を実現
-    例: "年金改正" → "年\\N金\\N改\\N正"
-    """
-    return "\\N".join(list(text))
-
-
 def draw_topic_overlay(base_img: Image.Image, title: str, date_str: str = "") -> Image.Image:
     """背景画像にトピック・日付のオーバーレイを描画
 
@@ -2021,154 +1976,6 @@ def create_topic_overlay_transparent(title: str, date_str: str = "") -> Image.Im
         draw.text((text_x, text_y + i * line_height), line, font=title_font, fill=text_color)
 
     return img
-
-
-def generate_ass_subtitles(segments: list, output_path: str, section_markers: list = None) -> None:
-    """ASS字幕を生成（セリフ字幕＋出典字幕）
-
-    - セリフ字幕: 画面下部（控室セクションはゴールド色）
-    - 出典字幕: 透かしバーのすぐ上、左寄せ
-    """
-    # セリフ字幕設定（画面下部）
-    font_size = int(VIDEO_WIDTH * 0.075)  # 画面幅の7.5% ≈ 144px
-    margin_bottom = int(VIDEO_HEIGHT * 0.05)  # 下から5%
-    margin_left = int(VIDEO_WIDTH * 0.15)
-    margin_right = int(VIDEO_WIDTH * 0.15)
-
-    # ASS色形式: &HAABBGGRR& （末尾に&を追加）
-    primary_color = "&H00FFFFFF&"  # 白文字
-    shadow_color = "&H80000000&"   # 半透明黒シャドウ
-    orange_color = "&H00356BFF&"   # #FF6B35 → BGR: 356BFF（オレンジ）
-    gold_color = "&H0000D7FF&"     # #FFD700 → BGR: 00D7FF（ゴールド）
-
-    # 出典表示設定（右揃え、白文字、縁取りなし）
-    source_font_size = 72
-    bar_height = int(VIDEO_HEIGHT * 0.45)  # 透かしバーの高さ（画面の45%）
-    source_margin_bottom = bar_height + 10  # 透かしの上10px
-
-    # トピック縦書き設定（画面左端）
-    topic_font_size = 90
-
-    # 控室タイトル設定（右上寄り、白文字）
-    backroom_title_size = 180
-    backroom_title_margin_v = 250  # もっと上
-
-    header = f"""[Script Info]
-Title: 年金ニュース
-ScriptType: v4.00+
-PlayResX: {VIDEO_WIDTH}
-PlayResY: {VIDEO_HEIGHT}
-WrapStyle: 0
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF&,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
-Style: Backroom,Noto Sans CJK JP,{font_size},{gold_color},&H000000FF&,&H80000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,1,0,1,{margin_left},{margin_right},{margin_bottom},1
-Style: Source,Noto Sans CJK JP,{source_font_size},{primary_color},&H000000FF&,&H00FFFFFF&,&H00000000&,0,0,0,0,100,100,0,0,1,0,0,3,0,30,{source_margin_bottom},1
-Style: BackroomTitle,Noto Sans CJK JP,{backroom_title_size},&H00FFFFFF&,&H000000FF&,&H00FFFFFF&,&H00000000&,-1,0,0,0,100,100,0,0,1,2,0,6,0,150,{backroom_title_margin_v},1
-Style: TopicVertical,Noto Sans CJK JP,{topic_font_size},{primary_color},&H000000FF&,&H80000000&,&H00000000&,0,0,0,0,100,100,0,0,1,1,0,7,30,0,50,1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-"""
-
-    lines = [header]
-
-    # 出典字幕のタイミングを計算
-    source_timings = []
-    if section_markers and segments:
-        for i, marker in enumerate(section_markers):
-            start_idx = marker["start_idx"]
-            # このセクションの開始時間を取得
-            if start_idx < len(segments):
-                start_time = segments[start_idx]["start"]
-                # 次のセクションの開始時間または最後まで
-                if i + 1 < len(section_markers):
-                    next_idx = section_markers[i + 1]["start_idx"]
-                    if next_idx < len(segments):
-                        end_time = segments[next_idx]["start"]
-                    else:
-                        end_time = segments[-1]["end"] if segments else start_time + 5
-                else:
-                    end_time = segments[-1]["end"] if segments else start_time + 5
-                source_timings.append({
-                    "source": marker.get("source", ""),
-                    "start": start_time,
-                    "end": end_time,
-                })
-
-    # 出典字幕を追加（右揃え、白文字）
-    for item in source_timings:
-        if item.get("source"):
-            start = f"0:{int(item['start']//60):02d}:{int(item['start']%60):02d}.{int((item['start']%1)*100):02d}"
-            end = f"0:{int(item['end']//60):02d}:{int(item['end']%60):02d}.{int((item['end']%1)*100):02d}"
-            source_text = f"出典: {item['source']}"
-            lines.append(f"Dialogue: 2,{start},{end},Source,,0,0,0,,{source_text}")
-
-    # トピック縦書き字幕を追加（左端、縦書き）
-    # オープニング・エンディング・控室以外のニュースセクションのみ表示
-    if section_markers and segments:
-        for i, marker in enumerate(section_markers):
-            title = marker.get("title", "")
-            # オープニング・深掘り・エンディング・控室は除外
-            if title in ["オープニング", "深掘りコーナー", "エンディング", "控え室"]:
-                continue
-            start_idx = marker["start_idx"]
-            if start_idx < len(segments):
-                start_time = segments[start_idx]["start"]
-                # 次のセクションの開始時間まで
-                if i + 1 < len(section_markers):
-                    next_idx = section_markers[i + 1]["start_idx"]
-                    if next_idx < len(segments):
-                        end_time = segments[next_idx]["start"]
-                    else:
-                        end_time = segments[-1]["end"] if segments else start_time + 5
-                else:
-                    end_time = segments[-1]["end"] if segments else start_time + 5
-                start = f"0:{int(start_time//60):02d}:{int(start_time%60):02d}.{int((start_time%1)*100):02d}"
-                end = f"0:{int(end_time//60):02d}:{int(end_time%60):02d}.{int((end_time%1)*100):02d}"
-                # 縦書き変換
-                vertical_title = to_vertical(title)
-                lines.append(f"Dialogue: 3,{start},{end},TopicVertical,,0,0,0,,{vertical_title}")
-
-    # セリフ字幕を追加（控室セクションは黄色、無音セグメントはスキップ）
-    backroom_start = None
-    backroom_end = None
-    for seg in segments:
-        # 無音セグメントは字幕を表示しない
-        if seg.get("is_silence"):
-            continue
-
-        start = f"0:{int(seg['start']//60):02d}:{int(seg['start']%60):02d}.{int((seg['start']%1)*100):02d}"
-        end = f"0:{int(seg['end']//60):02d}:{int(seg['end']%60):02d}.{int((seg['end']%1)*100):02d}"
-        # 長いセリフは40文字で省略（トピックは60文字）
-        dialogue_text = seg['text']
-        if len(dialogue_text) > 40:
-            dialogue_text = dialogue_text[:37] + "..."
-        # セリフのみ表示（話者名なし）、折り返し
-        wrapped_text = wrap_text(dialogue_text, max_chars=16)  # 1行16文字で折り返し（3行対応）
-        # 控室セクションは黄色(Backroom)、それ以外は白(Default)
-        is_backroom = seg.get("section") == "控え室"
-        style = "Backroom" if is_backroom else "Default"
-        lines.append(f"Dialogue: 0,{start},{end},{style},,0,0,0,,{wrapped_text}")
-
-        # 控室セクションの開始・終了を記録
-        if is_backroom:
-            if backroom_start is None:
-                backroom_start = seg['start']
-            backroom_end = seg['end']
-
-    # 控室タイトル「控室にて。」を画面中央に表示
-    if backroom_start is not None and backroom_end is not None:
-        br_start = f"0:{int(backroom_start//60):02d}:{int(backroom_start%60):02d}.{int((backroom_start%1)*100):02d}"
-        br_end = f"0:{int(backroom_end//60):02d}:{int(backroom_end%60):02d}.{int((backroom_end%1)*100):02d}"
-        lines.append(f"Dialogue: 1,{br_start},{br_end},BackroomTitle,,0,0,0,,控室にて。")
-
-    with open(output_path, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(lines))
-
-    # デバッグ: ASS 出力確認
-    print(f"  [ASS字幕] 出力: {output_path}")
 
 
 def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) -> tuple:
@@ -2436,89 +2243,43 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     if not os.path.exists(bg_path):
         raise ValueError(f"背景画像の生成に失敗しました: {bg_path}")
 
-    # ASS字幕（トピック字幕含む）
-    ass_path = str(temp_dir / "subtitles.ass")
-    generate_ass_subtitles(all_segments, ass_path, section_markers)
-
-    # 動画生成
+    # 動画生成（PILフレーム描画方式）
     output_path = str(temp_dir / f"nenkin_news_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
 
     if USE_MODAL_GPU:
-        # Modal GPU エンコード (T4 GPU, h264_nvenc)
-        print("  [動画生成] Modal GPU エンコード開始...")
+        # Modal GPU エンコード (PILフレーム描画 + h264_nvenc)
+        print("  [動画生成] Modal GPU (PILフレーム描画) 開始...")
         import modal
 
         # デプロイ済み関数をルックアップ
-        encode_video_gpu = modal.Function.from_name("nenkin-video", "encode_video_gpu")
+        encode_video_with_frames = modal.Function.from_name("nenkin-video", "encode_video_with_frames")
 
         # ファイルをbase64エンコード
         with open(bg_path, "rb") as f:
             bg_base64 = base64.b64encode(f.read()).decode()
         with open(audio_path, "rb") as f:
             audio_base64 = base64.b64encode(f.read()).decode()
-        with open(ass_path, "r", encoding="utf-8") as f:
-            ass_content = f.read()
+
+        # セグメント情報をJSON化（Modal関数に渡す）
+        segments_json = json.dumps(all_segments, ensure_ascii=False)
 
         output_name = os.path.basename(output_path)
 
-        # 控室開始時刻を秒に変換（背景を黒にするため）
-        backroom_start_sec = backroom_start_ms / 1000 if backroom_start_ms is not None else None
-        if backroom_start_sec is not None:
-            print(f"  [動画] 控室開始 {backroom_start_sec:.1f}秒 から背景を黒に切り替え予定")
+        print(f"  [動画] セグメント数: {len(all_segments)}")
 
-        # Modal リモート呼び出し（控室開始時刻を渡す）
-        video_bytes = encode_video_gpu.remote(bg_base64, audio_base64, ass_content, output_name, backroom_start_sec)
+        # Modal リモート呼び出し（PILフレーム描画版）
+        video_bytes = encode_video_with_frames.remote(bg_base64, audio_base64, segments_json, output_name)
 
         # 結果をファイルに書き込み
         with open(output_path, "wb") as f:
             f.write(video_bytes)
 
-        print(f"✓ 動画生成完了 (Modal GPU): {output_path}")
+        print(f"✓ 動画生成完了 (Modal GPU PILフレーム): {output_path}")
     else:
-        # ローカル CPU エンコード (libx264)
-        # 背景バーの設定
-        bar_height = int(VIDEO_HEIGHT * 0.45)  # 画面の45%（3行字幕も収まる高さ）
-        bar_y = VIDEO_HEIGHT - bar_height  # バーのY座標（画面下部）
+        # ローカル実行は未対応（Modal GPU必須）
+        raise ValueError("PILフレーム描画方式はModal GPU必須です。USE_MODAL_GPU=true を設定してください。")
 
-        # 控室開始時刻を秒に変換（背景を黒にするため）
-        backroom_start_sec = backroom_start_ms / 1000 if backroom_start_ms is not None else None
-
-        # ffmpegフィルター: scale → (控室から黒背景) → 背景バー描画 → 字幕
-        # 茶色系: rgba(60,40,30,0.8) → ffmpegでは 0x3C281E@0.8
-        # fontsdir でフォントディレクトリを明示的に指定（日本語フォント対応）
-        if backroom_start_sec is not None:
-            # 控室開始から背景を真っ黒に切り替え
-            vf_filter = (
-                f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},"
-                f"drawbox=x=0:y=0:w={VIDEO_WIDTH}:h={VIDEO_HEIGHT}:color=black:t=fill:enable='gte(t,{backroom_start_sec})',"
-                f"drawbox=x=0:y={bar_y}:w={VIDEO_WIDTH}:h={bar_height}:color=0x3C281E@0.8:t=fill,"
-                f"ass={ass_path}:fontsdir=/usr/share/fonts"
-            )
-            print(f"  [動画] 控室開始 {backroom_start_sec:.1f}秒 から背景を黒に切り替え")
-        else:
-            vf_filter = (
-                f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},"
-                f"drawbox=x=0:y={bar_y}:w={VIDEO_WIDTH}:h={bar_height}:color=0x3C281E@0.8:t=fill,"
-                f"ass={ass_path}:fontsdir=/usr/share/fonts"
-            )
-
-        cmd = [
-            'ffmpeg', '-y',
-            '-loop', '1', '-i', bg_path,
-            '-i', audio_path,
-            '-vf', vf_filter,
-            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
-            '-c:a', 'aac', '-b:a', '192k',
-            '-shortest',
-            '-pix_fmt', 'yuv420p',
-            '-movflags', '+faststart',
-            output_path
-        ]
-
-        subprocess.run(cmd, capture_output=True, check=True)
-        print(f"✓ 動画生成完了 (ローカル CPU): {output_path}")
-
-    return output_path, ass_path
+    return output_path, None
 
 
 def upload_to_youtube(video_path: str, title: str, description: str, tags: list) -> str:
