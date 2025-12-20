@@ -22,7 +22,7 @@ image = modal.Image.debian_slim().apt_install(
 
 
 @app.function(gpu="T4", image=image, timeout=600)
-def encode_video_gpu(bg_base64: str, audio_base64: str, ass_content: str, output_name: str) -> bytes:
+def encode_video_gpu(bg_base64: str, audio_base64: str, ass_content: str, output_name: str, backroom_start_sec: float = None) -> bytes:
     """
     GPU (h264_nvenc) で動画をエンコード
 
@@ -31,6 +31,7 @@ def encode_video_gpu(bg_base64: str, audio_base64: str, ass_content: str, output
         audio_base64: 音声ファイル（base64）
         ass_content: 字幕ファイルの内容
         output_name: 出力ファイル名
+        backroom_start_sec: 控室開始時刻（秒）。指定時は背景を黒に切り替え
 
     Returns:
         bytes: エンコードされた動画データ
@@ -60,11 +61,21 @@ def encode_video_gpu(bg_base64: str, audio_base64: str, ass_content: str, output
 
         # GPU エンコード（h264_nvenc）
         # fontsdir でフォントディレクトリを明示的に指定
-        vf_filter = (
-            f"scale=1920:1080,"
-            f"drawbox=x=0:y={bar_y}:w=1920:h={bar_height}:color=0x3C281E@0.8:t=fill,"
-            f"ass={ass_path}:fontsdir=/usr/share/fonts"
-        )
+        if backroom_start_sec is not None:
+            # 控室開始から背景を真っ黒に切り替え
+            vf_filter = (
+                f"scale=1920:1080,"
+                f"drawbox=x=0:y=0:w=1920:h=1080:color=black:t=fill:enable='gte(t,{backroom_start_sec})',"
+                f"drawbox=x=0:y={bar_y}:w=1920:h={bar_height}:color=0x3C281E@0.8:t=fill,"
+                f"ass={ass_path}:fontsdir=/usr/share/fonts"
+            )
+            print(f"  [動画] 控室開始 {backroom_start_sec:.1f}秒 から背景を黒に切り替え")
+        else:
+            vf_filter = (
+                f"scale=1920:1080,"
+                f"drawbox=x=0:y={bar_y}:w=1920:h={bar_height}:color=0x3C281E@0.8:t=fill,"
+                f"ass={ass_path}:fontsdir=/usr/share/fonts"
+            )
 
         cmd = [
             'ffmpeg', '-y',

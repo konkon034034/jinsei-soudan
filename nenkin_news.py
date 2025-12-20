@@ -1978,13 +1978,11 @@ def create_topic_overlay_transparent(title: str, date_str: str = "") -> Image.Im
     return img
 
 
-def generate_ass_subtitles(segments: list, output_path: str, section_markers: list = None) -> list:
-    """ASS字幕を生成（セリフ字幕＋トピック字幕）
+def generate_ass_subtitles(segments: list, output_path: str, section_markers: list = None) -> None:
+    """ASS字幕を生成（セリフ字幕＋出典字幕）
 
-    画面右上にトピックボックスを表示
-
-    Returns:
-        topic_timings: トピックのタイミング情報リスト
+    - セリフ字幕: 画面下部（控室セクションはゴールド色）
+    - 出典字幕: 透かしバーのすぐ上、左寄せ
     """
     # セリフ字幕設定（画面下部）
     font_size = int(VIDEO_WIDTH * 0.075)  # 画面幅の7.5% ≈ 144px
@@ -1992,23 +1990,10 @@ def generate_ass_subtitles(segments: list, output_path: str, section_markers: li
     margin_left = int(VIDEO_WIDTH * 0.15)
     margin_right = int(VIDEO_WIDTH * 0.15)
 
-    # 画面右上のトピック表示設定
-    # 日付: 右上、オレンジ、24px
-    date_font_size = 24
-    date_margin_top = 30
-    date_margin_right = 30
-
-    # トピックボックス: 日付の下、白背景、黒文字、28px
-    topic_font_size = 28
-    topic_margin_top = date_margin_top + date_font_size + 20  # 日付の下20px
-    topic_margin_right = 30
-
     # ASS色形式: &HAABBGGRR& （末尾に&を追加）
     primary_color = "&H00FFFFFF&"  # 白文字
     shadow_color = "&H80000000&"   # 半透明黒シャドウ
     orange_color = "&H00356BFF&"   # #FF6B35 → BGR: 356BFF（オレンジ）
-    topic_text_color = "&H00000000&"  # 黒文字
-    topic_bg_color = "&HF2FFFFFF&"  # 白背景 rgba(255,255,255,0.95)
     gold_color = "&H0000D7FF&"     # #FFD700 → BGR: 00D7FF（ゴールド）
 
     # 出典表示設定（透かしのすぐ上、左寄せ）
@@ -2028,8 +2013,6 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF&,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
 Style: Backroom,Noto Sans CJK JP,{font_size},{gold_color},&H000000FF&,{gold_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
 Style: Source,Noto Sans CJK JP,{source_font_size},{orange_color},&H000000FF&,&H00FFFFFF&,&H00000000&,0,0,0,0,100,100,0,0,1,2,0,1,30,0,{source_margin_bottom},1
-Style: Date,Noto Sans CJK JP,{date_font_size},{orange_color},&H000000FF&,&H00000000&,&H00000000&,0,0,0,0,100,100,0,0,1,0,0,9,0,{date_margin_right},{date_margin_top},1
-Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_text_color},&H000000FF&,&H00000000&,{topic_bg_color},-1,0,0,0,100,100,0,0,3,20,0,9,0,{topic_margin_right},{topic_margin_top},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -2037,12 +2020,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     lines = [header]
 
-    # 今日の日付を取得
-    from datetime import datetime
-    today_str = datetime.now().strftime("%Y年%m月%d日")
-
-    # トピック字幕のタイミングを計算
-    topic_timings = []
+    # 出典字幕のタイミングを計算
+    source_timings = []
     if section_markers and segments:
         for i, marker in enumerate(section_markers):
             start_idx = marker["start_idx"]
@@ -2058,30 +2037,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         end_time = segments[-1]["end"] if segments else start_time + 5
                 else:
                     end_time = segments[-1]["end"] if segments else start_time + 5
-                topic_timings.append({
-                    "title": marker["title"],
+                source_timings.append({
                     "source": marker.get("source", ""),
                     "start": start_time,
                     "end": end_time,
                 })
 
-    # トピック字幕を追加（画面右上）
-    for topic in topic_timings:
-        start = f"0:{int(topic['start']//60):02d}:{int(topic['start']%60):02d}.{int((topic['start']%1)*100):02d}"
-        end = f"0:{int(topic['end']//60):02d}:{int(topic['end']%60):02d}.{int((topic['end']%1)*100):02d}"
-
-        # 日付（右上）
-        lines.append(f"Dialogue: 1,{start},{end},Date,,0,0,0,,{today_str}")
-
-        # トピックタイトル（省略処理: 60文字超は...）
-        topic_text = topic['title']
-        if len(topic_text) > 60:
-            topic_text = topic_text[:57] + "..."
-        lines.append(f"Dialogue: 1,{start},{end},Topic,,0,0,0,,{topic_text}")
-
-        # 出典（透かしのすぐ上、左寄せ）
-        if topic.get("source"):
-            source_text = f"出典: {topic['source']}"
+    # 出典字幕を追加（透かしのすぐ上、左寄せ）
+    for item in source_timings:
+        if item.get("source"):
+            start = f"0:{int(item['start']//60):02d}:{int(item['start']%60):02d}.{int((item['start']%1)*100):02d}"
+            end = f"0:{int(item['end']//60):02d}:{int(item['end']%60):02d}.{int((item['end']%1)*100):02d}"
+            source_text = f"出典: {item['source']}"
             lines.append(f"Dialogue: 2,{start},{end},Source,,0,0,0,,{source_text}")
 
     # セリフ字幕を追加（控室セクションは黄色）
@@ -2103,8 +2070,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     # デバッグ: ASS 出力確認
     print(f"  [ASS字幕] 出力: {output_path}")
-
-    return topic_timings
 
 
 def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) -> tuple:
@@ -2384,8 +2349,13 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
 
         output_name = os.path.basename(output_path)
 
-        # Modal リモート呼び出し
-        video_bytes = encode_video_gpu.remote(bg_base64, audio_base64, ass_content, output_name)
+        # 控室開始時刻を秒に変換（背景を黒にするため）
+        backroom_start_sec = backroom_start_ms / 1000 if backroom_start_ms is not None else None
+        if backroom_start_sec is not None:
+            print(f"  [動画] 控室開始 {backroom_start_sec:.1f}秒 から背景を黒に切り替え予定")
+
+        # Modal リモート呼び出し（控室開始時刻を渡す）
+        video_bytes = encode_video_gpu.remote(bg_base64, audio_base64, ass_content, output_name, backroom_start_sec)
 
         # 結果をファイルに書き込み
         with open(output_path, "wb") as f:
