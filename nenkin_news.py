@@ -2095,8 +2095,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     for seg in segments:
         start = f"0:{int(seg['start']//60):02d}:{int(seg['start']%60):02d}.{int((seg['start']%1)*100):02d}"
         end = f"0:{int(seg['end']//60):02d}:{int(seg['end']%60):02d}.{int((seg['end']%1)*100):02d}"
-        # セリフのみ表示（話者名なし）、長い場合は折り返し
-        wrapped_text = wrap_text(seg['text'], max_chars=16)  # 1行16文字で折り返し（3行対応）
+        # 長いセリフは40文字で省略（トピックは60文字）
+        dialogue_text = seg['text']
+        if len(dialogue_text) > 40:
+            dialogue_text = dialogue_text[:37] + "..."
+        # セリフのみ表示（話者名なし）、折り返し
+        wrapped_text = wrap_text(dialogue_text, max_chars=16)  # 1行16文字で折り返し（3行対応）
         lines.append(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{wrapped_text}")
 
     with open(output_path, 'w', encoding='utf-8') as f:
