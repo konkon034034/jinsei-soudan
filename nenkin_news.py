@@ -1329,11 +1329,18 @@ def _process_chunk_parallel(args: tuple) -> dict:
 
     duration = 0.0
     if success and os.path.exists(chunk_path):
-        result = subprocess.run([
-            'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-            '-of', 'default=noprint_wrappers=1:nokey=1', chunk_path
-        ], capture_output=True, text=True)
-        duration = float(result.stdout.strip()) if result.stdout.strip() else 0.0
+        # pydubで正確な音声長を取得（ミリ秒精度）
+        try:
+            from pydub import AudioSegment
+            audio = AudioSegment.from_file(chunk_path)
+            duration = len(audio) / 1000.0  # ミリ秒→秒
+        except Exception:
+            # フォールバック: ffprobe
+            result = subprocess.run([
+                'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                '-of', 'default=noprint_wrappers=1:nokey=1', chunk_path
+            ], capture_output=True, text=True)
+            duration = float(result.stdout.strip()) if result.stdout.strip() else 0.0
 
     return {
         "index": chunk_index,
@@ -2018,12 +2025,12 @@ def generate_ass_subtitles(segments: list, output_path: str, section_markers: li
     source_margin_right = 15  # 画面右端から15px
     source_margin_top = 30  # 上から30px（日付と同じ高さから開始）
 
-    # ASS色形式: &HAABBGGRR
-    primary_color = "&H00FFFFFF"  # 白文字
-    shadow_color = "&H80000000"   # 半透明黒シャドウ
-    orange_color = "&H00356BFF"   # #FF6B35 → BGR: 356BFF
-    topic_text_color = "&H00000000"  # 黒文字
-    topic_bg_color = "&HF2FFFFFF"  # 白背景 rgba(255,255,255,0.95)
+    # ASS色形式: &HAABBGGRR& （末尾に&を追加）
+    primary_color = "&H00FFFFFF&"  # 白文字
+    shadow_color = "&H80000000&"   # 半透明黒シャドウ
+    orange_color = "&H00356BFF&"   # #FF6B35 → BGR: 356BFF（オレンジ）
+    topic_text_color = "&H00000000&"  # 黒文字
+    topic_bg_color = "&HF2FFFFFF&"  # 白背景 rgba(255,255,255,0.95)
 
     header = f"""[Script Info]
 Title: 年金ニュース
@@ -2034,10 +2041,10 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
-Style: Date,Noto Sans CJK JP,{date_font_size},{orange_color},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,9,0,{date_margin_right},{date_margin_top},1
-Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_text_color},&H000000FF,&H00000000,{topic_bg_color},-1,0,0,0,100,100,0,0,3,20,0,9,0,{topic_margin_right},{topic_margin_top},1
-Style: Source,Noto Sans CJK JP,{source_font_size},{orange_color},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,{source_margin_right},{source_margin_top},1
+Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF&,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
+Style: Date,Noto Sans CJK JP,{date_font_size},{orange_color},&H000000FF&,&H00000000&,&H00000000&,0,0,0,0,100,100,0,0,1,0,0,9,0,{date_margin_right},{date_margin_top},1
+Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_text_color},&H000000FF&,&H00000000&,{topic_bg_color},-1,0,0,0,100,100,0,0,3,20,0,9,0,{topic_margin_right},{topic_margin_top},1
+Style: Source,Noto Sans CJK JP,{source_font_size},{orange_color},&H000000FF&,&H00000000&,&H00000000&,0,0,0,0,100,100,0,0,1,0,0,7,0,{source_margin_right},{source_margin_top},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -2108,6 +2115,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines))
+
+    # デバッグ: ASS スタイル出力確認
+    print(f"  [ASS字幕] 出力: {output_path}")
+    print(f"  [ASS] Source色: {orange_color} (オレンジ #FF6B35)")
 
     return topic_timings
 
