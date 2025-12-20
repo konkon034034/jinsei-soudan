@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 年金ニュース動画自動生成システム
-- TOKEN_23（年金ニュースチャンネル）用
+- TOKEN_2（ネンキン年金ニュースラジオ）用
 - Gemini APIでニュース収集→台本生成→Gemini TTS→動画生成→YouTube投稿
 """
 
@@ -33,7 +33,7 @@ from google.cloud import texttospeech
 # ===== 定数 =====
 VIDEO_WIDTH = 1920
 VIDEO_HEIGHT = 1080
-CHANNEL = "23"  # TOKEN_23固定
+CHANNEL = "2"  # TOKEN_2固定
 
 # テストモード（環境変数で制御）
 # TEST_MODE=true: 短縮版（1ニュース、5セリフ、約20秒）
@@ -1968,10 +1968,10 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
 
 
 def upload_to_youtube(video_path: str, title: str, description: str, tags: list) -> str:
-    """YouTubeにアップロード（TOKEN_23、限定公開）"""
+    """YouTubeにアップロード（TOKEN_2、限定公開）"""
     client_id = os.environ.get("YOUTUBE_CLIENT_ID")
     client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
-    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_23")
+    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_2")
 
     if not all([client_id, client_secret, refresh_token]):
         raise ValueError("YouTube認証情報が不足しています")
@@ -2025,7 +2025,7 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list)
     print("YouTube投稿完了!")
     print("=" * 40)
     print(f"動画URL: {url}")
-    print(f"チャンネル: TOKEN_23")
+    print(f"チャンネル: TOKEN_2")
     print(f"タイトル: {title}")
     print(f"公開設定: 限定公開")
     print("=" * 40)
@@ -2349,7 +2349,7 @@ def set_youtube_thumbnail(video_id: str, thumbnail_path: str) -> bool:
 
     client_id = os.environ.get("YOUTUBE_CLIENT_ID")
     client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
-    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_23")
+    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_2")
 
     if not all([client_id, client_secret, refresh_token]):
         print("  ⚠ YouTube認証情報が不足のためサムネイル設定をスキップ")
@@ -2405,7 +2405,7 @@ def post_youtube_comment(video_id: str, comment_text: str) -> bool:
 
     client_id = os.environ.get("YOUTUBE_CLIENT_ID")
     client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
-    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_23")
+    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_2")
 
     if not all([client_id, client_secret, refresh_token]):
         print("  ⚠ YouTube認証情報が不足のためコメント投稿をスキップ")
