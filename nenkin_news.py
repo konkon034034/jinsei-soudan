@@ -2013,9 +2013,10 @@ def generate_ass_subtitles(segments: list, output_path: str, section_markers: li
     topic_margin_top = date_margin_top + date_font_size + 20  # 日付の下20px
     topic_margin_right = 30
 
-    # 出典: トピックの下、オレンジ、18px
-    source_font_size = 18
-    source_margin_top = topic_margin_top + 80  # トピックボックスの下（仮）
+    # 出典: 縦書きで画面右端に配置、オレンジ、20px
+    source_font_size = 20
+    source_margin_right = 15  # 画面右端から15px
+    source_margin_top = 30  # 上から30px（日付と同じ高さから開始）
 
     # ASS色形式: &HAABBGGRR
     primary_color = "&H00FFFFFF"  # 白文字
@@ -2036,7 +2037,7 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
 Style: Date,Noto Sans CJK JP,{date_font_size},{orange_color},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,9,0,{date_margin_right},{date_margin_top},1
 Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_text_color},&H000000FF,&H00000000,{topic_bg_color},-1,0,0,0,100,100,0,0,3,20,0,9,0,{topic_margin_right},{topic_margin_top},1
-Style: Source,Noto Sans CJK JP,{source_font_size},{orange_color},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,9,0,{topic_margin_right},{source_margin_top},1
+Style: Source,Noto Sans CJK JP,{source_font_size},{orange_color},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,{source_margin_right},{source_margin_top},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -2086,10 +2087,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             topic_text = topic_text[:57] + "..."
         lines.append(f"Dialogue: 1,{start},{end},Topic,,0,0,0,,{topic_text}")
 
-        # 出典（あれば）
+        # 出典（あれば）- 縦書きで画面右端に配置
         if topic.get("source"):
-            source_text = f"出典: {topic['source']}"
-            lines.append(f"Dialogue: 1,{start},{end},Source,,0,0,0,,{source_text}")
+            # 縦書き変換: 1文字ずつ\Nで区切る
+            source_raw = f"出典:{topic['source']}"
+            source_vertical = "\\N".join(list(source_raw))  # ASS形式の改行
+            lines.append(f"Dialogue: 1,{start},{end},Source,,0,0,0,,{source_vertical}")
 
     # セリフ字幕を追加
     for seg in segments:
@@ -2290,11 +2293,11 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
             main_audio = audio[:green_room_start_ms]
             backroom_audio = audio[green_room_start_ms:]
 
-            # 10秒の無音を挿入
-            silence_duration = 10000  # 10秒
+            # 5秒の無音を挿入
+            silence_duration = 5000  # 5秒
             silence = AudioSegment.silent(duration=silence_duration, frame_rate=audio.frame_rate)
 
-            # 結合: 本編 + 10秒無音 + 控え室
+            # 結合: 本編 + 5秒無音 + 控え室
             combined = main_audio + silence + backroom_audio
             combined = combined.set_frame_rate(24000).set_channels(1).set_sample_width(2)
 
@@ -2310,7 +2313,7 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
                 all_segments[i]["start"] += added_duration
                 all_segments[i]["end"] += added_duration
 
-            print(f"  ✓ 10秒無音挿入完了（構成: 本編→10秒無音→控え室）")
+            print(f"  ✓ 5秒無音挿入完了（構成: 本編→5秒無音→控え室）")
         except Exception as e:
             print(f"  ⚠ 無音挿入エラー: {e}")
     else:
