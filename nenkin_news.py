@@ -2287,6 +2287,61 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     # 音声は1本で生成済み（本編→締め→控え室が自然に連続）
     # 無音挿入や分割処理は不要
 
+    # 控え室BGMを追加（オプション）
+    BACKROOM_BGM_FILE_ID = "1wP6bp0a0PlaaqM55b8zdwozxT0XTOvab"
+    backroom_bgm_path = str(temp_dir / "backroom_bgm.mp3")
+
+    # 控え室セクションの開始位置を検出
+    backroom_start_ms = None
+    for seg in all_segments:
+        if seg.get("section") == "控え室":
+            backroom_start_ms = int(seg["start"] * 1000)
+            break
+
+    if backroom_start_ms is not None:
+        print(f"  [控え室BGM] 開始位置: {backroom_start_ms / 1000:.1f}秒")
+        if download_jingle_from_drive(BACKROOM_BGM_FILE_ID, backroom_bgm_path):
+            try:
+                from pydub import AudioSegment
+
+                # メイン音声を読み込み
+                main_audio = AudioSegment.from_file(audio_path)
+                total_duration_ms = len(main_audio)
+
+                # BGMを読み込み、音量を下げる（-18dB）
+                bgm = AudioSegment.from_file(backroom_bgm_path)
+                bgm = bgm - 18  # 会話の邪魔にならないよう控えめに
+                print(f"    [BGM] 長さ: {len(bgm) / 1000:.1f}秒, 音量: -18dB")
+
+                # BGMが短ければループ
+                bgm_duration_needed = total_duration_ms - backroom_start_ms
+                if len(bgm) < bgm_duration_needed:
+                    loop_count = (bgm_duration_needed // len(bgm)) + 1
+                    bgm = bgm * loop_count
+                    print(f"    [BGM] {loop_count}回ループ")
+
+                # 必要な長さにトリム
+                bgm = bgm[:bgm_duration_needed]
+
+                # 最後の5秒でフェードアウト
+                fade_duration = min(5000, len(bgm))
+                bgm = bgm.fade_out(fade_duration)
+
+                # メイン音声にBGMをオーバーレイ
+                final_audio = main_audio.overlay(bgm, position=backroom_start_ms)
+
+                # 出力
+                final_audio = final_audio.set_frame_rate(24000).set_channels(1).set_sample_width(2)
+                final_audio.export(audio_path, format="wav")
+                print(f"  ✓ 控え室BGM追加完了")
+
+            except Exception as e:
+                print(f"  ⚠ 控え室BGM追加エラー: {e}")
+        else:
+            print("  ⚠ 控え室BGMダウンロード失敗、スキップ")
+    else:
+        print("  [控え室BGM] 控え室セクションが見つかりません、スキップ")
+
     # 最終音声長を取得
     result = subprocess.run([
         'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
