@@ -2273,51 +2273,8 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
         import shutil
         shutil.copy(tts_audio_path, audio_path)
 
-    # 控え室前に10秒無音を挿入（エンディングジングルは使用しない）
-    print("  [セクション間無音] 挿入中...")
-    green_room_start_idx = None
-    for i, d in enumerate(all_dialogue):
-        if d.get("section") == "控え室":
-            green_room_start_idx = i
-            break
-
-    if green_room_start_idx is not None and green_room_start_idx < len(all_segments):
-        green_room_start_time = all_segments[green_room_start_idx]["start"]
-        green_room_start_ms = int(green_room_start_time * 1000)
-
-        try:
-            from pydub import AudioSegment
-            audio = AudioSegment.from_file(audio_path)
-
-            # 本編と控え室を分割
-            main_audio = audio[:green_room_start_ms]
-            backroom_audio = audio[green_room_start_ms:]
-
-            # 5秒の無音を挿入
-            silence_duration = 5000  # 5秒
-            silence = AudioSegment.silent(duration=silence_duration, frame_rate=audio.frame_rate)
-
-            # 結合: 本編 + 5秒無音 + 控え室
-            combined = main_audio + silence + backroom_audio
-            combined = combined.set_frame_rate(24000).set_channels(1).set_sample_width(2)
-
-            audio_with_silence_path = str(temp_dir / "audio_with_silence.wav")
-            combined.export(audio_with_silence_path, format="wav")
-
-            import shutil
-            shutil.move(audio_with_silence_path, audio_path)
-
-            # 控え室セグメント以降のタイミングをオフセット（10秒追加）
-            added_duration = silence_duration / 1000  # 10秒
-            for i in range(green_room_start_idx, len(all_segments)):
-                all_segments[i]["start"] += added_duration
-                all_segments[i]["end"] += added_duration
-
-            print(f"  ✓ 5秒無音挿入完了（構成: 本編→5秒無音→控え室）")
-        except Exception as e:
-            print(f"  ⚠ 無音挿入エラー: {e}")
-    else:
-        print("  ⚠ 控え室セクションが見つかりません、スキップ")
+    # 音声は1本で生成済み（本編→締め→控え室が自然に連続）
+    # 無音挿入や分割処理は不要
 
     # 最終音声長を取得
     result = subprocess.run([
