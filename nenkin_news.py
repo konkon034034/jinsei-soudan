@@ -2033,12 +2033,12 @@ def generate_ass_subtitles(segments: list, output_path: str, section_markers: li
     gold_color = "&H0000D7FF&"     # #FFD700 → BGR: 00D7FF（ゴールド）
 
     # 出典表示設定（透かしのすぐ上、左寄せ）
-    source_font_size = 24
+    source_font_size = 72  # 3倍サイズ
     bar_height = int(VIDEO_HEIGHT * 0.45)  # 透かしバーの高さ（画面の45%）
     source_margin_bottom = bar_height + 10  # 透かしの上10px
 
     # 控室タイトル設定（画面中央、白文字）
-    backroom_title_size = 48
+    backroom_title_size = 240  # 5倍サイズ
 
     header = f"""[Script Info]
 Title: 年金ニュース
@@ -2191,6 +2191,15 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
 
     # エンディングと控室の間に無音（間）を挿入
     green_room = script.get("green_room", [])
+
+    # 控室の固定開始フレーズを先頭に挿入
+    if green_room:
+        fixed_greeting = [
+            {"speaker": "カツミ", "text": "お疲れ様でした〜"},
+            {"speaker": "ヒロシ", "text": "お疲れ様〜〜"},
+        ]
+        green_room = fixed_greeting + green_room
+
     if ending and green_room:
         silence_segment = {
             "speaker": "（間）",
