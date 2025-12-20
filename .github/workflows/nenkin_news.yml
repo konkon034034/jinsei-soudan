@@ -79,10 +79,10 @@ jobs:
 
       - name: 環境変数チェック
         env:
-          YOUTUBE_REFRESH_TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
+          YOUTUBE_REFRESH_TOKEN_2: ${{ secrets.YOUTUBE_REFRESH_TOKEN_2 }}
         run: |
           echo "=== 環境変数チェック ==="
-          echo "YOUTUBE_REFRESH_TOKEN_23: $([ -n \"$YOUTUBE_REFRESH_TOKEN_23\" ] && echo '設定済み' || echo '未設定')"
+          echo "YOUTUBE_REFRESH_TOKEN_2: $([ -n \"$YOUTUBE_REFRESH_TOKEN_2\" ] && echo '設定済み' || echo '未設定')"
 
       - name: 動画を生成・投稿
         env:
@@ -118,7 +118,7 @@ jobs:
           GEMINI_API_KEY_28: ${{ secrets.GEMINI_API_KEY_28 }}
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          YOUTUBE_REFRESH_TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
+          YOUTUBE_REFRESH_TOKEN_2: ${{ secrets.YOUTUBE_REFRESH_TOKEN_2 }}
           JINGLE_FILE_ID: ${{ secrets.JINGLE_FILE_ID }}
           BACKGROUND_IMAGE_ID: ${{ secrets.BACKGROUND_IMAGE_ID }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
