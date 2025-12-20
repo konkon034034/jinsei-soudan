@@ -1761,13 +1761,12 @@ def wrap_text(text: str, max_chars: int = 30) -> str:
     return "\\N".join(lines)
 
 
-def draw_topic_overlay(base_img: Image.Image, title: str, source: str = "", date_str: str = "") -> Image.Image:
-    """背景画像にトピック・出典・日付のオーバーレイを描画
+def draw_topic_overlay(base_img: Image.Image, title: str, date_str: str = "") -> Image.Image:
+    """背景画像にトピック・日付のオーバーレイを描画
 
     Args:
         base_img: ベースとなる背景画像
         title: トピックタイトル
-        source: 出典（省略可）
         date_str: 日付文字列（省略可）
 
     Returns:
@@ -1799,7 +1798,6 @@ def draw_topic_overlay(base_img: Image.Image, title: str, source: str = "", date
 
     date_font = load_font(36)
     title_font = load_font(42)
-    source_font = load_font(28)
 
     # ボックス設定（右上エリア）
     box_width = 480
@@ -1841,11 +1839,8 @@ def draw_topic_overlay(base_img: Image.Image, title: str, source: str = "", date
     line_height = 50
     text_height = len(lines) * line_height
 
-    # 出典の高さ
-    source_height = 35 if source else 0
-
     # ボックスの高さ
-    box_height = box_padding * 2 + text_height + source_height
+    box_height = box_padding * 2 + text_height
 
     # === 3. 白い角丸ボックスを描画 ===
     box_x = VIDEO_WIDTH - box_width - box_margin_right
@@ -1874,27 +1869,17 @@ def draw_topic_overlay(base_img: Image.Image, title: str, source: str = "", date
     for i, line in enumerate(lines):
         draw.text((text_x, text_y + i * line_height), line, font=title_font, fill=text_color)
 
-    # === 5. 出典描画（ボックス右下） ===
-    if source:
-        source_text = f"出典: {source}"
-        source_bbox = draw.textbbox((0, 0), source_text, font=source_font)
-        source_width = source_bbox[2] - source_bbox[0]
-        source_x = box_x + box_width - box_padding - source_width
-        source_y = box_y + box_height - box_padding - 25
-        draw.text((source_x, source_y), source_text, font=source_font, fill=accent_color)
-
     return img.convert('RGB')
 
 
-def create_topic_overlay_transparent(title: str, source: str = "", date_str: str = "") -> Image.Image:
+def create_topic_overlay_transparent(title: str, date_str: str = "") -> Image.Image:
     """透明なトピックオーバーレイ画像を作成
 
-    背景を透明にして、日付・トピックボックス・出典のみを描画。
+    背景を透明にして、日付・トピックボックスのみを描画。
     ffmpegのoverlay filterで合成するために使用。
 
     Args:
         title: トピックタイトル
-        source: 出典（省略可）
         date_str: 日付文字列（省略可）
 
     Returns:
@@ -1927,7 +1912,6 @@ def create_topic_overlay_transparent(title: str, source: str = "", date_str: str
 
     date_font = load_font(36)
     title_font = load_font(42)
-    source_font = load_font(28)
 
     # ボックス設定（右上エリア）
     box_width = 480
@@ -1969,11 +1953,8 @@ def create_topic_overlay_transparent(title: str, source: str = "", date_str: str
     line_height = 50
     text_height = len(lines) * line_height
 
-    # 出典の高さ
-    source_height = 35 if source else 0
-
     # ボックスの高さ
-    box_height = box_padding * 2 + text_height + source_height
+    box_height = box_padding * 2 + text_height
 
     # === 3. 白い角丸ボックスを描画 ===
     box_x = VIDEO_WIDTH - box_width - box_margin_right
@@ -1994,22 +1975,13 @@ def create_topic_overlay_transparent(title: str, source: str = "", date_str: str
     for i, line in enumerate(lines):
         draw.text((text_x, text_y + i * line_height), line, font=title_font, fill=text_color)
 
-    # === 5. 出典描画（ボックス右下） ===
-    if source:
-        source_text = f"出典: {source}"
-        source_bbox = draw.textbbox((0, 0), source_text, font=source_font)
-        source_width = source_bbox[2] - source_bbox[0]
-        source_x = box_x + box_width - box_padding - source_width
-        source_y = box_y + box_height - box_padding - 25
-        draw.text((source_x, source_y), source_text, font=source_font, fill=accent_color)
-
     return img
 
 
 def generate_ass_subtitles(segments: list, output_path: str, section_markers: list = None) -> list:
-    """ASS字幕を生成（セリフ字幕＋トピック字幕＋出典）
+    """ASS字幕を生成（セリフ字幕＋トピック字幕）
 
-    画面右上にトピックボックス、その下に出典を表示
+    画面右上にトピックボックスを表示
 
     Returns:
         topic_timings: トピックのタイミング情報リスト
@@ -2032,7 +2004,6 @@ def generate_ass_subtitles(segments: list, output_path: str, section_markers: li
     topic_margin_right = 30
 
     # ASS色形式: &HAABBGGRR& （末尾に&を追加）
-    # 注: 出典はffmpeg drawtextで描画するため、ASSには含めない
     primary_color = "&H00FFFFFF&"  # 白文字
     shadow_color = "&H80000000&"   # 半透明黒シャドウ
     orange_color = "&H00356BFF&"   # #FF6B35 → BGR: 356BFF（オレンジ）
@@ -2081,7 +2052,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     end_time = segments[-1]["end"] if segments else start_time + 5
                 topic_timings.append({
                     "title": marker["title"],
-                    "source": marker.get("source", ""),
                     "start": start_time,
                     "end": end_time,
                 })
@@ -2099,7 +2069,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         if len(topic_text) > 60:
             topic_text = topic_text[:57] + "..."
         lines.append(f"Dialogue: 1,{start},{end},Topic,,0,0,0,,{topic_text}")
-        # 注: 出典はffmpeg drawtextで描画するため、ASSには含めない
 
     # セリフ字幕を追加
     for seg in segments:
@@ -2143,8 +2112,7 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
         for d in dialogue:
             d["section"] = news_title
         if dialogue:
-            source = section.get("source", "")
-            section_markers.append({"title": news_title, "source": source, "start_idx": len(all_dialogue)})
+            section_markers.append({"title": news_title, "start_idx": len(all_dialogue)})
         all_dialogue.extend(dialogue)
 
     # 深掘りコーナー
@@ -2307,10 +2275,10 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
                 main_audio = AudioSegment.from_file(audio_path)
                 total_duration_ms = len(main_audio)
 
-                # BGMを読み込み、音量を下げる（-8dB）
+                # BGMを読み込み、音量を下げる（-3dB）
                 bgm = AudioSegment.from_file(backroom_bgm_path)
-                bgm = bgm - 8  # 会話を邪魔しない程度に
-                print(f"    [BGM] 長さ: {len(bgm) / 1000:.1f}秒, 音量: -8dB")
+                bgm = bgm - 3  # ほぼ原音に近い音量
+                print(f"    [BGM] 長さ: {len(bgm) / 1000:.1f}秒, 音量: -3dB")
 
                 # BGMが短ければループ
                 bgm_duration_needed = total_duration_ms - backroom_start_ms
