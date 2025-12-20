@@ -735,6 +735,13 @@ def generate_gemini_tts_chunk(dialogue_chunk: list, api_key: str, output_path: s
                 for line in dialogue_chunk
             ])
 
+            # デバッグ: チャンクの最初と最後のspeakerをログ出力
+            if dialogue_chunk:
+                first_line = dialogue_chunk[0]
+                last_line = dialogue_chunk[-1]
+                section = first_line.get('section', '不明')
+                print(f"      [チャンク{chunk_index + 1}] section={section}, 最初={first_line['speaker']}「{first_line['text'][:15]}...」, 最後={last_line['speaker']}")
+
             # マルチスピーカー設定
             speaker_configs = [
                 types.SpeakerVoiceConfig(
@@ -2048,7 +2055,7 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF&,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
 Style: Date,Noto Sans CJK JP,{date_font_size},{orange_color},&H000000FF&,&H00000000&,&H00000000&,0,0,0,0,100,100,0,0,1,0,0,9,0,{date_margin_right},{date_margin_top},1
 Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_text_color},&H000000FF&,&H00000000&,{topic_bg_color},-1,0,0,0,100,100,0,0,3,20,0,9,0,{topic_margin_right},{topic_margin_top},1
-Style: Source,Noto Sans CJK JP,{source_font_size},{orange_color},&H000000FF&,&H00000000&,&H00000000&,0,0,0,0,100,100,0,0,1,0,0,7,0,{source_margin_right},{source_margin_top},1
+Style: Source,Noto Sans CJK JP,{source_font_size},{orange_color},&H000000FF&,&H00FFFFFF&,&H00000000&,0,0,0,0,100,100,0,0,1,2,0,7,0,{source_margin_right},{source_margin_top},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
