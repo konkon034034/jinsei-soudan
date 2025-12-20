@@ -2031,12 +2031,8 @@ def generate_ass_subtitles(segments: list, output_path: str, section_markers: li
     topic_margin_top = date_margin_top + date_font_size + 20  # 日付の下20px
     topic_margin_right = 30
 
-    # 出典: 縦書きで画面右端に配置、オレンジ、20px
-    source_font_size = 20
-    source_margin_right = 15  # 画面右端から15px
-    source_margin_top = 30  # 上から30px（日付と同じ高さから開始）
-
     # ASS色形式: &HAABBGGRR& （末尾に&を追加）
+    # 注: 出典はffmpeg drawtextで描画するため、ASSには含めない
     primary_color = "&H00FFFFFF&"  # 白文字
     shadow_color = "&H80000000&"   # 半透明黒シャドウ
     orange_color = "&H00356BFF&"   # #FF6B35 → BGR: 356BFF（オレンジ）
@@ -2055,7 +2051,6 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF&,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
 Style: Date,Noto Sans CJK JP,{date_font_size},{orange_color},&H000000FF&,&H00000000&,&H00000000&,0,0,0,0,100,100,0,0,1,0,0,9,0,{date_margin_right},{date_margin_top},1
 Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_text_color},&H000000FF&,&H00000000&,{topic_bg_color},-1,0,0,0,100,100,0,0,3,20,0,9,0,{topic_margin_right},{topic_margin_top},1
-Style: Source,Noto Sans CJK JP,{source_font_size},{orange_color},&H000000FF&,&H00FFFFFF&,&H00000000&,0,0,0,0,100,100,0,0,1,2,0,7,0,{source_margin_right},{source_margin_top},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -2104,13 +2099,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         if len(topic_text) > 60:
             topic_text = topic_text[:57] + "..."
         lines.append(f"Dialogue: 1,{start},{end},Topic,,0,0,0,,{topic_text}")
-
-        # 出典（あれば）- 縦書きで画面右端に配置
-        if topic.get("source"):
-            # 縦書き変換: 1文字ずつ\Nで区切る
-            source_raw = f"出典:{topic['source']}"
-            source_vertical = "\\N".join(list(source_raw))  # ASS形式の改行
-            lines.append(f"Dialogue: 1,{start},{end},Source,,0,0,0,,{source_vertical}")
+        # 注: 出典はffmpeg drawtextで描画するため、ASSには含めない
 
     # セリフ字幕を追加
     for seg in segments:
@@ -2127,9 +2116,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines))
 
-    # デバッグ: ASS スタイル出力確認
+    # デバッグ: ASS 出力確認
     print(f"  [ASS字幕] 出力: {output_path}")
-    print(f"  [ASS] Source色: {orange_color} (オレンジ #FF6B35)")
 
     return topic_timings
 
@@ -2319,10 +2307,10 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
                 main_audio = AudioSegment.from_file(audio_path)
                 total_duration_ms = len(main_audio)
 
-                # BGMを読み込み、音量を下げる（-18dB）
+                # BGMを読み込み、音量を下げる（-8dB）
                 bgm = AudioSegment.from_file(backroom_bgm_path)
-                bgm = bgm - 18  # 会話の邪魔にならないよう控えめに
-                print(f"    [BGM] 長さ: {len(bgm) / 1000:.1f}秒, 音量: -18dB")
+                bgm = bgm - 8  # 会話を邪魔しない程度に
+                print(f"    [BGM] 長さ: {len(bgm) / 1000:.1f}秒, 音量: -8dB")
 
                 # BGMが短ければループ
                 bgm_duration_needed = total_duration_ms - backroom_start_ms
