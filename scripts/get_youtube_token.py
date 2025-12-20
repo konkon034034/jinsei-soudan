@@ -10,7 +10,12 @@ Required environment variables:
 
 import json
 import os
+from pathlib import Path
+from dotenv import load_dotenv
 from google_auth_oauthlib.flow import InstalledAppFlow
+
+# Load .env file from project root
+load_dotenv(Path(__file__).parent.parent / '.env')
 
 # YouTube API scopes (upload + comments + full access)
 SCOPES = [

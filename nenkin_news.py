@@ -1701,7 +1701,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         source_text = topic.get("source", "")
         if source_text:
             # 出典を小さいフォントで改行して表示（ASS override tag使用）
-            title_text = f"{title_text}\\N{{\\fs{source_font_size}}}出典: {source_text}"
+            # 黒文字(\c&H00000000&) + 半透明白背景(\3c&H80FFFFFF&\bord4)
+            title_text = f"{title_text}\\N{{\\fs{source_font_size}\\c&H00000000&\\3c&H80FFFFFF&\\bord4}}出典: {source_text}"
         lines.append(f"Dialogue: 1,{start},{end},Topic,,0,0,0,,{title_text}")
 
     # セリフ字幕を追加
@@ -2459,6 +2460,8 @@ def post_youtube_comment(video_id: str, comment_text: str) -> bool:
 def send_discord_notification(title: str, url: str, video_duration: float, processing_time: float):
     """Discord通知を送信"""
     webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
+    print(f"  [DEBUG] DISCORD_WEBHOOK_URL: {'設定済み (' + webhook_url[:30] + '...)' if webhook_url else '未設定'}")
+
     if not webhook_url:
         print("  ⚠ DISCORD_WEBHOOK_URL未設定のため通知をスキップ")
         return
@@ -2480,6 +2483,8 @@ def send_discord_notification(title: str, url: str, video_duration: float, proce
 ⏱️ 動画長: {vid_time_str}
 🕐 処理時間: {proc_time_str}"""
 
+    print(f"  [DEBUG] Discord通知メッセージ作成完了")
+
     try:
         response = requests.post(
             webhook_url,
@@ -2487,12 +2492,13 @@ def send_discord_notification(title: str, url: str, video_duration: float, proce
             headers={"Content-Type": "application/json"},
             timeout=30
         )
+        print(f"  [DEBUG] Discord API レスポンス: status={response.status_code}")
         if response.status_code in [200, 204]:
             print("  ✓ Discord通知送信完了")
         else:
-            print(f"  ⚠ Discord通知失敗: {response.status_code}")
+            print(f"  ⚠ Discord通知失敗: {response.status_code}, body={response.text[:200]}")
     except Exception as e:
-        print(f"  ⚠ Discord通知エラー: {e}")
+        print(f"  ⚠ Discord通知エラー: {type(e).__name__}: {e}")
 
 
 def main():
