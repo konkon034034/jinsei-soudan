@@ -556,35 +556,39 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager, test_mode: b
    - 「今日の話で気になったのは...」
    - 軽い会話調で振り返り
 
-5. エンディング【最重要：視聴者が最も楽しみにするパート】
+5. 本編エンディング（丁寧モード）
+   - 本編の締めくくり、カツミが丁寧な口調で
+   - 「本日もお聴きいただきありがとうございました」
+   - 「また明日お会いしましょう」
+   ※この後にエンディングジングルが入る
 
-★★★ カツミのボヤキ（メインコンテンツ）★★★
-【長さ】300〜500文字程度（1〜2分）の長めのトーク
-【トーン】近所のおばちゃんの井戸端会議のような自然体で親しみやすいトーク
+6. 控え室パート【最重要：視聴者が最も楽しみにするパート】
 
-【ボヤキに含める要素】
-① 本音トーク: ニュースに対する率直な感想
-   例:「正直ね、今日のニュース聞いて私思ったのよ...」
-② 噂話: 「〜らしいわよ」「聞いた話だと〜」
-   例:「これね、年金事務所の人に聞いたんだけど〜らしいのよ」
-③ 軽い毒舌: 政府や制度への皮肉（でも憎めない程度）
-   例:「まったく、お上は私たちのこと考えてるのかしらね」
-   例:「こんな複雑な制度、役所の人だってわかってないわよ、きっと」
-④ 庶民目線: 普通の人としての共感
-   例:「私たちみたいな普通の人はどうしたらいいのよ、ってなるわよね」
-⑤ 生活の知恵: 実用的なアドバイス
-   例:「こういうときはね、早めに年金事務所に行くといいわよ」
-⑥ 愚痴: 親しみやすい不満
-   例:「毎年制度が変わるから、調べるのも大変なのよね」
-⑦ 将来への不安と希望
-   例:「これからどうなるのかしらね...でも、まあ、なんとかなるわよ」
-⑧ 最後は必ず前向きに締める
-   例:「でもね、ちゃんと知っておけば損はしないから。一緒に勉強していきましょう」
+★★★ 素のカツミ＆ヒロシ（メインコンテンツ）★★★
+※本編の丁寧モードから一転、素が出る！
 
-【ボヤキの後】
-- ヒロシが軽くツッコミ「カツミさん！それ言っちゃう？」
-- カツミがフォロー「ふふ、本音が出ちゃった」
-- 締め「明日も最新の情報をお届けします。それでは今日も良い1日を」
+【カツミの控え室モード】
+- 最初のセリフで切り替え:
+  例:「あー疲れた。ていうかさぁ〜」
+  例:「はぁ〜、やっと終わった。ねぇ聞いてよ」
+  例:「もう〜、今日のニュースマジでさぁ」
+- 口調: タメ口、ちょっと投げやり、毒舌全開
+- 本編では言えなかった本音ダダ漏れ
+- 軽く愚痴る、噂話する、ツッコむ
+
+【ヒロシの控え室モード】
+- いつも通りのんびり
+- 「え、そうなの？」「まあまあ」「俺はさ〜」
+- カツミの愚痴に付き合う
+
+【控え室に含める要素】
+① 本音ダダ漏れ: 「正直さぁ〜」「ぶっちゃけ〜」
+② 噂話: 「これ内緒なんだけど〜」「聞いた話だと〜らしいよ」
+③ 毒舌全開: 「マジでお役所って〜」「あれ意味わかんないよね」
+④ 庶民の愚痴: 「私たちみたいな普通の人はさぁ〜」
+⑤ 生活の知恵: 「こういうときはね〜するといいよ」
+⑥ 雑談: 軽い世間話、最近あったこと
+⑦ 最後は前向きに: 「まあでも、なんとかなるっしょ」「じゃあまたね〜」
 
 【台本形式】
 以下のJSON形式で出力してください:
@@ -617,31 +621,36 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager, test_mode: b
     {{"speaker": "カツミ", "text": "そうね、特に○○は注目ですね"}}
   ],
   "ending": [
-    {{"speaker": "カツミ", "text": "ちょっとここで本音を言わせてもらうわね"}},
-    {{"speaker": "カツミ", "text": "正直ね、今日のニュース聞いて思ったんだけど、年金制度ってなんでこんなに複雑なのかしらね"}},
-    {{"speaker": "カツミ", "text": "まったく、お上は私たちみたいな普通の人のこと、本当に考えてるのかしら"}},
-    {{"speaker": "カツミ", "text": "これね、年金事務所の人に聞いた話なんだけど、職員さんも制度が変わりすぎて追いつくの大変らしいわよ"}},
-    {{"speaker": "カツミ", "text": "毎年のように変わるでしょ？私も調べるの大変なのよね、本当に"}},
-    {{"speaker": "カツミ", "text": "でもね、こういうときは早めに年金事務所に行くといいわよ。意外と親切に教えてくれるから"}},
-    {{"speaker": "カツミ", "text": "これからどうなるのかしらね...でも、まあ、ちゃんと知っておけば損はしないわよ"}},
-    {{"speaker": "カツミ", "text": "私たち一緒に勉強していきましょうね"}},
-    {{"speaker": "ヒロシ", "text": "カツミさん！今日はずいぶん本音出しましたね！"}},
-    {{"speaker": "カツミ", "text": "ふふ、たまにはいいでしょ？視聴者の皆さんも同じこと思ってるはずよ"}},
-    {{"speaker": "カツミ", "text": "明日も最新情報をお届けします。それでは良い1日を"}}
+    {{"speaker": "カツミ", "text": "本日もお聴きいただきありがとうございました"}},
+    {{"speaker": "ヒロシ", "text": "今日も勉強になりましたね"}},
+    {{"speaker": "カツミ", "text": "また明日、最新情報をお届けします。それではまたお会いしましょう"}}
+  ],
+  "green_room": [
+    {{"speaker": "カツミ", "text": "あー疲れた。ていうかさぁ、今日のニュースマジで複雑すぎない？"}},
+    {{"speaker": "ヒロシ", "text": "え、そうなの？俺はなんとなくわかったけど"}},
+    {{"speaker": "カツミ", "text": "嘘でしょ。あれ絶対役所の人もわかってないって。毎年変わりすぎなんだよね"}},
+    {{"speaker": "カツミ", "text": "これ内緒なんだけどさ、年金事務所の人に聞いた話だと、職員さんも追いつくの大変らしいよ"}},
+    {{"speaker": "ヒロシ", "text": "まあまあ、そう言うなよ"}},
+    {{"speaker": "カツミ", "text": "ぶっちゃけ私たちみたいな普通の人どうすりゃいいのよって感じ"}},
+    {{"speaker": "カツミ", "text": "でもまあ、早めに年金事務所行くのがいいよ。意外と親切に教えてくれるから"}},
+    {{"speaker": "ヒロシ", "text": "お、意外とまともなアドバイスじゃん"}},
+    {{"speaker": "カツミ", "text": "うるさいな。まあなんとかなるっしょ。じゃあまたね〜"}}
   ]
 }}
 ```
 
 {"【テストモード：短縮版】" if test_mode else "【重要：30分のラジオ番組を作成】"}
-{'''- 合計15〜20セリフで簡潔に
+{'''- 合計18〜25セリフで簡潔に
 - オープニング: 2〜3セリフ
 - ニュース解説: 5〜8セリフ
-- エンディング（ボヤキ含む）: 8〜10セリフ（カツミの長めボヤキ→ヒロシツッコミ→締め）''' if test_mode else '''- 合計150〜200セリフ以上を生成（30分番組相当）
+- 本編エンディング: 2〜3セリフ（丁寧な締め）
+- 控え室: 8〜10セリフ（素のカツミ＆ヒロシのボヤキ）''' if test_mode else '''- 合計150〜200セリフ以上を生成（30分番組相当）
 - オープニング: 5〜10セリフ
 - 各ニュースセクション: 15〜25セリフ（出典・数字を入れて詳しく）
 - 深掘りコーナー: 20〜30セリフ（メリデメ整理）
 - 雑談まとめ: 10〜15セリフ
-- エンディング（ボヤキ含む）: 10〜15セリフ（カツミの長めボヤキ→ヒロシツッコミ→フォロー→締め）'''}
+- 本編エンディング: 2〜3セリフ（丁寧な締めの挨拶）
+- 控え室: 10〜15セリフ（素のカツミ＆ヒロシのボヤキ）'''}
 
 【ルール】
 - 各セリフは50文字以内
@@ -650,8 +659,9 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager, test_mode: b
 - 具体的な金額・日付・%を入れる
 - 確定情報メイン、噂は「〜らしいですよ」と軽く
 - ヒロシは視聴者が思いそうな疑問を代弁（ちょっとお馬鹿な感じで）
-- 【重要】エンディングのボヤキは視聴者が最も楽しみにするパート。カツミが本音・噂話・軽い毒舌を交えて1〜2分語る
-- エンディングは必ず「カツミの長めボヤキ（8セリフ程度）→ヒロシツッコミ→カツミフォロー→締め」の順番
+- 【重要】本編エンディングは丁寧モード、控え室は素のタメ口モード。ギャップが大事！
+- 【重要】控え室は視聴者が最も楽しみにするパート。素のカツミが本音・噂話・毒舌全開で語る
+- 控え室の最初のセリフは必ず「あー疲れた」「はぁ〜やっと終わった」など素が出る導入
 - deep_dive, chat_summaryはテストモードでは省略可（空配列[]）
 """
 
@@ -2082,13 +2092,21 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
         section_markers.append({"title": "噂・参考情報", "start_idx": len(all_dialogue)})
         all_dialogue.extend(rumor_section)
 
-    # エンディング
+    # エンディング（本編の締め）
     ending = script.get("ending", [])
     for d in ending:
         d["section"] = "エンディング"
     if ending:
         section_markers.append({"title": "エンディング", "start_idx": len(all_dialogue)})
     all_dialogue.extend(ending)
+
+    # 控え室（素のボヤキ）※エンディングジングルの後に再生
+    green_room = script.get("green_room", [])
+    for d in green_room:
+        d["section"] = "控え室"
+    if green_room:
+        section_markers.append({"title": "控え室", "start_idx": len(all_dialogue)})
+    all_dialogue.extend(green_room)
 
     # 空や無効なセリフを除外
     original_count = len(all_dialogue)
@@ -2116,6 +2134,8 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
                 title = "噂・参考情報"
             elif section == "エンディング":
                 title = "エンディング"
+            elif section == "控え室":
+                title = "控え室"
             else:
                 title = section
             section_markers_filtered.append({"title": title, "start_idx": i})
@@ -2190,30 +2210,30 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
         print("  [エンディングジングル] 挿入中...")
         ending_jingle_path = str(temp_dir / "ending_jingle.mp3")
 
-        # エンディングセクションの開始インデックスを探す
-        ending_start_idx = None
+        # 控え室セクションの開始インデックスを探す（エンディングジングルは控え室の直前に挿入）
+        green_room_start_idx = None
         for i, d in enumerate(all_dialogue):
-            if d.get("section") == "エンディング":
-                ending_start_idx = i
+            if d.get("section") == "控え室":
+                green_room_start_idx = i
                 break
 
-        if ending_start_idx is not None and ending_start_idx < len(all_segments):
-            # エンディング開始時間を取得（ジングル追加後の値）
-            ending_start_time = all_segments[ending_start_idx]["start"]
-            ending_start_ms = int(ending_start_time * 1000)
+        if green_room_start_idx is not None and green_room_start_idx < len(all_segments):
+            # 控え室開始時間を取得（ジングル追加後の値）
+            green_room_start_time = all_segments[green_room_start_idx]["start"]
+            green_room_start_ms = int(green_room_start_time * 1000)
 
             if download_jingle_from_drive(ending_jingle_file_id, ending_jingle_path):
                 audio_with_ending_path = str(temp_dir / "audio_with_ending.wav")
                 success, added_duration = add_ending_jingle_to_audio(
-                    audio_path, ending_jingle_path, audio_with_ending_path, ending_start_ms
+                    audio_path, ending_jingle_path, audio_with_ending_path, green_room_start_ms
                 )
                 if success:
                     # 出力ファイルを上書き
                     import shutil
                     shutil.move(audio_with_ending_path, audio_path)
 
-                    # エンディングセグメント以降のタイミングをオフセット
-                    for i in range(ending_start_idx, len(all_segments)):
+                    # 控え室セグメント以降のタイミングをオフセット
+                    for i in range(green_room_start_idx, len(all_segments)):
                         all_segments[i]["start"] += added_duration
                         all_segments[i]["end"] += added_duration
 
@@ -2223,7 +2243,7 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
             else:
                 print("  ⚠ エンディングジングルダウンロード失敗、スキップ")
         else:
-            print("  ⚠ エンディングセクションが見つかりません、スキップ")
+            print("  ⚠ 控え室セクションが見つかりません、スキップ")
 
     # 最終音声長を取得
     result = subprocess.run([
