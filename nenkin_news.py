@@ -556,16 +556,35 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager, test_mode: b
    - 「今日の話で気になったのは...」
    - 軽い会話調で振り返り
 
-5. エンディング【重要：この順番を守る】
-   ① カツミの本音（ぼやき・毒舌）
-      例:「正直、こんな複雑な制度、お役所の人もわかってないんじゃないかしら」
-      例:「年金制度って毎年変わるから、私も調べるの大変なのよね」
-   ② ヒロシがツッコミ
-      例:「カツミさん！あなた解説者でしょ！そんなこと言っちゃダメですって！」
-      例:「おいおい、専門家がそれ言っちゃう？」
-   ③ カツミがフォロー
-      例:「ふふ、冗談よ。でも皆さん、わからないことは遠慮なく年金事務所に聞いてくださいね」
-   ④ 締め「明日も最新の情報をお届けします。それでは今日も良い1日を」
+5. エンディング【最重要：視聴者が最も楽しみにするパート】
+
+★★★ カツミのボヤキ（メインコンテンツ）★★★
+【長さ】300〜500文字程度（1〜2分）の長めのトーク
+【トーン】近所のおばちゃんの井戸端会議のような自然体で親しみやすいトーク
+
+【ボヤキに含める要素】
+① 本音トーク: ニュースに対する率直な感想
+   例:「正直ね、今日のニュース聞いて私思ったのよ...」
+② 噂話: 「〜らしいわよ」「聞いた話だと〜」
+   例:「これね、年金事務所の人に聞いたんだけど〜らしいのよ」
+③ 軽い毒舌: 政府や制度への皮肉（でも憎めない程度）
+   例:「まったく、お上は私たちのこと考えてるのかしらね」
+   例:「こんな複雑な制度、役所の人だってわかってないわよ、きっと」
+④ 庶民目線: 普通の人としての共感
+   例:「私たちみたいな普通の人はどうしたらいいのよ、ってなるわよね」
+⑤ 生活の知恵: 実用的なアドバイス
+   例:「こういうときはね、早めに年金事務所に行くといいわよ」
+⑥ 愚痴: 親しみやすい不満
+   例:「毎年制度が変わるから、調べるのも大変なのよね」
+⑦ 将来への不安と希望
+   例:「これからどうなるのかしらね...でも、まあ、なんとかなるわよ」
+⑧ 最後は必ず前向きに締める
+   例:「でもね、ちゃんと知っておけば損はしないから。一緒に勉強していきましょう」
+
+【ボヤキの後】
+- ヒロシが軽くツッコミ「カツミさん！それ言っちゃう？」
+- カツミがフォロー「ふふ、本音が出ちゃった」
+- 締め「明日も最新の情報をお届けします。それでは今日も良い1日を」
 
 【台本形式】
 以下のJSON形式で出力してください:
@@ -598,24 +617,31 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager, test_mode: b
     {{"speaker": "カツミ", "text": "そうね、特に○○は注目ですね"}}
   ],
   "ending": [
-    {{"speaker": "カツミ", "text": "正直、年金制度って複雑すぎると思いません？"}},
-    {{"speaker": "ヒロシ", "text": "カツミさん！解説者がそれ言っちゃダメでしょ！"}},
-    {{"speaker": "カツミ", "text": "ふふ、冗談よ。わからないことは年金事務所に聞いてくださいね"}},
+    {{"speaker": "カツミ", "text": "ちょっとここで本音を言わせてもらうわね"}},
+    {{"speaker": "カツミ", "text": "正直ね、今日のニュース聞いて思ったんだけど、年金制度ってなんでこんなに複雑なのかしらね"}},
+    {{"speaker": "カツミ", "text": "まったく、お上は私たちみたいな普通の人のこと、本当に考えてるのかしら"}},
+    {{"speaker": "カツミ", "text": "これね、年金事務所の人に聞いた話なんだけど、職員さんも制度が変わりすぎて追いつくの大変らしいわよ"}},
+    {{"speaker": "カツミ", "text": "毎年のように変わるでしょ？私も調べるの大変なのよね、本当に"}},
+    {{"speaker": "カツミ", "text": "でもね、こういうときは早めに年金事務所に行くといいわよ。意外と親切に教えてくれるから"}},
+    {{"speaker": "カツミ", "text": "これからどうなるのかしらね...でも、まあ、ちゃんと知っておけば損はしないわよ"}},
+    {{"speaker": "カツミ", "text": "私たち一緒に勉強していきましょうね"}},
+    {{"speaker": "ヒロシ", "text": "カツミさん！今日はずいぶん本音出しましたね！"}},
+    {{"speaker": "カツミ", "text": "ふふ、たまにはいいでしょ？視聴者の皆さんも同じこと思ってるはずよ"}},
     {{"speaker": "カツミ", "text": "明日も最新情報をお届けします。それでは良い1日を"}}
   ]
 }}
 ```
 
 {"【テストモード：短縮版】" if test_mode else "【重要：30分のラジオ番組を作成】"}
-{'''- 合計10〜15セリフで簡潔に
+{'''- 合計15〜20セリフで簡潔に
 - オープニング: 2〜3セリフ
 - ニュース解説: 5〜8セリフ
-- エンディング: 2〜3セリフ（カツミ本音→ヒロシツッコミ→締め）''' if test_mode else '''- 合計150〜200セリフ以上を生成（30分番組相当）
+- エンディング（ボヤキ含む）: 8〜10セリフ（カツミの長めボヤキ→ヒロシツッコミ→締め）''' if test_mode else '''- 合計150〜200セリフ以上を生成（30分番組相当）
 - オープニング: 5〜10セリフ
 - 各ニュースセクション: 15〜25セリフ（出典・数字を入れて詳しく）
 - 深掘りコーナー: 20〜30セリフ（メリデメ整理）
 - 雑談まとめ: 10〜15セリフ
-- エンディング: 5〜10セリフ（カツミ本音→ヒロシツッコミ→フォロー→締め）'''}
+- エンディング（ボヤキ含む）: 10〜15セリフ（カツミの長めボヤキ→ヒロシツッコミ→フォロー→締め）'''}
 
 【ルール】
 - 各セリフは50文字以内
@@ -624,7 +650,8 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager, test_mode: b
 - 具体的な金額・日付・%を入れる
 - 確定情報メイン、噂は「〜らしいですよ」と軽く
 - ヒロシは視聴者が思いそうな疑問を代弁（ちょっとお馬鹿な感じで）
-- エンディングは必ず「カツミ本音→ヒロシツッコミ→カツミフォロー→締め」の順番
+- 【重要】エンディングのボヤキは視聴者が最も楽しみにするパート。カツミが本音・噂話・軽い毒舌を交えて1〜2分語る
+- エンディングは必ず「カツミの長めボヤキ（8セリフ程度）→ヒロシツッコミ→カツミフォロー→締め」の順番
 - deep_dive, chat_summaryはテストモードでは省略可（空配列[]）
 """
 
@@ -1578,6 +1605,60 @@ def add_jingle_to_audio(tts_audio_path: str, jingle_path: str, output_path: str,
         return False
 
 
+def add_ending_jingle_to_audio(
+    audio_path: str,
+    ending_jingle_path: str,
+    output_path: str,
+    ending_start_ms: int,
+    silence_ms: int = 500
+) -> tuple:
+    """エンディングジングルを音声の指定位置に挿入
+
+    Args:
+        audio_path: 入力音声ファイルパス
+        ending_jingle_path: エンディングジングルファイルパス
+        output_path: 出力音声ファイルパス
+        ending_start_ms: エンディング開始位置（ミリ秒）
+        silence_ms: ジングル前後の無音長さ
+
+    Returns:
+        tuple: (成功フラグ, ジングル長さ（秒）)
+    """
+    try:
+        from pydub import AudioSegment
+
+        # 音声ファイルを読み込み
+        audio = AudioSegment.from_file(audio_path)
+
+        # エンディングジングルを読み込み
+        ending_jingle = AudioSegment.from_file(ending_jingle_path)
+        jingle_duration = len(ending_jingle) / 1000  # 秒
+        print(f"    [エンディングジングル] 長さ: {jingle_duration:.1f}秒")
+
+        # 音声を分割
+        main_audio = audio[:ending_start_ms]
+        ending_audio = audio[ending_start_ms:]
+
+        # 無音を作成
+        silence = AudioSegment.silent(duration=silence_ms, frame_rate=audio.frame_rate)
+
+        # 結合: 本編 + 無音 + エンディングジングル + 無音 + エンディング音声
+        combined = main_audio + silence + ending_jingle + silence + ending_audio
+
+        # WAV形式で出力（24000Hz, mono, 16bit）
+        combined = combined.set_frame_rate(24000).set_channels(1).set_sample_width(2)
+        combined.export(output_path, format="wav")
+
+        # ジングル挿入による追加時間（無音×2 + ジングル長さ）
+        added_duration = (silence_ms * 2 + len(ending_jingle)) / 1000
+        print(f"    ✓ エンディングジングル挿入完了（追加: {added_duration:.1f}秒）")
+        return True, added_duration
+
+    except Exception as e:
+        print(f"    ⚠ エンディングジングル挿入エラー: {e}")
+        return False, 0.0
+
+
 def generate_gradient_background(output_path: str, title: str = ""):
     """温かみのあるベージュ系グラデーション背景を生成"""
     img = Image.new('RGB', (VIDEO_WIDTH, VIDEO_HEIGHT))
@@ -1633,26 +1714,269 @@ def wrap_text(text: str, max_chars: int = 30) -> str:
     return "\\N".join(lines)
 
 
-def generate_ass_subtitles(segments: list, output_path: str, section_markers: list = None):
-    """ASS字幕を生成（大きめフォント、シンプルスタイル + トピック字幕）
+def draw_topic_overlay(base_img: Image.Image, title: str, source: str = "", date_str: str = "") -> Image.Image:
+    """背景画像にトピック・出典・日付のオーバーレイを描画
 
-    背景バーはffmpegのdrawboxで描画するため、ここでは字幕テキストのみ
+    Args:
+        base_img: ベースとなる背景画像
+        title: トピックタイトル
+        source: 出典（省略可）
+        date_str: 日付文字列（省略可）
+
+    Returns:
+        オーバーレイが描画された画像
+    """
+    img = base_img.copy().convert('RGBA')
+    draw = ImageDraw.Draw(img)
+
+    # 色設定
+    accent_color = (255, 107, 53)  # オレンジ #FF6B35
+    box_color = (255, 255, 255, 230)  # 白（90%不透明）
+    text_color = (0, 0, 0)  # 黒
+
+    # フォント設定
+    font_paths = [
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
+        "/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc",
+    ]
+
+    def load_font(size):
+        for fp in font_paths:
+            try:
+                return ImageFont.truetype(fp, size)
+            except:
+                continue
+        return ImageFont.load_default()
+
+    date_font = load_font(36)
+    title_font = load_font(42)
+    source_font = load_font(28)
+
+    # ボックス設定（右上エリア）
+    box_width = 480
+    box_padding = 25
+    box_margin_right = 40
+    box_margin_top = 80  # 日付の下
+
+    # === 1. 日付描画（右上） ===
+    if date_str:
+        date_bbox = draw.textbbox((0, 0), date_str, font=date_font)
+        date_width = date_bbox[2] - date_bbox[0]
+        date_x = VIDEO_WIDTH - date_width - box_margin_right
+        date_y = 30
+        draw.text((date_x, date_y), date_str, font=date_font, fill=accent_color)
+
+    # === 2. トピックテキストの折り返し計算 ===
+    max_text_width = box_width - (box_padding * 2)
+    lines = []
+    current_line = ""
+
+    for char in title:
+        test_line = current_line + char
+        bbox = draw.textbbox((0, 0), test_line, font=title_font)
+        if bbox[2] - bbox[0] > max_text_width:
+            if current_line:
+                lines.append(current_line)
+            current_line = char
+        else:
+            current_line = test_line
+    if current_line:
+        lines.append(current_line)
+
+    # 最大4行まで
+    if len(lines) > 4:
+        lines = lines[:4]
+        lines[-1] = lines[-1][:-2] + "..."
+
+    # テキスト高さ計算
+    line_height = 50
+    text_height = len(lines) * line_height
+
+    # 出典の高さ
+    source_height = 35 if source else 0
+
+    # ボックスの高さ
+    box_height = box_padding * 2 + text_height + source_height
+
+    # === 3. 白い角丸ボックスを描画 ===
+    box_x = VIDEO_WIDTH - box_width - box_margin_right
+    box_y = box_margin_top
+
+    # 角丸矩形を描画（overlay用に別レイヤー）
+    overlay = Image.new('RGBA', img.size, (0, 0, 0, 0))
+    overlay_draw = ImageDraw.Draw(overlay)
+
+    # 角丸矩形（rounded_rectangle）
+    corner_radius = 15
+    overlay_draw.rounded_rectangle(
+        [box_x, box_y, box_x + box_width, box_y + box_height],
+        radius=corner_radius,
+        fill=box_color
+    )
+
+    # オーバーレイを合成
+    img = Image.alpha_composite(img, overlay)
+    draw = ImageDraw.Draw(img)
+
+    # === 4. トピックテキスト描画 ===
+    text_x = box_x + box_padding
+    text_y = box_y + box_padding
+
+    for i, line in enumerate(lines):
+        draw.text((text_x, text_y + i * line_height), line, font=title_font, fill=text_color)
+
+    # === 5. 出典描画（ボックス右下） ===
+    if source:
+        source_text = f"出典: {source}"
+        source_bbox = draw.textbbox((0, 0), source_text, font=source_font)
+        source_width = source_bbox[2] - source_bbox[0]
+        source_x = box_x + box_width - box_padding - source_width
+        source_y = box_y + box_height - box_padding - 25
+        draw.text((source_x, source_y), source_text, font=source_font, fill=accent_color)
+
+    return img.convert('RGB')
+
+
+def create_topic_overlay_transparent(title: str, source: str = "", date_str: str = "") -> Image.Image:
+    """透明なトピックオーバーレイ画像を作成
+
+    背景を透明にして、日付・トピックボックス・出典のみを描画。
+    ffmpegのoverlay filterで合成するために使用。
+
+    Args:
+        title: トピックタイトル
+        source: 出典（省略可）
+        date_str: 日付文字列（省略可）
+
+    Returns:
+        透明背景にオーバーレイが描画されたRGBA画像
+    """
+    # 透明な背景画像を作成
+    img = Image.new('RGBA', (VIDEO_WIDTH, VIDEO_HEIGHT), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    # 色設定
+    accent_color = (255, 107, 53, 255)  # オレンジ #FF6B35
+    box_color = (255, 255, 255, 230)  # 白（90%不透明）
+    text_color = (0, 0, 0, 255)  # 黒
+
+    # フォント設定
+    font_paths = [
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
+        "/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc",
+    ]
+
+    def load_font(size):
+        for fp in font_paths:
+            try:
+                return ImageFont.truetype(fp, size)
+            except:
+                continue
+        return ImageFont.load_default()
+
+    date_font = load_font(36)
+    title_font = load_font(42)
+    source_font = load_font(28)
+
+    # ボックス設定（右上エリア）
+    box_width = 480
+    box_padding = 25
+    box_margin_right = 40
+    box_margin_top = 80  # 日付の下
+
+    # === 1. 日付描画（右上） ===
+    if date_str:
+        date_bbox = draw.textbbox((0, 0), date_str, font=date_font)
+        date_width = date_bbox[2] - date_bbox[0]
+        date_x = VIDEO_WIDTH - date_width - box_margin_right
+        date_y = 30
+        draw.text((date_x, date_y), date_str, font=date_font, fill=accent_color)
+
+    # === 2. トピックテキストの折り返し計算 ===
+    max_text_width = box_width - (box_padding * 2)
+    lines = []
+    current_line = ""
+
+    for char in title:
+        test_line = current_line + char
+        bbox = draw.textbbox((0, 0), test_line, font=title_font)
+        if bbox[2] - bbox[0] > max_text_width:
+            if current_line:
+                lines.append(current_line)
+            current_line = char
+        else:
+            current_line = test_line
+    if current_line:
+        lines.append(current_line)
+
+    # 最大4行まで
+    if len(lines) > 4:
+        lines = lines[:4]
+        lines[-1] = lines[-1][:-2] + "..."
+
+    # テキスト高さ計算
+    line_height = 50
+    text_height = len(lines) * line_height
+
+    # 出典の高さ
+    source_height = 35 if source else 0
+
+    # ボックスの高さ
+    box_height = box_padding * 2 + text_height + source_height
+
+    # === 3. 白い角丸ボックスを描画 ===
+    box_x = VIDEO_WIDTH - box_width - box_margin_right
+    box_y = box_margin_top
+
+    # 角丸矩形を描画
+    corner_radius = 15
+    draw.rounded_rectangle(
+        [box_x, box_y, box_x + box_width, box_y + box_height],
+        radius=corner_radius,
+        fill=box_color
+    )
+
+    # === 4. トピックテキスト描画 ===
+    text_x = box_x + box_padding
+    text_y = box_y + box_padding
+
+    for i, line in enumerate(lines):
+        draw.text((text_x, text_y + i * line_height), line, font=title_font, fill=text_color)
+
+    # === 5. 出典描画（ボックス右下） ===
+    if source:
+        source_text = f"出典: {source}"
+        source_bbox = draw.textbbox((0, 0), source_text, font=source_font)
+        source_width = source_bbox[2] - source_bbox[0]
+        source_x = box_x + box_width - box_padding - source_width
+        source_y = box_y + box_height - box_padding - 25
+        draw.text((source_x, source_y), source_text, font=source_font, fill=accent_color)
+
+    return img
+
+
+def generate_ass_subtitles(segments: list, output_path: str, section_markers: list = None) -> list:
+    """ASS字幕を生成（セリフ字幕のみ、トピックはPIL描画）
+
+    背景バーはffmpegのdrawboxで描画するため、ここではセリフ字幕のみ
+    トピック情報はtopic_timingsとして返し、PIL描画で使用
+
+    Returns:
+        topic_timings: トピックのタイミング情報リスト
     """
     # 字幕設定
     font_size = int(VIDEO_WIDTH * 0.075)  # 画面幅の7.5% ≈ 144px（3行対応で少し小さく）
-    topic_font_size = int(VIDEO_WIDTH * 0.035)  # トピック字幕は小さめ（3.5%）
-    source_font_size = int(VIDEO_WIDTH * 0.022)  # 出典はさらに小さく（2.2%）
     margin_bottom = int(VIDEO_HEIGHT * 0.05)  # 下から5%（38%バー内に収まるよう調整）
     margin_left = int(VIDEO_WIDTH * 0.15)   # 左マージン（画面幅の15% ≈ 288px）
     margin_right = int(VIDEO_WIDTH * 0.15)  # 右マージン（画面幅の15% ≈ 288px）
-    topic_margin_l = 30  # トピック左マージン（30px）
-    topic_margin_v = int(VIDEO_HEIGHT * 0.48)  # トピック字幕は上から48%（画面中央やや上）
 
     # ASS色形式: &HAABBGGRR
     primary_color = "&H00FFFFFF"  # 白文字
     shadow_color = "&H80000000"   # 半透明黒シャドウ
-    topic_text_color = "&H00000000"  # 黒文字（トピック用）
-    topic_back_color = "&H80FFFFFF"  # 半透明白背景（トピック用）
 
     header = f"""[Script Info]
 Title: 年金ニュース
@@ -1664,7 +1988,6 @@ WrapStyle: 0
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
-Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_text_color},&H000000FF,&H00000000,{topic_back_color},-1,0,0,0,100,100,0,0,3,2,0,7,{topic_margin_l},0,{topic_margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -1672,7 +1995,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     lines = [header]
 
-    # トピック字幕のタイミングを計算
+    # トピック字幕のタイミングを計算（PIL描画用に返す）
     topic_timings = []
     if section_markers and segments:
         for i, marker in enumerate(section_markers):
@@ -1696,21 +2019,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     "end": end_time,
                 })
 
-    # トピック字幕を追加（レイヤー1で下の字幕より前面に）
-    for topic in topic_timings:
-        start = f"0:{int(topic['start']//60):02d}:{int(topic['start']%60):02d}.{int((topic['start']%1)*100):02d}"
-        # トピックはセクション全体で表示（次のトピックまで）
-        end = f"0:{int(topic['end']//60):02d}:{int(topic['end']%60):02d}.{int((topic['end']%1)*100):02d}"
-        # トピックタイトル + 出典（あれば）
-        title_text = topic["title"]
-        source_text = topic.get("source", "")
-        if source_text:
-            # 出典を小さいフォントで改行して表示（ASS override tag使用）
-            # スタイルで既に黒文字+背景ボックスが設定済み
-            title_text = f"{title_text}\\N{{\\fs{source_font_size}}}出典: {source_text}"
-        lines.append(f"Dialogue: 1,{start},{end},Topic,,0,0,0,,{title_text}")
-
-    # セリフ字幕を追加
+    # セリフ字幕のみ追加（トピックはPILで描画）
     for seg in segments:
         start = f"0:{int(seg['start']//60):02d}:{int(seg['start']%60):02d}.{int((seg['start']%1)*100):02d}"
         end = f"0:{int(seg['end']//60):02d}:{int(seg['end']%60):02d}.{int((seg['end']%1)*100):02d}"
@@ -1720,6 +2029,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines))
+
+    return topic_timings
 
 
 def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) -> tuple:
@@ -1872,6 +2183,47 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
         # ジングル未設定：TTS音声のみ使用
         import shutil
         shutil.copy(tts_audio_path, audio_path)
+
+    # エンディングジングル追加（オプション）
+    ending_jingle_file_id = os.environ.get("ENDING_JINGLE_FILE_ID")
+    if ending_jingle_file_id:
+        print("  [エンディングジングル] 挿入中...")
+        ending_jingle_path = str(temp_dir / "ending_jingle.mp3")
+
+        # エンディングセクションの開始インデックスを探す
+        ending_start_idx = None
+        for i, d in enumerate(all_dialogue):
+            if d.get("section") == "エンディング":
+                ending_start_idx = i
+                break
+
+        if ending_start_idx is not None and ending_start_idx < len(all_segments):
+            # エンディング開始時間を取得（ジングル追加後の値）
+            ending_start_time = all_segments[ending_start_idx]["start"]
+            ending_start_ms = int(ending_start_time * 1000)
+
+            if download_jingle_from_drive(ending_jingle_file_id, ending_jingle_path):
+                audio_with_ending_path = str(temp_dir / "audio_with_ending.wav")
+                success, added_duration = add_ending_jingle_to_audio(
+                    audio_path, ending_jingle_path, audio_with_ending_path, ending_start_ms
+                )
+                if success:
+                    # 出力ファイルを上書き
+                    import shutil
+                    shutil.move(audio_with_ending_path, audio_path)
+
+                    # エンディングセグメント以降のタイミングをオフセット
+                    for i in range(ending_start_idx, len(all_segments)):
+                        all_segments[i]["start"] += added_duration
+                        all_segments[i]["end"] += added_duration
+
+                    print(f"  ✓ エンディングジングル挿入完了（オフセット: {added_duration:.1f}秒）")
+                else:
+                    print("  ⚠ エンディングジングル挿入失敗、スキップ")
+            else:
+                print("  ⚠ エンディングジングルダウンロード失敗、スキップ")
+        else:
+            print("  ⚠ エンディングセクションが見つかりません、スキップ")
 
     # 最終音声長を取得
     result = subprocess.run([
