@@ -1620,7 +1620,7 @@ def add_ending_jingle_to_audio(
     ending_jingle_path: str,
     output_path: str,
     ending_start_ms: int,
-    silence_ms: int = 500
+    silence_ms: int = 5000  # 5秒の間（ゆったり場面転換）
 ) -> tuple:
     """エンディングジングルを音声の指定位置に挿入
 
@@ -1629,7 +1629,7 @@ def add_ending_jingle_to_audio(
         ending_jingle_path: エンディングジングルファイルパス
         output_path: 出力音声ファイルパス
         ending_start_ms: エンディング開始位置（ミリ秒）
-        silence_ms: ジングル前後の無音長さ
+        silence_ms: ジングル前後の無音長さ（デフォルト5秒）
 
     Returns:
         tuple: (成功フラグ, ジングル長さ（秒）)
