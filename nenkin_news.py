@@ -1970,7 +1970,7 @@ def create_topic_overlay_transparent(title: str, source: str = "", date_str: str
 
 
 def generate_ass_subtitles(segments: list, output_path: str, section_markers: list = None) -> list:
-    """ASS字幕を生成（セリフ字幕のみ、トピックはPIL描画）
+    """ASS字幕を生成（セリフ字幕＋トピック字幕＋出典）
 
     背景バーはffmpegのdrawboxで描画するため、ここではセリフ字幕のみ
     トピック情報はtopic_timingsとして返し、PIL描画で使用
@@ -1984,9 +1984,16 @@ def generate_ass_subtitles(segments: list, output_path: str, section_markers: li
     margin_left = int(VIDEO_WIDTH * 0.15)   # 左マージン（画面幅の15% ≈ 288px）
     margin_right = int(VIDEO_WIDTH * 0.15)  # 右マージン（画面幅の15% ≈ 288px）
 
+    # トピック字幕の設定（画面上部）
+    topic_font_size = int(VIDEO_WIDTH * 0.045)  # 画面幅の4.5% ≈ 86px
+    topic_margin_top = int(VIDEO_HEIGHT * 0.02)  # 上から2%
+    source_font_size = int(VIDEO_WIDTH * 0.025)  # 画面幅の2.5% ≈ 48px
+
     # ASS色形式: &HAABBGGRR
     primary_color = "&H00FFFFFF"  # 白文字
     shadow_color = "&H80000000"   # 半透明黒シャドウ
+    topic_bg_color = "&HCC2E1A0D"  # 濃い茶色（透明度80%）  0D1A2E -> BGR
+    source_color = "&H004080FF"   # オレンジ/赤系 (BGR: FF8040)
 
     header = f"""[Script Info]
 Title: 年金ニュース
@@ -1998,6 +2005,8 @@ WrapStyle: 0
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
+Style: Topic,Noto Sans CJK JP,{topic_font_size},{primary_color},&H000000FF,&H00000000,{topic_bg_color},-1,0,0,0,100,100,0,0,3,3,0,7,20,20,{topic_margin_top},1
+Style: Source,Noto Sans CJK JP,{source_font_size},{source_color},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,9,20,20,{topic_margin_top + topic_font_size + 10},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -2005,7 +2014,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     lines = [header]
 
-    # トピック字幕のタイミングを計算（PIL描画用に返す）
+    # トピック字幕のタイミングを計算
     topic_timings = []
     if section_markers and segments:
         for i, marker in enumerate(section_markers):
@@ -2029,7 +2038,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     "end": end_time,
                 })
 
-    # セリフ字幕のみ追加（トピックはPILで描画）
+    # トピック字幕を追加（画面上部）
+    for topic in topic_timings:
+        start = f"0:{int(topic['start']//60):02d}:{int(topic['start']%60):02d}.{int((topic['start']%1)*100):02d}"
+        end = f"0:{int(topic['end']//60):02d}:{int(topic['end']%60):02d}.{int((topic['end']%1)*100):02d}"
+        # トピックタイトル
+        lines.append(f"Dialogue: 1,{start},{end},Topic,,0,0,0,,{topic['title']}")
+        # 出典（あれば）
+        if topic.get("source"):
+            source_text = f"出典: {topic['source']}"
+            lines.append(f"Dialogue: 1,{start},{end},Source,,0,0,0,,{source_text}")
+
+    # セリフ字幕を追加
     for seg in segments:
         start = f"0:{int(seg['start']//60):02d}:{int(seg['start']%60):02d}.{int((seg['start']%1)*100):02d}"
         end = f"0:{int(seg['end']//60):02d}:{int(seg['end']%60):02d}.{int((seg['end']%1)*100):02d}"
