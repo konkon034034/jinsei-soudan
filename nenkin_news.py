@@ -721,6 +721,16 @@ def generate_gemini_tts_chunk(dialogue_chunk: list, api_key: str, output_path: s
         max_retries: 最大リトライ回数（デフォルト3回）
         retry_wait: 429エラー時の待機秒数（デフォルト60秒）
     """
+    # 無音セグメントのみのチャンクは無音音声を生成
+    silence_lines = [line for line in dialogue_chunk if line.get("is_silence")]
+    if silence_lines and len(silence_lines) == len(dialogue_chunk):
+        from pydub import AudioSegment
+        total_silence_ms = sum(line.get("silence_duration_ms", 3000) for line in silence_lines)
+        silence = AudioSegment.silent(duration=total_silence_ms, frame_rate=24000)
+        silence.export(output_path, format="wav")
+        print(f"      [チャンク{chunk_index + 1}] 無音セグメント生成 ({total_silence_ms}ms)")
+        return True
+
     current_key = api_key
     tried_keys = set()
 
@@ -1503,21 +1513,47 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
             continue
 
         # チャンク内のセリフにテキスト長比例でタイミング割り当て
-        total_text_len = sum(len(line.get("text", "")) for line in chunk_lines) or 1
+        # 無音セグメントは固定長、通常セリフはテキスト長比例
+        normal_lines = [line for line in chunk_lines if not line.get("is_silence")]
+        silence_lines = [line for line in chunk_lines if line.get("is_silence")]
+
+        # 無音セグメントの合計時間を計算
+        total_silence_duration = sum(
+            line.get("silence_duration_ms", 3000) / 1000.0 for line in silence_lines
+        )
+
+        # 通常セリフに割り当てる時間
+        normal_duration = chunk_duration - total_silence_duration if total_silence_duration < chunk_duration else 0.0
+        total_text_len = sum(len(line.get("text", "")) for line in normal_lines) or 1
 
         chunk_start = current_time
         for line in chunk_lines:
-            text_len = len(line.get("text", ""))
-            line_duration = (text_len / total_text_len) * chunk_duration
-
-            segments.append({
-                "speaker": line["speaker"],
-                "text": line["text"],
-                "start": current_time,
-                "end": current_time + line_duration,
-                "color": CHARACTERS[line["speaker"]]["color"],
-                "section": line.get("section", ""),  # セクション情報
-            })
+            if line.get("is_silence"):
+                # 無音セグメントは固定長
+                line_duration = line.get("silence_duration_ms", 3000) / 1000.0
+                segments.append({
+                    "speaker": line["speaker"],
+                    "text": line["text"],
+                    "start": current_time,
+                    "end": current_time + line_duration,
+                    "color": "#FFFFFF",  # 無音セグメントは白（表示されないが）
+                    "section": line.get("section", ""),
+                    "is_silence": True,
+                })
+            else:
+                # 通常セリフはテキスト長比例
+                text_len = len(line.get("text", ""))
+                line_duration = (text_len / total_text_len) * normal_duration if normal_duration > 0 else 0.0
+                speaker = line["speaker"]
+                color = CHARACTERS.get(speaker, {}).get("color", "#FFFFFF")
+                segments.append({
+                    "speaker": speaker,
+                    "text": line["text"],
+                    "start": current_time,
+                    "end": current_time + line_duration,
+                    "color": color,
+                    "section": line.get("section", ""),
+                })
             current_time += line_duration
             successful_dialogue_count += 1
 
@@ -2001,6 +2037,9 @@ def generate_ass_subtitles(segments: list, output_path: str, section_markers: li
     bar_height = int(VIDEO_HEIGHT * 0.45)  # 透かしバーの高さ（画面の45%）
     source_margin_bottom = bar_height + 10  # 透かしの上10px
 
+    # 控室タイトル設定（画面中央、白文字）
+    backroom_title_size = 48
+
     header = f"""[Script Info]
 Title: 年金ニュース
 ScriptType: v4.00+
@@ -2013,6 +2052,7 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF&,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
 Style: Backroom,Noto Sans CJK JP,{font_size},{gold_color},&H000000FF&,{gold_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
 Style: Source,Noto Sans CJK JP,{source_font_size},{orange_color},&H000000FF&,&H00FFFFFF&,&H00000000&,0,0,0,0,100,100,0,0,1,2,0,1,30,0,{source_margin_bottom},1
+Style: BackroomTitle,Noto Sans CJK JP,{backroom_title_size},&H00FFFFFF&,&H000000FF&,&H00FFFFFF&,&H00000000&,-1,0,0,0,100,100,0,0,1,2,0,5,0,0,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -2051,8 +2091,14 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             source_text = f"出典: {item['source']}"
             lines.append(f"Dialogue: 2,{start},{end},Source,,0,0,0,,{source_text}")
 
-    # セリフ字幕を追加（控室セクションは黄色）
+    # セリフ字幕を追加（控室セクションは黄色、無音セグメントはスキップ）
+    backroom_start = None
+    backroom_end = None
     for seg in segments:
+        # 無音セグメントは字幕を表示しない
+        if seg.get("is_silence"):
+            continue
+
         start = f"0:{int(seg['start']//60):02d}:{int(seg['start']%60):02d}.{int((seg['start']%1)*100):02d}"
         end = f"0:{int(seg['end']//60):02d}:{int(seg['end']%60):02d}.{int((seg['end']%1)*100):02d}"
         # 長いセリフは40文字で省略（トピックは60文字）
@@ -2062,8 +2108,21 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         # セリフのみ表示（話者名なし）、折り返し
         wrapped_text = wrap_text(dialogue_text, max_chars=16)  # 1行16文字で折り返し（3行対応）
         # 控室セクションは黄色(Backroom)、それ以外は白(Default)
-        style = "Backroom" if seg.get("section") == "控え室" else "Default"
+        is_backroom = seg.get("section") == "控え室"
+        style = "Backroom" if is_backroom else "Default"
         lines.append(f"Dialogue: 0,{start},{end},{style},,0,0,0,,{wrapped_text}")
+
+        # 控室セクションの開始・終了を記録
+        if is_backroom:
+            if backroom_start is None:
+                backroom_start = seg['start']
+            backroom_end = seg['end']
+
+    # 控室タイトル「控室にて。」を画面中央に表示
+    if backroom_start is not None and backroom_end is not None:
+        br_start = f"0:{int(backroom_start//60):02d}:{int(backroom_start%60):02d}.{int((backroom_start%1)*100):02d}"
+        br_end = f"0:{int(backroom_end//60):02d}:{int(backroom_end%60):02d}.{int((backroom_end%1)*100):02d}"
+        lines.append(f"Dialogue: 1,{br_start},{br_end},BackroomTitle,,0,0,0,,控室にて。")
 
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines))
@@ -2093,6 +2152,7 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
         dialogue = section.get("dialogue", [])
         for d in dialogue:
             d["section"] = news_title
+            d["source"] = source  # 出典情報を各セリフに保存
         if dialogue:
             section_markers.append({"title": news_title, "source": source, "start_idx": len(all_dialogue)})
         all_dialogue.extend(dialogue)
@@ -2129,19 +2189,30 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
         section_markers.append({"title": "エンディング", "start_idx": len(all_dialogue)})
     all_dialogue.extend(ending)
 
-    # 控え室（素のボヤキ）※エンディングジングルの後に再生
+    # エンディングと控室の間に無音（間）を挿入
     green_room = script.get("green_room", [])
+    if ending and green_room:
+        silence_segment = {
+            "speaker": "（間）",
+            "text": "（間）",  # フィルタで除外されないよう4文字以上
+            "section": "間",
+            "is_silence": True,
+            "silence_duration_ms": 3000  # 3秒の無音
+        }
+        all_dialogue.append(silence_segment)
+
+    # 控え室（素のボヤキ）※エンディングジングルの後に再生
     for d in green_room:
         d["section"] = "控え室"
     if green_room:
         section_markers.append({"title": "控え室", "start_idx": len(all_dialogue)})
     all_dialogue.extend(green_room)
 
-    # 空や無効なセリフを除外
+    # 空や無効なセリフを除外（無音セグメントは除外しない）
     original_count = len(all_dialogue)
     all_dialogue = [
         d for d in all_dialogue
-        if d.get("text") and len(d["text"].strip()) > 3 and d["text"].strip() not in ["...", "…", "。", "、"]
+        if d.get("is_silence") or (d.get("text") and len(d["text"].strip()) > 3 and d["text"].strip() not in ["...", "…", "。", "、"])
     ]
     if len(all_dialogue) < original_count:
         print(f"  [フィルタ] {original_count - len(all_dialogue)}件の空セリフを除外")
@@ -2167,7 +2238,9 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
                 title = "控え室"
             else:
                 title = section
-            section_markers_filtered.append({"title": title, "start_idx": i})
+            # 出典情報を取得（セリフに保存されている場合）
+            source = d.get("source", "")
+            section_markers_filtered.append({"title": title, "source": source, "start_idx": i})
             current_section = section
     section_markers = section_markers_filtered
 
