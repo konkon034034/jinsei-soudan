@@ -62,14 +62,14 @@ def encode_video_gpu(bg_base64: str, audio_base64: str, ass_content: str, output
         # GPU エンコード（h264_nvenc）
         # fontsdir でフォントディレクトリを明示的に指定
         if backroom_start_sec is not None:
-            # 控室開始から背景を真っ黒に切り替え
+            # 控室開始から背景を真っ黒に切り替え + 透かしバーも非表示
             vf_filter = (
                 f"scale=1920:1080,"
                 f"drawbox=x=0:y=0:w=1920:h=1080:color=black:t=fill:enable='gte(t,{backroom_start_sec})',"
-                f"drawbox=x=0:y={bar_y}:w=1920:h={bar_height}:color=0x3C281E@0.8:t=fill,"
+                f"drawbox=x=0:y={bar_y}:w=1920:h={bar_height}:color=0x3C281E@0.8:t=fill:enable='lt(t,{backroom_start_sec})',"
                 f"ass={ass_path}:fontsdir=/usr/share/fonts"
             )
-            print(f"  [動画] 控室開始 {backroom_start_sec:.1f}秒 から背景を黒に切り替え")
+            print(f"  [動画] 控室開始 {backroom_start_sec:.1f}秒 から背景を黒に切り替え、透かしバー非表示")
         else:
             vf_filter = (
                 f"scale=1920:1080,"
