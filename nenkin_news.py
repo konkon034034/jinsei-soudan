@@ -2009,6 +2009,12 @@ def generate_ass_subtitles(segments: list, output_path: str, section_markers: li
     orange_color = "&H00356BFF&"   # #FF6B35 → BGR: 356BFF（オレンジ）
     topic_text_color = "&H00000000&"  # 黒文字
     topic_bg_color = "&HF2FFFFFF&"  # 白背景 rgba(255,255,255,0.95)
+    gold_color = "&H0000D7FF&"     # #FFD700 → BGR: 00D7FF（ゴールド）
+
+    # 出典表示設定（透かしのすぐ上、左寄せ）
+    source_font_size = 24
+    bar_height = int(VIDEO_HEIGHT * 0.45)  # 透かしバーの高さ（画面の45%）
+    source_margin_bottom = bar_height + 10  # 透かしの上10px
 
     header = f"""[Script Info]
 Title: 年金ニュース
@@ -2020,6 +2026,8 @@ WrapStyle: 0
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF&,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
+Style: Backroom,Noto Sans CJK JP,{font_size},{gold_color},&H000000FF&,{gold_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
+Style: Source,Noto Sans CJK JP,{source_font_size},{orange_color},&H000000FF&,&H00FFFFFF&,&H00000000&,0,0,0,0,100,100,0,0,1,2,0,1,30,0,{source_margin_bottom},1
 Style: Date,Noto Sans CJK JP,{date_font_size},{orange_color},&H000000FF&,&H00000000&,&H00000000&,0,0,0,0,100,100,0,0,1,0,0,9,0,{date_margin_right},{date_margin_top},1
 Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_text_color},&H000000FF&,&H00000000&,{topic_bg_color},-1,0,0,0,100,100,0,0,3,20,0,9,0,{topic_margin_right},{topic_margin_top},1
 
@@ -2052,6 +2060,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     end_time = segments[-1]["end"] if segments else start_time + 5
                 topic_timings.append({
                     "title": marker["title"],
+                    "source": marker.get("source", ""),
                     "start": start_time,
                     "end": end_time,
                 })
@@ -2070,7 +2079,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             topic_text = topic_text[:57] + "..."
         lines.append(f"Dialogue: 1,{start},{end},Topic,,0,0,0,,{topic_text}")
 
-    # セリフ字幕を追加
+        # 出典（透かしのすぐ上、左寄せ）
+        if topic.get("source"):
+            source_text = f"出典: {topic['source']}"
+            lines.append(f"Dialogue: 2,{start},{end},Source,,0,0,0,,{source_text}")
+
+    # セリフ字幕を追加（控室セクションは黄色）
     for seg in segments:
         start = f"0:{int(seg['start']//60):02d}:{int(seg['start']%60):02d}.{int((seg['start']%1)*100):02d}"
         end = f"0:{int(seg['end']//60):02d}:{int(seg['end']%60):02d}.{int((seg['end']%1)*100):02d}"
@@ -2080,7 +2094,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             dialogue_text = dialogue_text[:37] + "..."
         # セリフのみ表示（話者名なし）、折り返し
         wrapped_text = wrap_text(dialogue_text, max_chars=16)  # 1行16文字で折り返し（3行対応）
-        lines.append(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{wrapped_text}")
+        # 控室セクションは黄色(Backroom)、それ以外は白(Default)
+        style = "Backroom" if seg.get("section") == "控え室" else "Default"
+        lines.append(f"Dialogue: 0,{start},{end},{style},,0,0,0,,{wrapped_text}")
 
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines))
@@ -2108,11 +2124,12 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     # ニュースセクション（確定情報）
     for i, section in enumerate(script.get("news_sections", [])):
         news_title = section.get("news_title", f"ニュース{i+1}")
+        source = section.get("source", "")
         dialogue = section.get("dialogue", [])
         for d in dialogue:
             d["section"] = news_title
         if dialogue:
-            section_markers.append({"title": news_title, "start_idx": len(all_dialogue)})
+            section_markers.append({"title": news_title, "source": source, "start_idx": len(all_dialogue)})
         all_dialogue.extend(dialogue)
 
     # 深掘りコーナー
@@ -2275,10 +2292,10 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
                 main_audio = AudioSegment.from_file(audio_path)
                 total_duration_ms = len(main_audio)
 
-                # BGMを読み込み、音量を下げる（-3dB）
+                # BGMを読み込み（原音のまま）
                 bgm = AudioSegment.from_file(backroom_bgm_path)
-                bgm = bgm - 3  # ほぼ原音に近い音量
-                print(f"    [BGM] 長さ: {len(bgm) / 1000:.1f}秒, 音量: -3dB")
+                # bgm = bgm - 0  # 原音のまま（音量調整なし）
+                print(f"    [BGM] 長さ: {len(bgm) / 1000:.1f}秒, 音量: 原音")
 
                 # BGMが短ければループ
                 bgm_duration_needed = total_duration_ms - backroom_start_ms
@@ -2381,14 +2398,27 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
         bar_height = int(VIDEO_HEIGHT * 0.45)  # 画面の45%（3行字幕も収まる高さ）
         bar_y = VIDEO_HEIGHT - bar_height  # バーのY座標（画面下部）
 
-        # ffmpegフィルター: scale → 背景バー描画 → 字幕
+        # 控室開始時刻を秒に変換（背景を黒にするため）
+        backroom_start_sec = backroom_start_ms / 1000 if backroom_start_ms is not None else None
+
+        # ffmpegフィルター: scale → (控室から黒背景) → 背景バー描画 → 字幕
         # 茶色系: rgba(60,40,30,0.8) → ffmpegでは 0x3C281E@0.8
         # fontsdir でフォントディレクトリを明示的に指定（日本語フォント対応）
-        vf_filter = (
-            f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},"
-            f"drawbox=x=0:y={bar_y}:w={VIDEO_WIDTH}:h={bar_height}:color=0x3C281E@0.8:t=fill,"
-            f"ass={ass_path}:fontsdir=/usr/share/fonts"
-        )
+        if backroom_start_sec is not None:
+            # 控室開始から背景を真っ黒に切り替え
+            vf_filter = (
+                f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},"
+                f"drawbox=x=0:y=0:w={VIDEO_WIDTH}:h={VIDEO_HEIGHT}:color=black:t=fill:enable='gte(t,{backroom_start_sec})',"
+                f"drawbox=x=0:y={bar_y}:w={VIDEO_WIDTH}:h={bar_height}:color=0x3C281E@0.8:t=fill,"
+                f"ass={ass_path}:fontsdir=/usr/share/fonts"
+            )
+            print(f"  [動画] 控室開始 {backroom_start_sec:.1f}秒 から背景を黒に切り替え")
+        else:
+            vf_filter = (
+                f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},"
+                f"drawbox=x=0:y={bar_y}:w={VIDEO_WIDTH}:h={bar_height}:color=0x3C281E@0.8:t=fill,"
+                f"ass={ass_path}:fontsdir=/usr/share/fonts"
+            )
 
         cmd = [
             'ffmpeg', '-y',
