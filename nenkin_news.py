@@ -1607,9 +1607,10 @@ def add_jingle_to_audio(tts_audio_path: str, jingle_path: str, output_path: str,
         # 音声ファイルを読み込み
         tts_audio = AudioSegment.from_file(tts_audio_path)
 
-        # ジングルを読み込み
+        # ジングルを読み込み（+6dB音量アップ）
         jingle = AudioSegment.from_file(jingle_path)
-        print(f"    [ジングル] 長さ: {len(jingle) / 1000:.1f}秒")
+        jingle = jingle + 6  # +6dB
+        print(f"    [OPジングル] 長さ: {len(jingle) / 1000:.1f}秒（+6dB）")
 
         # 無音を作成（サンプルレートとチャンネル数を合わせる）
         silence = AudioSegment.silent(duration=silence_ms, frame_rate=tts_audio.frame_rate)
@@ -1654,28 +1655,32 @@ def add_ending_jingle_to_audio(
         # 音声ファイルを読み込み
         audio = AudioSegment.from_file(audio_path)
 
-        # エンディングジングルを読み込み
+        # エンディングジングルを読み込み（+6dB音量アップ）
         ending_jingle = AudioSegment.from_file(ending_jingle_path)
+        ending_jingle = ending_jingle + 6  # +6dB
         jingle_duration = len(ending_jingle) / 1000  # 秒
-        print(f"    [エンディングジングル] 長さ: {jingle_duration:.1f}秒")
+        print(f"    [エンディングジングル] 長さ: {jingle_duration:.1f}秒（+6dB）")
 
-        # 音声を分割
+        # 音声を分割（本編 | 控え室）
         main_audio = audio[:ending_start_ms]
-        ending_audio = audio[ending_start_ms:]
+        backroom_audio = audio[ending_start_ms:]
 
-        # 無音を作成
-        silence = AudioSegment.silent(duration=silence_ms, frame_rate=audio.frame_rate)
+        # 無音を作成（ジングル前後用）
+        jingle_silence = AudioSegment.silent(duration=1000, frame_rate=audio.frame_rate)  # ジングル前後は1秒
+        long_silence = AudioSegment.silent(duration=silence_ms, frame_rate=audio.frame_rate)  # 本編後/控え室前は5秒
 
-        # 結合: 本編 + 無音 + エンディングジングル + 無音 + エンディング音声
-        combined = main_audio + silence + ending_jingle + silence + ending_audio
+        # 結合: 本編 + 5秒無音 + (1秒無音 + エンディングジングル + 1秒無音) + 5秒無音 + 控え室
+        combined = main_audio + long_silence + jingle_silence + ending_jingle + jingle_silence + long_silence + backroom_audio
 
         # WAV形式で出力（24000Hz, mono, 16bit）
         combined = combined.set_frame_rate(24000).set_channels(1).set_sample_width(2)
         combined.export(output_path, format="wav")
 
-        # ジングル挿入による追加時間（無音×2 + ジングル長さ）
-        added_duration = (silence_ms * 2 + len(ending_jingle)) / 1000
+        # ジングル挿入による追加時間
+        # 本編後5秒 + ジングル前1秒 + ジングル + ジングル後1秒 + 控え室前5秒 = 12秒 + ジングル
+        added_duration = (silence_ms * 2 + 2000 + len(ending_jingle)) / 1000
         print(f"    ✓ エンディングジングル挿入完了（追加: {added_duration:.1f}秒）")
+        print(f"      構成: 本編→5秒→1秒→ジングル→1秒→5秒→控え室")
         return True, added_duration
 
     except Exception as e:
@@ -1986,28 +1991,38 @@ def create_topic_overlay_transparent(title: str, source: str = "", date_str: str
 def generate_ass_subtitles(segments: list, output_path: str, section_markers: list = None) -> list:
     """ASS字幕を生成（セリフ字幕＋トピック字幕＋出典）
 
-    背景バーはffmpegのdrawboxで描画するため、ここではセリフ字幕のみ
-    トピック情報はtopic_timingsとして返し、PIL描画で使用
+    画面右上にトピックボックス、その下に出典を表示
 
     Returns:
         topic_timings: トピックのタイミング情報リスト
     """
-    # 字幕設定
-    font_size = int(VIDEO_WIDTH * 0.075)  # 画面幅の7.5% ≈ 144px（3行対応で少し小さく）
-    margin_bottom = int(VIDEO_HEIGHT * 0.05)  # 下から5%（38%バー内に収まるよう調整）
-    margin_left = int(VIDEO_WIDTH * 0.15)   # 左マージン（画面幅の15% ≈ 288px）
-    margin_right = int(VIDEO_WIDTH * 0.15)  # 右マージン（画面幅の15% ≈ 288px）
+    # セリフ字幕設定（画面下部）
+    font_size = int(VIDEO_WIDTH * 0.075)  # 画面幅の7.5% ≈ 144px
+    margin_bottom = int(VIDEO_HEIGHT * 0.05)  # 下から5%
+    margin_left = int(VIDEO_WIDTH * 0.15)
+    margin_right = int(VIDEO_WIDTH * 0.15)
 
-    # トピック字幕の設定（画面上部）
-    topic_font_size = int(VIDEO_WIDTH * 0.045)  # 画面幅の4.5% ≈ 86px
-    topic_margin_top = int(VIDEO_HEIGHT * 0.02)  # 上から2%
-    source_font_size = int(VIDEO_WIDTH * 0.025)  # 画面幅の2.5% ≈ 48px
+    # 画面右上のトピック表示設定
+    # 日付: 右上、オレンジ、24px
+    date_font_size = 24
+    date_margin_top = 30
+    date_margin_right = 30
+
+    # トピックボックス: 日付の下、白背景、黒文字、28px
+    topic_font_size = 28
+    topic_margin_top = date_margin_top + date_font_size + 20  # 日付の下20px
+    topic_margin_right = 30
+
+    # 出典: トピックの下、オレンジ、18px
+    source_font_size = 18
+    source_margin_top = topic_margin_top + 80  # トピックボックスの下（仮）
 
     # ASS色形式: &HAABBGGRR
     primary_color = "&H00FFFFFF"  # 白文字
     shadow_color = "&H80000000"   # 半透明黒シャドウ
-    topic_bg_color = "&HCC2E1A0D"  # 濃い茶色（透明度80%）  0D1A2E -> BGR
-    source_color = "&H004080FF"   # オレンジ/赤系 (BGR: FF8040)
+    orange_color = "&H00356BFF"   # #FF6B35 → BGR: 356BFF
+    topic_text_color = "&H00000000"  # 黒文字
+    topic_bg_color = "&HF2FFFFFF"  # 白背景 rgba(255,255,255,0.95)
 
     header = f"""[Script Info]
 Title: 年金ニュース
@@ -2019,14 +2034,19 @@ WrapStyle: 0
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
-Style: Topic,Noto Sans CJK JP,{topic_font_size},{primary_color},&H000000FF,&H00000000,{topic_bg_color},-1,0,0,0,100,100,0,0,3,3,0,7,20,20,{topic_margin_top},1
-Style: Source,Noto Sans CJK JP,{source_font_size},{source_color},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,9,20,20,{topic_margin_top + topic_font_size + 10},1
+Style: Date,Noto Sans CJK JP,{date_font_size},{orange_color},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,9,0,{date_margin_right},{date_margin_top},1
+Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_text_color},&H000000FF,&H00000000,{topic_bg_color},-1,0,0,0,100,100,0,0,3,20,0,9,0,{topic_margin_right},{topic_margin_top},1
+Style: Source,Noto Sans CJK JP,{source_font_size},{orange_color},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,9,0,{topic_margin_right},{source_margin_top},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
     lines = [header]
+
+    # 今日の日付を取得
+    from datetime import datetime
+    today_str = datetime.now().strftime("%Y年%m月%d日")
 
     # トピック字幕のタイミングを計算
     topic_timings = []
@@ -2052,12 +2072,20 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     "end": end_time,
                 })
 
-    # トピック字幕を追加（画面上部）
+    # トピック字幕を追加（画面右上）
     for topic in topic_timings:
         start = f"0:{int(topic['start']//60):02d}:{int(topic['start']%60):02d}.{int((topic['start']%1)*100):02d}"
         end = f"0:{int(topic['end']//60):02d}:{int(topic['end']%60):02d}.{int((topic['end']%1)*100):02d}"
-        # トピックタイトル
-        lines.append(f"Dialogue: 1,{start},{end},Topic,,0,0,0,,{topic['title']}")
+
+        # 日付（右上）
+        lines.append(f"Dialogue: 1,{start},{end},Date,,0,0,0,,{today_str}")
+
+        # トピックタイトル（省略処理: 60文字超は...）
+        topic_text = topic['title']
+        if len(topic_text) > 60:
+            topic_text = topic_text[:57] + "..."
+        lines.append(f"Dialogue: 1,{start},{end},Topic,,0,0,0,,{topic_text}")
+
         # 出典（あれば）
         if topic.get("source"):
             source_text = f"出典: {topic['source']}"
