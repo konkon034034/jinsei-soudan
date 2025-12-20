@@ -79,16 +79,15 @@ def draw_frame(
     source_font = fonts.get('source')
     backroom_title_font = fonts.get('backroom_title')
 
-    # 本編のみ: 下部に透かしバー
+    # 本編のみ: 下部に透かしバー（半透明黒）
     if not is_backroom:
         bar_height = int(VIDEO_HEIGHT * 0.45)
         bar_y = VIDEO_HEIGHT - bar_height
-        # 半透明の茶色バー（PILはRGBAで透明度処理）
-        overlay = Image.new('RGBA', (VIDEO_WIDTH, bar_height), (60, 40, 30, 200))
-        frame.paste(Image.alpha_composite(
-            Image.new('RGBA', (VIDEO_WIDTH, bar_height), (0, 0, 0, 0)),
-            overlay
-        ).convert('RGB'), (0, bar_y))
+        # 半透明の黒バー rgba(0,0,0,0.5)
+        frame = frame.convert('RGBA')
+        overlay = Image.new('RGBA', (VIDEO_WIDTH, bar_height), (0, 0, 0, 128))
+        frame.paste(overlay, (0, bar_y), overlay)
+        frame = frame.convert('RGB')
 
     # セリフ（下部中央）
     if text and text.strip():
@@ -97,8 +96,8 @@ def draw_frame(
         # 16文字で折り返し
         lines = wrap_text(display_text, 16)
 
-        # 色: 控室はゴールド、本編は白
-        text_color = (255, 215, 0) if is_backroom else (255, 255, 255)
+        # 色: 控室も本編も白
+        text_color = (255, 255, 255)
 
         # 位置計算（下から5%、中央寄せ）
         margin_bottom = int(VIDEO_HEIGHT * 0.05)
@@ -120,31 +119,38 @@ def draw_frame(
             draw.text((x, y), line, font=subtitle_font, fill=text_color)
             y += line_height
 
-    # トピック縦書き（左端、本編ニュースセクションのみ）
+    # トピック縦書き（左上、本編ニュースセクションのみ）
     if topic and not is_backroom:
         vertical_topic = to_vertical(topic)
         topic_lines = vertical_topic.split('\n')
 
         x = 30  # 左端マージン
         y = 50  # 上端マージン
+        bar_height = int(VIDEO_HEIGHT * 0.45)
+        max_y = VIDEO_HEIGHT - bar_height - 50  # 透かしバーの上で止める
 
         for char in topic_lines:
+            if y > max_y:
+                break  # 透かしバーに入る前に停止
             # 縁取り
             for dx, dy in [(-1, -1), (-1, 1), (1, -1), (1, 1)]:
-                draw.text((x + dx, y + dy), char, font=topic_font, fill=(0, 0, 0, 128))
+                draw.text((x + dx, y + dy), char, font=topic_font, fill=(0, 0, 0))
             draw.text((x, y), char, font=topic_font, fill=(255, 255, 255))
-            y += 100  # 縦書き間隔
+            y += 40  # 縦書き間隔（36pxフォント用）
 
-    # 出典（右下、本編ニュースセクションのみ）
+    # 出典（右下、透かしバーのすぐ上、本編ニュースセクションのみ）
     if source and not is_backroom:
         source_text = f"出典: {source}"
         bar_height = int(VIDEO_HEIGHT * 0.45)
-        source_y = VIDEO_HEIGHT - bar_height - 80  # 透かしバーの上
+        source_y = VIDEO_HEIGHT - bar_height - 30  # 透かしバーのすぐ上
 
         bbox = draw.textbbox((0, 0), source_text, font=source_font)
         text_width = bbox[2] - bbox[0]
         source_x = VIDEO_WIDTH - text_width - 30  # 右寄せ
 
+        # 縁取り
+        for dx, dy in [(-1, -1), (-1, 1), (1, -1), (1, 1)]:
+            draw.text((source_x + dx, source_y + dy), source_text, font=source_font, fill=(0, 0, 0))
         draw.text((source_x, source_y), source_text, font=source_font, fill=(255, 255, 255))
 
     # 「控室にて。」（控室のみ、右上）
@@ -215,9 +221,9 @@ def encode_video_with_frames(
         try:
             fonts = {
                 'subtitle': ImageFont.truetype(font_path, int(VIDEO_WIDTH * 0.075)),  # 144px
-                'topic': ImageFont.truetype(font_path, 90),
-                'source': ImageFont.truetype(font_path, 72),
-                'backroom_title': ImageFont.truetype(font_path, 180),
+                'topic': ImageFont.truetype(font_path, 36),  # 元のサイズ
+                'source': ImageFont.truetype(font_path, 24),  # 元のサイズ
+                'backroom_title': ImageFont.truetype(font_path, 120),  # 少し小さく
             }
         except Exception as e:
             print(f"Font loading error, trying alternative: {e}")
@@ -226,9 +232,9 @@ def encode_video_with_frames(
             try:
                 fonts = {
                     'subtitle': ImageFont.truetype(font_path, int(VIDEO_WIDTH * 0.075)),
-                    'topic': ImageFont.truetype(font_path, 90),
-                    'source': ImageFont.truetype(font_path, 72),
-                    'backroom_title': ImageFont.truetype(font_path, 180),
+                    'topic': ImageFont.truetype(font_path, 36),
+                    'source': ImageFont.truetype(font_path, 24),
+                    'backroom_title': ImageFont.truetype(font_path, 120),
                 }
             except:
                 # 最終フォールバック: デフォルトフォント
