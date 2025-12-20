@@ -77,6 +77,13 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Modal関数をデプロイ
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          modal deploy modal_video.py
+
       - name: 環境変数チェック
         env:
           YOUTUBE_REFRESH_TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
