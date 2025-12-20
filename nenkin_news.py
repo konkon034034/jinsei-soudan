@@ -72,15 +72,15 @@ DEFAULT_TTS_INSTRUCTION = """あなたはプロフェッショナルな年金ニ
 - 自然で聞き取りやすい日本語で話してください
 
 【カツミの声の特徴（{voice_female}音声を使用）】
-- 60代女性の落ち着いた声
+- 50代女性の落ち着いた声
 - トーン: 低め、温かみがある、信頼感がある
 - スピード: ゆっくり目（1.0倍速）
 - 感情: 穏やか、優しい、説明的
 - 話し方: 丁寧語、専門家らしい説得力
 
 【ヒロシの声の特徴（{voice_male}音声を使用）】
-- 60代男性の素朴な声
-- トーン: 中程度、明るい、親しみやすい
+- 40代前半男性の素朴な声
+- トーン: 中程度、明るい、親しみやすい、のんびり
 - スピード: 普通（1.0倍速）
 - 感情: 興味津々、驚き、共感
 - 話し方: カジュアル、素朴な疑問を投げかける
@@ -533,8 +533,8 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager, test_mode: b
 以下のニュースを元に、カツミとヒロシの掛け合い台本を作成してください。
 
 【登場人物】
-- カツミ（60代女性）: 年金の専門家、解説役。優しく丁寧だけど、最後に本音（ぼやき・毒舌）が出る。
-- ヒロシ（60代男性）: 視聴者代弁、素朴な疑問を聞く。ちょっとお馬鹿。最後にカツミにツッコミを入れる。
+- カツミ（50代女性）: 年金の専門家、解説役。落ち着いていて優しく丁寧だけど、控室では本音が出る。
+- ヒロシ（40代前半男性）: 視聴者代弁、素朴な疑問を聞く。ちょっとお馬鹿でのんびり。
 
 【ニュース情報】
 {news_text}
@@ -1797,6 +1797,15 @@ def wrap_text(text: str, max_chars: int = 30) -> str:
     return "\\N".join(lines)
 
 
+def to_vertical(text: str) -> str:
+    """テキストを縦書き用に変換（ASS用）
+
+    各文字を \\N で区切ることで縦書き表示を実現
+    例: "年金改正" → "年\\N金\\N改\\N正"
+    """
+    return "\\N".join(list(text))
+
+
 def draw_topic_overlay(base_img: Image.Image, title: str, date_str: str = "") -> Image.Image:
     """背景画像にトピック・日付のオーバーレイを描画
 
@@ -2032,13 +2041,17 @@ def generate_ass_subtitles(segments: list, output_path: str, section_markers: li
     orange_color = "&H00356BFF&"   # #FF6B35 → BGR: 356BFF（オレンジ）
     gold_color = "&H0000D7FF&"     # #FFD700 → BGR: 00D7FF（ゴールド）
 
-    # 出典表示設定（透かしのすぐ上、左寄せ）
-    source_font_size = 72  # 3倍サイズ
+    # 出典表示設定（右揃え、白文字、縁取りなし）
+    source_font_size = 90  # さらに大きく
     bar_height = int(VIDEO_HEIGHT * 0.45)  # 透かしバーの高さ（画面の45%）
     source_margin_bottom = bar_height + 10  # 透かしの上10px
 
-    # 控室タイトル設定（画面中央、白文字）
+    # トピック縦書き設定（画面左端）
+    topic_font_size = 36
+
+    # 控室タイトル設定（右上寄り、白文字）
     backroom_title_size = 240  # 5倍サイズ
+    backroom_title_margin_v = 150  # 上寄り
 
     header = f"""[Script Info]
 Title: 年金ニュース
@@ -2050,9 +2063,10 @@ WrapStyle: 0
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF&,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
-Style: Backroom,Noto Sans CJK JP,{font_size},{gold_color},&H000000FF&,{gold_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
-Style: Source,Noto Sans CJK JP,{source_font_size},{orange_color},&H000000FF&,&H00FFFFFF&,&H00000000&,0,0,0,0,100,100,0,0,1,2,0,1,30,0,{source_margin_bottom},1
-Style: BackroomTitle,Noto Sans CJK JP,{backroom_title_size},&H00FFFFFF&,&H000000FF&,&H00FFFFFF&,&H00000000&,-1,0,0,0,100,100,0,0,1,2,0,5,0,0,0,1
+Style: Backroom,Noto Sans CJK JP,{font_size},{gold_color},&H000000FF&,&H80000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,1,0,1,{margin_left},{margin_right},{margin_bottom},1
+Style: Source,Noto Sans CJK JP,{source_font_size},{primary_color},&H000000FF&,&H00FFFFFF&,&H00000000&,0,0,0,0,100,100,0,0,1,0,0,3,0,30,{source_margin_bottom},1
+Style: BackroomTitle,Noto Sans CJK JP,{backroom_title_size},&H00FFFFFF&,&H000000FF&,&H00FFFFFF&,&H00000000&,-1,0,0,0,100,100,0,0,1,2,0,6,0,50,{backroom_title_margin_v},1
+Style: TopicVertical,Noto Sans CJK JP,{topic_font_size},{primary_color},&H000000FF&,&H80000000&,&H00000000&,0,0,0,0,100,100,0,0,1,1,0,7,30,0,50,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -2083,13 +2097,39 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     "end": end_time,
                 })
 
-    # 出典字幕を追加（透かしのすぐ上、左寄せ）
+    # 出典字幕を追加（右揃え、白文字）
     for item in source_timings:
         if item.get("source"):
             start = f"0:{int(item['start']//60):02d}:{int(item['start']%60):02d}.{int((item['start']%1)*100):02d}"
             end = f"0:{int(item['end']//60):02d}:{int(item['end']%60):02d}.{int((item['end']%1)*100):02d}"
             source_text = f"出典: {item['source']}"
             lines.append(f"Dialogue: 2,{start},{end},Source,,0,0,0,,{source_text}")
+
+    # トピック縦書き字幕を追加（左端、縦書き）
+    # オープニング・エンディング・控室以外のニュースセクションのみ表示
+    if section_markers and segments:
+        for i, marker in enumerate(section_markers):
+            title = marker.get("title", "")
+            # オープニング・深掘り・エンディング・控室は除外
+            if title in ["オープニング", "深掘りコーナー", "エンディング", "控え室"]:
+                continue
+            start_idx = marker["start_idx"]
+            if start_idx < len(segments):
+                start_time = segments[start_idx]["start"]
+                # 次のセクションの開始時間まで
+                if i + 1 < len(section_markers):
+                    next_idx = section_markers[i + 1]["start_idx"]
+                    if next_idx < len(segments):
+                        end_time = segments[next_idx]["start"]
+                    else:
+                        end_time = segments[-1]["end"] if segments else start_time + 5
+                else:
+                    end_time = segments[-1]["end"] if segments else start_time + 5
+                start = f"0:{int(start_time//60):02d}:{int(start_time%60):02d}.{int((start_time%1)*100):02d}"
+                end = f"0:{int(end_time//60):02d}:{int(end_time%60):02d}.{int((end_time%1)*100):02d}"
+                # 縦書き変換
+                vertical_title = to_vertical(title)
+                lines.append(f"Dialogue: 3,{start},{end},TopicVertical,,0,0,0,,{vertical_title}")
 
     # セリフ字幕を追加（控室セクションは黄色、無音セグメントはスキップ）
     backroom_start = None
