@@ -900,6 +900,320 @@ def generate_gtts_fallback(text: str, output_path: str) -> bool:
         return False
 
 
+# ===== 統合TTS + STT関数（1回生成 + Whisperタイミング取得） =====
+
+def generate_unified_audio_with_stt(dialogue: list, output_path: str, temp_dir: Path, key_manager: GeminiKeyManager) -> tuple:
+    """全台本を1回でTTS生成し、Whisper STTで正確なタイミングを取得
+
+    Args:
+        dialogue: 対話リスト（全セリフ）
+        output_path: 出力パス
+        temp_dir: 一時ディレクトリ
+        key_manager: APIキーマネージャー
+
+    Returns:
+        tuple: (output_path, segments, total_duration)
+    """
+    from faster_whisper import WhisperModel
+    import difflib
+
+    print("    [統合TTS] 全台本を1回で生成開始...")
+
+    # 1. 全対話テキストを構築
+    dialogue_text = "\n".join([
+        f"{line['speaker']}: {fix_reading(line['text'])}"
+        for line in dialogue if not line.get("is_silence")
+    ])
+
+    # 2. Gemini TTSで一括生成
+    api_key, key_name = key_manager.get_next_key()
+    print(f"    [統合TTS] {key_name} で全{len(dialogue)}セリフを生成...")
+
+    tts_success = False
+    max_retries = 5
+
+    for attempt in range(max_retries):
+        try:
+            client = genai_tts.Client(api_key=api_key)
+
+            # マルチスピーカー設定
+            speaker_configs = [
+                types.SpeakerVoiceConfig(
+                    speaker="カツミ",
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                            voice_name=GEMINI_VOICE_KATSUMI
+                        )
+                    )
+                ),
+                types.SpeakerVoiceConfig(
+                    speaker="ヒロシ",
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                            voice_name=GEMINI_VOICE_HIROSHI
+                        )
+                    )
+                )
+            ]
+
+            # TTS指示文
+            instruction = TTS_INSTRUCTION.format(
+                voice_female=TTS_VOICE_FEMALE,
+                voice_male=TTS_VOICE_MALE
+            )
+            tts_prompt = f"""{instruction}
+
+【台本】
+{dialogue_text}"""
+
+            response = client.models.generate_content(
+                model=GEMINI_TTS_MODEL,
+                contents=tts_prompt,
+                config=types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=types.SpeechConfig(
+                        multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
+                            speaker_voice_configs=speaker_configs
+                        )
+                    ),
+                )
+            )
+
+            if response.candidates and response.candidates[0].content.parts:
+                audio_data = response.candidates[0].content.parts[0].inline_data.data
+                save_wav_file(output_path, audio_data)
+                tts_success = True
+                print(f"    ✓ TTS生成完了")
+                break
+
+        except Exception as e:
+            error_str = str(e)
+            is_429 = "429" in error_str or "RESOURCE_EXHAUSTED" in error_str
+
+            if is_429:
+                print(f"    ⚠ 429エラー (attempt {attempt + 1}/{max_retries})")
+                key_manager.mark_429_error(api_key)
+                api_key, key_name = key_manager.get_next_key()
+                time.sleep(5)
+            else:
+                print(f"    ⚠ TTS エラー: {e}")
+                if attempt < max_retries - 1:
+                    api_key, key_name = key_manager.get_next_key()
+                    time.sleep(3)
+
+    if not tts_success:
+        print("    ❌ TTS生成失敗、gTTSフォールバック...")
+        all_text = "。".join([fix_reading(line["text"]) for line in dialogue if not line.get("is_silence")])
+        if not generate_gtts_fallback(all_text, output_path):
+            return None, [], 0.0
+
+    # 3. 音声長を取得
+    result = subprocess.run([
+        'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+        '-of', 'default=noprint_wrappers=1:nokey=1', output_path
+    ], capture_output=True, text=True)
+    total_duration = float(result.stdout.strip()) if result.stdout.strip() else 0.0
+    print(f"    [統合TTS] 音声長: {total_duration:.1f}秒")
+
+    # 4. Whisper STTでタイミング取得
+    print("    [STT] faster-whisperで音声解析...")
+    try:
+        # baseモデルを使用（速度と精度のバランス）
+        model = WhisperModel("base", device="cpu", compute_type="int8")
+        whisper_segments_raw, info = model.transcribe(
+            output_path,
+            language="ja",
+            word_timestamps=True,
+            vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=300)
+        )
+        whisper_segments = list(whisper_segments_raw)
+        print(f"    [STT] {len(whisper_segments)}セグメント検出")
+
+    except Exception as e:
+        print(f"    ⚠ STTエラー: {e}、テキスト長比例でフォールバック")
+        whisper_segments = None
+
+    # 5. 台本とSTT結果をマッチング
+    segments = []
+    normal_lines = [line for line in dialogue if not line.get("is_silence")]
+
+    if whisper_segments and len(whisper_segments) > 0:
+        # STTセグメントと台本をマッチング
+        segments = match_stt_to_script(whisper_segments, dialogue, total_duration)
+        print(f"    [STT] {len(segments)}セリフにタイミング割当完了")
+    else:
+        # フォールバック: テキスト長比例でタイミング計算
+        print("    [フォールバック] テキスト長比例でタイミング計算...")
+        segments = calculate_timing_by_text_length(dialogue, total_duration)
+
+    return output_path, segments, total_duration
+
+
+def match_stt_to_script(whisper_segments: list, dialogue: list, total_duration: float) -> list:
+    """Whisper STT結果と台本をマッチングして正確なタイミングを取得
+
+    Args:
+        whisper_segments: Whisperのセグメントリスト
+        dialogue: 台本の対話リスト
+        total_duration: 総音声長（秒）
+
+    Returns:
+        list: タイミング付きセグメントリスト
+    """
+    import difflib
+
+    segments = []
+    current_whisper_idx = 0
+    current_time = 0.0
+
+    # Whisperセグメントのテキストを結合して検索用に準備
+    whisper_texts = []
+    whisper_timings = []
+    for seg in whisper_segments:
+        whisper_texts.append(seg.text.strip())
+        whisper_timings.append((seg.start, seg.end))
+
+    # 全Whisperテキストを結合（マッチング用）
+    all_whisper_text = "".join(whisper_texts)
+
+    for i, line in enumerate(dialogue):
+        speaker = line["speaker"]
+        text = line["text"]
+        section = line.get("section", "")
+        color = CHARACTERS.get(speaker, {}).get("color", "#FFFFFF")
+
+        if line.get("is_silence"):
+            # 無音セグメント
+            silence_duration = line.get("silence_duration_ms", 3000) / 1000.0
+            segments.append({
+                "speaker": speaker,
+                "text": text,
+                "start": current_time,
+                "end": current_time + silence_duration,
+                "color": "#FFFFFF",
+                "section": section,
+                "is_silence": True,
+            })
+            current_time += silence_duration
+            continue
+
+        # 台本テキストとWhisperテキストをマッチング
+        # 最も類似するWhisperセグメントを探す
+        best_match_idx = current_whisper_idx
+        best_ratio = 0.0
+
+        # 現在位置から前後5セグメントを検索
+        search_start = max(0, current_whisper_idx - 2)
+        search_end = min(len(whisper_texts), current_whisper_idx + 8)
+
+        for j in range(search_start, search_end):
+            # セグメント単体またはセグメント結合でマッチング
+            for k in range(j, min(j + 3, search_end)):
+                combined = "".join(whisper_texts[j:k+1])
+                # 読み方修正を除いた比較用テキスト
+                clean_text = text.replace("、", "").replace("。", "").replace("！", "").replace("？", "")
+                clean_combined = combined.replace("、", "").replace("。", "").replace("！", "").replace("？", "")
+
+                ratio = difflib.SequenceMatcher(None, clean_text, clean_combined).ratio()
+                if ratio > best_ratio:
+                    best_ratio = ratio
+                    best_match_idx = j
+                    best_match_end = k
+
+        # タイミングを取得
+        if best_ratio > 0.3 and best_match_idx < len(whisper_timings):
+            start_time = whisper_timings[best_match_idx][0]
+            end_time = whisper_timings[min(best_match_end, len(whisper_timings) - 1)][1]
+            current_whisper_idx = best_match_end + 1
+        else:
+            # マッチしない場合は現在位置から推定
+            if current_whisper_idx < len(whisper_timings):
+                start_time = whisper_timings[current_whisper_idx][0]
+                # テキスト長から終了時間を推定
+                avg_chars_per_sec = 5.0  # 日本語の平均読み上げ速度
+                estimated_duration = len(text) / avg_chars_per_sec
+                end_time = min(start_time + estimated_duration, total_duration)
+                current_whisper_idx += 1
+            else:
+                start_time = current_time
+                end_time = current_time + len(text) / 5.0
+
+        segments.append({
+            "speaker": speaker,
+            "text": text,
+            "start": start_time,
+            "end": end_time,
+            "color": color,
+            "section": section,
+        })
+        current_time = end_time
+
+    return segments
+
+
+def calculate_timing_by_text_length(dialogue: list, total_duration: float) -> list:
+    """テキスト長に比例してタイミングを計算（フォールバック用）
+
+    Args:
+        dialogue: 対話リスト
+        total_duration: 総音声長（秒）
+
+    Returns:
+        list: タイミング付きセグメントリスト
+    """
+    segments = []
+
+    # 無音を除いた通常セリフの合計テキスト長
+    normal_lines = [line for line in dialogue if not line.get("is_silence")]
+    total_text_len = sum(len(line.get("text", "")) for line in normal_lines) or 1
+
+    # 無音の合計時間
+    total_silence = sum(
+        line.get("silence_duration_ms", 3000) / 1000.0
+        for line in dialogue if line.get("is_silence")
+    )
+
+    # 通常セリフに割り当てる時間
+    speech_duration = total_duration - total_silence
+    if speech_duration < 0:
+        speech_duration = total_duration
+
+    current_time = 0.0
+    for line in dialogue:
+        speaker = line["speaker"]
+        text = line["text"]
+        section = line.get("section", "")
+        color = CHARACTERS.get(speaker, {}).get("color", "#FFFFFF")
+
+        if line.get("is_silence"):
+            line_duration = line.get("silence_duration_ms", 3000) / 1000.0
+            segments.append({
+                "speaker": speaker,
+                "text": text,
+                "start": current_time,
+                "end": current_time + line_duration,
+                "color": "#FFFFFF",
+                "section": section,
+                "is_silence": True,
+            })
+        else:
+            text_len = len(text)
+            line_duration = (text_len / total_text_len) * speech_duration
+            segments.append({
+                "speaker": speaker,
+                "text": text,
+                "start": current_time,
+                "end": current_time + line_duration,
+                "color": color,
+                "section": section,
+            })
+
+        current_time += line_duration
+
+    return segments
+
+
 # ===== Google Cloud TTS 関数 =====
 
 def get_gcloud_tts_client():
@@ -2466,9 +2780,9 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
         print(f"  [TTS] Google Cloud TTS を使用")
         _, segments, tts_duration = generate_gcloud_tts_dialogue(all_dialogue, tts_audio_path, temp_dir)
     else:
-        # Gemini TTS（デフォルト）
-        print(f"  [TTS] Gemini TTS を使用")
-        _, segments, tts_duration = generate_dialogue_audio_parallel(all_dialogue, tts_audio_path, temp_dir, key_manager)
+        # Gemini TTS + Whisper STT（1回生成 + 正確なタイミング）
+        print(f"  [TTS] Gemini TTS + Whisper STT を使用（1回生成 + 正確タイミング）")
+        _, segments, tts_duration = generate_unified_audio_with_stt(all_dialogue, tts_audio_path, temp_dir, key_manager)
 
     all_segments = segments
 
