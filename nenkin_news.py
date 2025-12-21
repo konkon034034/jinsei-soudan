@@ -189,6 +189,12 @@ DEFAULT_READING_DICT = {
     "2030年": "にせんさんじゅうねん",
     "月収": "げっしゅう",
     "月収入": "げっしゅうにゅう",
+    "他人事": "たにんごと",
+    "不確定": "ふかくてい",
+    "不確定な": "ふかくていな",
+    "確定": "かくてい",
+    "確定申告": "かくていしんこく",
+    "確定拠出": "かくていきょしゅつ",
 }
 
 # スプレッドシートから読み込む辞書（キャッシュ）
@@ -717,6 +723,23 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager, test_mode: b
 - 【重要】本編エンディングは丁寧モード、控え室は素のタメ口モード。ギャップが大事！
 - 【重要】控え室は視聴者が最も楽しみにするパート。素のカツミが本音・噂話・毒舌全開で語る
 - deep_dive, chat_summaryはテストモードでは省略可（空配列[]）
+
+【トピック変更時の導入フレーズ】
+各ニュースセクションの切り替え時に、自然な導入フレーズを入れてください。
+突然話題が変わると視聴者が混乱します。
+
+例（使い分けてください）:
+- 「続いてのニュースはこちらです」
+- 「次の話題に移りましょう」
+- 「さて、次のニュースです」
+- 「それでは次のトピックです」
+- 「話は変わりますが」
+- 「続きましては」
+- 「さて、お次は」
+- 「ここからは別の話題です」
+- 「もう一つ重要なニュースがあります」
+
+※毎回同じフレーズは避け、バリエーションをつけてください。
 
 【控室の始め方】
 控室パートは必ず「お疲れ様」系の言葉から自然に始めてください。
@@ -2685,28 +2708,45 @@ def generate_gradient_background(output_path: str, title: str = ""):
     print(f"    [背景] ✓ フォールバック背景生成完了")
 
 
+# ===== 禁則処理用文字リスト =====
+# 行頭禁則: これらの文字は行頭に来てはいけない
+KINSOKU_HEAD = set('、。，．・：；？！゛゜´｀¨＾￣＿ヽヾゝゞ〃仝々〆〇ー―‐／＼～∥｜…‥'）〕］｝〉》」』】°′″℃¢％‰'
+                   + 'ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ')
+# 行末禁則: これらの文字は行末に来てはいけない
+KINSOKU_TAIL = set('（〔［｛〈《「『【')
+
+
 def wrap_text(text: str, max_chars: int = 30) -> str:
-    """長いテキストを自動折り返し（ASS用）"""
+    """長いテキストを自動折り返し（ASS用、禁則処理対応）"""
     if len(text) <= max_chars:
         return text
 
-    # 句読点や助詞で区切りを見つける
-    break_chars = ['、', '。', '！', '？', 'は', 'が', 'を', 'に', 'で', 'と', 'の']
     lines = []
     current = ""
 
-    for char in text:
+    for i, char in enumerate(text):
         current += char
         if len(current) >= max_chars:
-            # 区切り文字を探す
+            # 禁則処理: 行末禁則文字がある場合は次の文字も含める
+            if current[-1] in KINSOKU_TAIL:
+                continue
+            # 禁則処理: 次の文字が行頭禁則文字の場合は含める
+            if i + 1 < len(text) and text[i + 1] in KINSOKU_HEAD:
+                continue
+
+            # 句読点や助詞で区切りを見つける
+            break_chars = ['、', '。', '！', '？', 'は', 'が', 'を', 'に', 'で', 'と', 'の']
             for bc in break_chars:
                 idx = current.rfind(bc)
+                # 禁則処理: 分割後の行頭が禁則文字にならないか確認
                 if idx > 0 and idx < len(current) - 1:
-                    lines.append(current[:idx + 1])
-                    current = current[idx + 1:]
-                    break
+                    remaining = current[idx + 1:]
+                    if remaining and remaining[0] not in KINSOKU_HEAD:
+                        lines.append(current[:idx + 1])
+                        current = remaining
+                        break
             else:
-                # 区切りが見つからない場合は強制改行
+                # 区切りが見つからない場合は強制改行（禁則回避）
                 lines.append(current)
                 current = ""
 
@@ -3000,7 +3040,7 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF&,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
 Style: Backroom,Noto Sans CJK JP Medium,{font_size},{backroom_text_color},&H000000FF&,&H80000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,1,0,1,{margin_left},{margin_right},{margin_bottom},1
 Style: Source,Noto Sans CJK JP,{info_font_size},{info_color},&H000000FF&,&H00000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,0,0,3,0,{info_margin},{info_margin},1
-Style: BackroomTitle,Noto Sans CJK JP,{backroom_title_size},{backroom_title_color},&H000000FF&,{backroom_title_color},&H00000000&,-1,0,0,0,100,100,0,0,1,2,0,9,0,50,50,1
+Style: BackroomTitle,IPAPGothic,{backroom_title_size},{backroom_title_color},&H000000FF&,{backroom_title_color},&H00000000&,-1,0,0,0,100,100,0,0,1,2,0,9,0,50,50,1
 Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_color},&H000000FF&,&H00000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,0,0,7,{info_margin},0,{info_margin},1
 
 [Events]
