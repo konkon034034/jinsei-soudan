@@ -1525,7 +1525,7 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
     # デバッグ: 各チャンクの長さを表示
     print(f"    [デバッグ] チャンク詳細:")
     for idx, dur in enumerate(chunk_durations):
-        speech_dur = chunk_speech_durations.get(idx, 0)
+        speech_dur = chunk_speech_durations[idx] if idx < len(chunk_speech_durations) else 0
         status = "✓" if chunk_files[idx] else "✗"
         print(f"      {status} チャンク{idx + 1}: 音声={speech_dur:.1f}秒, ジングル含む={dur:.1f}秒")
 
