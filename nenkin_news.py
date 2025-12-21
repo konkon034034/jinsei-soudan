@@ -1742,6 +1742,79 @@ def add_ending_jingle_to_audio(
         return False, 0.0
 
 
+def insert_jingles_at_positions(
+    audio_path: str,
+    jingle_path: str,
+    positions_ms: list,
+    output_path: str,
+    silence_before_ms: int = 300,
+    silence_after_ms: int = 300,
+    volume_db: int = 0
+) -> tuple:
+    """指定した位置にジングルを挿入し、タイミング調整用のオフセット情報を返す
+
+    Args:
+        audio_path: 入力音声ファイルパス
+        jingle_path: ジングルファイルパス
+        positions_ms: ジングルを挿入する位置のリスト（ミリ秒）
+        output_path: 出力音声ファイルパス
+        silence_before_ms: ジングル前の無音（ミリ秒）
+        silence_after_ms: ジングル後の無音（ミリ秒）
+        volume_db: 音量調整（dB）
+
+    Returns:
+        tuple: (成功フラグ, 挿入位置ごとの累積オフセット辞書)
+    """
+    try:
+        from pydub import AudioSegment
+
+        audio = AudioSegment.from_file(audio_path)
+        jingle = AudioSegment.from_file(jingle_path)
+        jingle = jingle + volume_db
+
+        jingle_with_silence = (
+            AudioSegment.silent(duration=silence_before_ms, frame_rate=audio.frame_rate) +
+            jingle +
+            AudioSegment.silent(duration=silence_after_ms, frame_rate=audio.frame_rate)
+        )
+        insert_duration_ms = len(jingle_with_silence)
+
+        # 位置を昇順にソート
+        sorted_positions = sorted(positions_ms)
+
+        # 挿入による累積オフセットを計算
+        offsets = {}
+        cumulative_offset = 0
+
+        # 結果音声を構築
+        result = AudioSegment.empty()
+        prev_pos = 0
+
+        for pos in sorted_positions:
+            # この位置までの音声を追加
+            result += audio[prev_pos:pos]
+            # ジングルを挿入
+            result += jingle_with_silence
+            # オフセットを記録（この位置以降のセグメントに適用）
+            cumulative_offset += insert_duration_ms
+            offsets[pos] = cumulative_offset
+            prev_pos = pos
+
+        # 残りの音声を追加
+        result += audio[prev_pos:]
+
+        # 出力
+        result = result.set_frame_rate(24000).set_channels(1).set_sample_width(2)
+        result.export(output_path, format="wav")
+
+        print(f"    ✓ ジングル挿入完了（{len(sorted_positions)}箇所、各{insert_duration_ms}ms）")
+        return True, offsets, insert_duration_ms
+
+    except Exception as e:
+        print(f"    ⚠ ジングル挿入エラー: {e}")
+        return False, {}, 0
+
+
 def generate_gradient_background(output_path: str, title: str = ""):
     """温かみのあるベージュ系グラデーション背景を生成"""
     img = Image.new('RGB', (VIDEO_WIDTH, VIDEO_HEIGHT))
@@ -1797,12 +1870,28 @@ def wrap_text(text: str, max_chars: int = 30) -> str:
     return "\\N".join(lines)
 
 
-def to_vertical(text: str) -> str:
+def to_vertical(text: str, max_chars_per_line: int = 6, max_lines: int = 2) -> str:
     """テキストを縦書き用に変換（ASS用）
 
     各文字を \\N で区切ることで縦書き表示を実現
     例: "年金改正" → "年\\N金\\N改\\N正"
+
+    Args:
+        text: 元テキスト
+        max_chars_per_line: 1行あたりの最大文字数（デフォルト6）
+        max_lines: 最大行数（デフォルト2）
     """
+    max_total_chars = max_chars_per_line * max_lines
+    if len(text) > max_total_chars:
+        text = text[:max_total_chars - 1] + "…"
+
+    # 2列以上になる場合は列を分ける
+    if len(text) > max_chars_per_line:
+        # 1列目（左）と2列目（右）に分割
+        col1 = text[:max_chars_per_line]
+        col2 = text[max_chars_per_line:]
+        # 右から左に表示（ASS縦書き: 列間は2スペース）
+        return "\\N".join(list(col1)) + "  " + "\\N".join(list(col2))
     return "\\N".join(list(text))
 
 
@@ -2041,12 +2130,11 @@ def generate_ass_subtitles(segments: list, output_path: str, section_markers: li
     orange_color = "&H00356BFF&"   # #FF6B35 → BGR: 356BFF（オレンジ）
     gold_color = "&H0000D7FF&"     # #FFD700 → BGR: 00D7FF（ゴールド）
 
-    # 出典表示設定（右揃え、白文字、縁取りなし）
-    source_font_size = 72
-    bar_height = int(VIDEO_HEIGHT * 0.45)  # 透かしバーの高さ（画面の45%）
-    source_margin_bottom = bar_height + 10  # 透かしの上10px
+    # 出典表示設定（右上、太字、小さめ）
+    source_font_size = 62  # 72から-10px
+    source_margin_top = 30  # 画面上部からのマージン
 
-    # トピック縦書き設定（画面左端）
+    # トピック縦書き設定（左上、太字）
     topic_font_size = 90
 
     # 控室タイトル設定（右上寄り、白文字）
@@ -2064,9 +2152,9 @@ WrapStyle: 0
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF&,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
 Style: Backroom,Noto Sans CJK JP,{font_size},{gold_color},&H000000FF&,&H80000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,1,0,1,{margin_left},{margin_right},{margin_bottom},1
-Style: Source,Noto Sans CJK JP,{source_font_size},{primary_color},&H000000FF&,&H00FFFFFF&,&H00000000&,0,0,0,0,100,100,0,0,1,0,0,3,0,30,{source_margin_bottom},1
+Style: Source,Noto Sans CJK JP,{source_font_size},{primary_color},&H000000FF&,&H00FFFFFF&,&H00000000&,-1,0,0,0,100,100,0,0,1,0,0,9,0,30,{source_margin_top},1
 Style: BackroomTitle,Noto Sans CJK JP,{backroom_title_size},&H00FFFFFF&,&H000000FF&,&H00FFFFFF&,&H00000000&,-1,0,0,0,100,100,0,0,1,2,0,6,0,150,{backroom_title_margin_v},1
-Style: TopicVertical,Noto Sans CJK JP,{topic_font_size},{primary_color},&H000000FF&,&H80000000&,&H00000000&,0,0,0,0,100,100,0,0,1,1,0,7,30,0,50,1
+Style: TopicVertical,Noto Sans CJK JP,{topic_font_size},{primary_color},&H000000FF&,&H80000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,1,0,7,30,0,50,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -2347,6 +2435,83 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
 
     # 音声は1本で生成済み（本編→締め→控え室が自然に連続）
     # 無音挿入や分割処理は不要
+
+    # トピック変更ジングル追加
+    TOPIC_JINGLE_FILE_ID = "18JF1p4Maea9SPcZ6y0wCHnxI1FMAfyfT"
+    topic_jingle_path = str(temp_dir / "topic_jingle.mp3")
+
+    # ニュースセクションの開始位置を取得（オープニング直後から）
+    topic_positions_ms = []
+    for marker in section_markers:
+        title = marker.get("title", "")
+        # オープニング・深掘り・まとめ・エンディング・控え室は除外
+        if title in ["オープニング", "深掘りコーナー", "今日のまとめ", "噂・参考情報", "エンディング", "控え室"]:
+            continue
+        start_idx = marker["start_idx"]
+        if start_idx < len(all_segments):
+            pos_ms = int(all_segments[start_idx]["start"] * 1000)
+            topic_positions_ms.append(pos_ms)
+
+    if topic_positions_ms and download_jingle_from_drive(TOPIC_JINGLE_FILE_ID, topic_jingle_path):
+        print(f"  [トピックジングル] {len(topic_positions_ms)}箇所に挿入...")
+        audio_with_topic_jingles = str(temp_dir / "audio_topic.wav")
+        success, offsets, insert_duration_ms = insert_jingles_at_positions(
+            audio_path, topic_jingle_path, topic_positions_ms, audio_with_topic_jingles,
+            silence_before_ms=300, silence_after_ms=300, volume_db=3
+        )
+        if success:
+            # 字幕タイミングを調整
+            for seg in all_segments:
+                seg_start_ms = int(seg["start"] * 1000)
+                # この位置より前に挿入されたジングルの累積オフセットを計算
+                offset_ms = 0
+                for pos in sorted(offsets.keys()):
+                    if pos <= seg_start_ms:
+                        offset_ms = offsets[pos]
+                    else:
+                        break
+                seg["start"] += offset_ms / 1000
+                seg["end"] += offset_ms / 1000
+            # 更新した音声を使用
+            import shutil
+            shutil.move(audio_with_topic_jingles, audio_path)
+            print(f"  ✓ トピックジングル挿入完了")
+    else:
+        if topic_positions_ms:
+            print("  ⚠ トピックジングルダウンロード失敗、スキップ")
+
+    # 控室ジングル追加
+    GREEN_ROOM_JINGLE_FILE_ID = "1zaJf-Oq7gzR26k33y2ccTS0yO_n5gY83"
+    green_room_jingle_path = str(temp_dir / "green_room_jingle.mp3")
+
+    # 控室セクションの開始位置を取得
+    green_room_start_ms = None
+    for seg in all_segments:
+        if seg.get("section") == "控え室":
+            green_room_start_ms = int(seg["start"] * 1000)
+            break
+
+    if green_room_start_ms is not None and download_jingle_from_drive(GREEN_ROOM_JINGLE_FILE_ID, green_room_jingle_path):
+        print(f"  [控室ジングル] {green_room_start_ms / 1000:.1f}秒位置に挿入...")
+        audio_with_gr_jingle = str(temp_dir / "audio_gr.wav")
+        success, offsets, insert_duration_ms = insert_jingles_at_positions(
+            audio_path, green_room_jingle_path, [green_room_start_ms], audio_with_gr_jingle,
+            silence_before_ms=500, silence_after_ms=500, volume_db=3
+        )
+        if success:
+            # 控室以降の字幕タイミングを調整
+            for seg in all_segments:
+                seg_start_ms = int(seg["start"] * 1000)
+                if seg_start_ms >= green_room_start_ms:
+                    seg["start"] += insert_duration_ms / 1000
+                    seg["end"] += insert_duration_ms / 1000
+            # 更新した音声を使用
+            import shutil
+            shutil.move(audio_with_gr_jingle, audio_path)
+            print(f"  ✓ 控室ジングル挿入完了")
+    else:
+        if green_room_start_ms is not None:
+            print("  ⚠ 控室ジングルダウンロード失敗、スキップ")
 
     # 控え室BGMを追加（オプション）
     BACKROOM_BGM_FILE_ID = "1wP6bp0a0PlaaqM55b8zdwozxT0XTOvab"
