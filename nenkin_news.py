@@ -2527,10 +2527,14 @@ def generate_ass_subtitles(segments: list, output_path: str, section_markers: li
     orange_color = "&H00356BFF&"   # #FF6B35 → BGR: 356BFF（オレンジ）
     gold_color = "&H0000D7FF&"     # #FFD700 → BGR: 00D7FF（ゴールド）
 
-    # 出典・トピック共通設定（灰色、同じフォント・サイズ）
-    info_font_size = 48  # 出典・トピック共通サイズ
+    # 出典設定（灰色）
+    info_font_size = 48
     info_color = "&H00A0A0A0&"  # 明るめのグレー
-    info_margin = 30  # マージン共通
+    info_margin = 30
+
+    # トピック設定（白、大きめ）
+    topic_font_size = info_font_size * 2  # 96px
+    topic_color = "&H00FFFFFF&"  # 白
 
     # 控室タイトル設定（右上寄り、白文字）
     backroom_title_size = 180
@@ -2552,7 +2556,7 @@ Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF&,{primary
 Style: Backroom,Noto Sans CJK JP Medium,{font_size},{backroom_text_color},&H000000FF&,&H80000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,1,0,1,{margin_left},{margin_right},{margin_bottom},1
 Style: Source,Noto Sans CJK JP,{info_font_size},{info_color},&H000000FF&,&H00000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,0,0,3,0,{info_margin},{info_margin},1
 Style: BackroomTitle,Noto Sans CJK JP,{backroom_title_size},&H00FFFFFF&,&H000000FF&,&H00FFFFFF&,&H00000000&,-1,0,0,0,100,100,0,0,1,2,0,6,0,150,{backroom_title_margin_v},1
-Style: Topic,Noto Sans CJK JP,{info_font_size},{info_color},&H000000FF&,&H00000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,0,0,7,{info_margin},0,{info_margin},1
+Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_color},&H000000FF&,&H00000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,0,0,7,{info_margin},0,{info_margin},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
