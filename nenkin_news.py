@@ -926,8 +926,8 @@ def generate_unified_audio_with_stt(dialogue: list, output_path: str, temp_dir: 
     ])
 
     # 2. Gemini TTSで一括生成
-    api_key, key_name = key_manager.get_next_key()
-    print(f"    [統合TTS] {key_name} で全{len(dialogue)}セリフを生成...")
+    api_key = key_manager.get_working_key()
+    print(f"    [統合TTS] 全{len(dialogue)}セリフを生成...")
 
     tts_success = False
     max_retries = 5
@@ -993,12 +993,12 @@ def generate_unified_audio_with_stt(dialogue: list, output_path: str, temp_dir: 
             if is_429:
                 print(f"    ⚠ 429エラー (attempt {attempt + 1}/{max_retries})")
                 key_manager.mark_429_error(api_key)
-                api_key, key_name = key_manager.get_next_key()
+                api_key, _ = key_manager.get_key_with_least_failures({api_key})
                 time.sleep(5)
             else:
                 print(f"    ⚠ TTS エラー: {e}")
                 if attempt < max_retries - 1:
-                    api_key, key_name = key_manager.get_next_key()
+                    api_key, _ = key_manager.get_key_with_least_failures({api_key})
                     time.sleep(3)
 
     if not tts_success:
