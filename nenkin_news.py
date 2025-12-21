@@ -400,14 +400,30 @@ def search_pension_news(key_manager: GeminiKeyManager) -> dict:
     # google-genai クライアントを使用（Web検索対応）
     client = genai_tts.Client(api_key=api_key)
 
-    prompt = """
-あなたは年金ニュースの専門リサーチャーです。
-今日の日本の年金に関する最新ニュースをWeb検索で調べて、以下のJSON形式で出力してください。
+    # 今日の日付を取得
+    from datetime import datetime, timedelta
+    today = datetime.now()
+    today_str = f"{today.year}年{today.month}月{today.day}日"
+    three_days_ago = today - timedelta(days=3)
+    week_ago = today - timedelta(days=7)
 
-【検索クエリ例】
-- 年金 最新ニュース 2024
-- 厚生年金 改正
-- 年金受給 変更
+    prompt = f"""
+あなたは年金ニュースの専門リサーチャーです。
+日本の年金に関する最新ニュースをWeb検索で調べて、以下のJSON形式で出力してください。
+
+【最重要】情報の鮮度を最優先してください！
+今日は{today_str}です。
+
+■ 最優先（必須）: 今日〜3日以内のニュース
+■ 次点: 1週間以内のニュース
+■ 除外: 1週間より古い情報は取得しない
+
+【検索キーワード】
+- 年金 最新 今日 {today.year}年{today.month}月
+- 年金 ニュース {today.month}月{today.day}日
+- 厚生年金 改正 最新
+- 年金機構 発表 今週
+- 年金 速報 {today.year}
 
 【優先する情報源】（信頼度高い順）
 1. 厚生労働省 (mhlw.go.jp)
@@ -420,27 +436,28 @@ def search_pension_news(key_manager: GeminiKeyManager) -> dict:
 
 【出力形式】
 ```json
-{
+{{
   "news": [
-    {
+    {{
       "title": "ニュースタイトル",
       "summary": "ニュースの要約（100文字程度）",
       "source": "情報源名（例: 厚生労働省、NHK）",
+      "published_date": "YYYY/MM/DD形式（必須！日付不明は除外）",
       "url": "参照元URL（わかる場合）",
       "reliability": "high または low",
       "impact": "年金受給者への影響（50文字程度）"
-    }
+    }}
   ]
-}
+}}
 ```
 
 【注意】
-- 最新のニュースを優先（過去1週間以内）
+- ★日付が新しい順にソート★
+- ★公開日（published_date）は必須。日付がわからないニュースは除外★
 - 年金受給者に関係する内容を選ぶ
-- 公式ソースからのニュースを5〜8件（できるだけ多く）
+- 公式ソースからのニュースを5〜8件
 - 噂・未確定情報も2〜3件含める（reliabilityをlowに）
 - URLは可能な限り含める
-- ニュースは多ければ多いほど良い（30分番組に使用）
 """
 
     try:
@@ -513,12 +530,12 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager, test_mode: b
     rumor_news = news_data.get("rumor", [])
 
     confirmed_text = "\n".join([
-        f"【確定ニュース{i+1}】{n['title']}\n{n['summary']}\n影響: {n.get('impact', '不明')}\n出典: {n.get('source', '不明')}"
+        f"【確定ニュース{i+1}】{n['title']}\n公開日: {n.get('published_date', '不明')}\n{n['summary']}\n影響: {n.get('impact', '不明')}\n出典: {n.get('source', '不明')}"
         for i, n in enumerate(confirmed_news)
     ]) if confirmed_news else "（確定情報なし）"
 
     rumor_text = "\n".join([
-        f"【噂・参考情報{i+1}】{n['title']}\n{n['summary']}"
+        f"【噂・参考情報{i+1}】{n['title']}\n公開日: {n.get('published_date', '不明')}\n{n['summary']}"
         for i, n in enumerate(rumor_news)
     ]) if rumor_news else "（噂情報なし）"
 
@@ -666,6 +683,13 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager, test_mode: b
 - 【重要】控え室は視聴者が最も楽しみにするパート。素のカツミが本音・噂話・毒舌全開で語る
 - 控え室の最初のセリフは必ず「あー疲れた」「はぁ〜やっと終わった」など素が出る導入
 - deep_dive, chat_summaryはテストモードでは省略可（空配列[]）
+
+【最重要：ニュースの鮮度を強調】
+- 最新ニュースから優先的に紹介する
+- 日付は必ず言及する（「○月○日の発表によると」など）
+- 今日〜3日以内のニュースは「今日発表された」「昨日のニュースですが」「一昨日入ってきた情報では」など鮮度を強調
+- 1週間程度前のニュースは「少し前の話になりますが」と前置き
+- 「最新情報です」「速報です」「できたてホヤホヤの情報ですよ」など新鮮さをアピール
 
 【超重要：専門用語は必ず噛み砕いて説明】
 視聴者は60代以上のシニア層です。専門用語が出てきたら、その都度わかりやすく補足してください。
