@@ -2981,9 +2981,9 @@ def generate_ass_subtitles(segments: list, output_path: str, section_markers: li
     topic_font_size = info_font_size * 2  # 96px
     topic_color = "&H00FFFFFF&"  # 白
 
-    # 控室タイトル設定（右上寄り、白文字）
+    # 控室タイトル設定（右上、ラベンダー）
     backroom_title_size = 180
-    backroom_title_margin_v = 250  # もっと上
+    backroom_title_color = "&H00FAE6E6&"  # ラベンダー
 
     # 控室字幕設定（白文字）
     backroom_text_color = "&H00FFFFFF&"  # 白
@@ -3000,7 +3000,7 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF&,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
 Style: Backroom,Noto Sans CJK JP Medium,{font_size},{backroom_text_color},&H000000FF&,&H80000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,1,0,1,{margin_left},{margin_right},{margin_bottom},1
 Style: Source,Noto Sans CJK JP,{info_font_size},{info_color},&H000000FF&,&H00000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,0,0,3,0,{info_margin},{info_margin},1
-Style: BackroomTitle,Noto Sans CJK JP,{backroom_title_size},&H00FFFFFF&,&H000000FF&,&H00FFFFFF&,&H00000000&,-1,0,0,0,100,100,0,0,1,2,0,6,0,150,{backroom_title_margin_v},1
+Style: BackroomTitle,Noto Sans CJK JP,{backroom_title_size},{backroom_title_color},&H000000FF&,{backroom_title_color},&H00000000&,-1,0,0,0,100,100,0,0,1,2,0,9,0,50,50,1
 Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_color},&H000000FF&,&H00000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,0,0,7,{info_margin},0,{info_margin},1
 
 [Events]
