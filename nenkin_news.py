@@ -57,6 +57,13 @@ CHANNEL_DESCRIPTION = "毎朝7時、年金に関する最新ニュースをお�
 # ===== Gemini TTS設定 =====
 GEMINI_TTS_MODEL = "gemini-2.5-flash-preview-tts"
 
+# ===== TTS再現性設定（声の一貫性確保） =====
+# seed値を固定して全チャンクで同じ声を生成
+VOICE_SEED = 12345  # 全チャンクで共通のシード値
+TTS_TEMPERATURE = 0  # ランダム性を完全に排除
+TTS_TOP_K = 1  # 最も確率の高い選択肢のみ使用
+TTS_TOP_P = 0  # 確率分布のカットオフを最小に
+
 # TTS音声設定（環境変数でカスタマイズ可能）
 # 利用可能: Puck, Charon, Kore, Fenrir, Aoede
 TTS_VOICE_FEMALE = os.environ.get("TTS_VOICE_FEMALE", "Kore")
@@ -777,6 +784,7 @@ def generate_gemini_tts_chunk(dialogue_chunk: list, api_key: str, output_path: s
             elif chunk_index == 0:
                 # 最初のチャンクでボイス設定をログ出力
                 print(f"      [ボイス設定] カツミ={GEMINI_VOICE_KATSUMI}, ヒロシ={GEMINI_VOICE_HIROSHI}")
+                print(f"      [再現性設定] seed={VOICE_SEED}, temperature={TTS_TEMPERATURE}, top_k={TTS_TOP_K}, top_p={TTS_TOP_P}")
 
             # 台本どおりに読み上げるプロンプト（TTS_INSTRUCTIONを使用）
             # 環境変数で声質を詳細にカスタマイズ可能
@@ -799,6 +807,11 @@ def generate_gemini_tts_chunk(dialogue_chunk: list, api_key: str, output_path: s
                             speaker_voice_configs=speaker_configs
                         )
                     ),
+                    # 声の一貫性確保: seed固定でランダム性を排除
+                    temperature=TTS_TEMPERATURE,
+                    seed=VOICE_SEED,
+                    top_k=TTS_TOP_K,
+                    top_p=TTS_TOP_P,
                 )
             )
 
@@ -868,6 +881,11 @@ def generate_gemini_tts_single(text: str, voice: str, api_key: str, output_path:
                         )
                     )
                 ),
+                # 声の一貫性確保: seed固定でランダム性を排除
+                temperature=TTS_TEMPERATURE,
+                seed=VOICE_SEED,
+                top_k=TTS_TOP_K,
+                top_p=TTS_TOP_P,
             )
         )
 
