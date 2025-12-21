@@ -1337,9 +1337,55 @@ def split_dialogue_into_chunks(dialogue: list, max_lines: int = MAX_LINES_PER_CH
     return chunks
 
 
+def split_dialogue_by_section(dialogue: list) -> list:
+    """対話をセクション単位でチャンクに分割
+
+    Returns:
+        list: [{"section": str, "is_green_room": bool, "lines": list}, ...]
+    """
+    chunks = []
+    current_section = None
+    current_lines = []
+
+    for line in dialogue:
+        section = line.get("section", "")
+        if section != current_section:
+            # 新しいセクション開始
+            if current_lines:
+                chunks.append({
+                    "section": current_section,
+                    "is_green_room": current_section == "控え室",
+                    "lines": current_lines
+                })
+            current_section = section
+            current_lines = [line]
+        else:
+            current_lines.append(line)
+
+    # 最後のセクションを追加
+    if current_lines:
+        chunks.append({
+            "section": current_section,
+            "is_green_room": current_section == "控え室",
+            "lines": current_lines
+        })
+
+    return chunks
+
+
 def _process_chunk_parallel(args: tuple) -> dict:
-    """パラレル処理用のチャンク処理関数（ThreadPoolExecutor用）"""
-    chunk, api_key, chunk_path, chunk_index, key_manager = args
+    """パラレル処理用のチャンク処理関数（ThreadPoolExecutor用）
+
+    argsの形式:
+    - 従来形式: (chunk, api_key, chunk_path, chunk_index, key_manager)
+    - 新形式: (chunk, api_key, chunk_path, chunk_index, key_manager, jingle_path)
+    """
+    # 引数を展開（互換性維持）
+    if len(args) == 6:
+        chunk, api_key, chunk_path, chunk_index, key_manager, jingle_path = args
+    else:
+        chunk, api_key, chunk_path, chunk_index, key_manager = args
+        jingle_path = None
 
     success = generate_gemini_tts_chunk(
         chunk, api_key, chunk_path, chunk_index,
@@ -1350,18 +1396,25 @@ def _process_chunk_parallel(args: tuple) -> dict:
 
     duration = 0.0
     speech_duration = 0.0  # 実際の音声部分の長さ
+    jingle_duration = 0.0  # ジングルの長さ
+
     if success and os.path.exists(chunk_path):
-        # pydubで正確な音声長を取得し、前後に3秒の無音を追加
         try:
             from pydub import AudioSegment
             audio = AudioSegment.from_file(chunk_path)
             speech_duration = len(audio) / 1000.0  # 実際の音声長（秒）
-            # チャンク前後に3秒の無音を追加（字幕ズレ防止）
-            silence = AudioSegment.silent(duration=3000, frame_rate=24000)
-            audio_with_silence = silence + audio + silence  # 前後に無音
-            audio_with_silence.export(chunk_path, format="wav")
-            duration = len(audio_with_silence) / 1000.0  # ミリ秒→秒
-        except Exception:
+
+            # チャンク末尾にジングルを追加
+            if jingle_path and os.path.exists(jingle_path):
+                jingle = AudioSegment.from_file(jingle_path)
+                jingle = jingle + 3  # +3dB
+                jingle_duration = len(jingle) / 1000.0
+                audio = audio + jingle
+
+            audio.export(chunk_path, format="wav")
+            duration = len(audio) / 1000.0  # ミリ秒→秒
+        except Exception as e:
+            print(f"    ⚠ チャンク処理エラー: {e}")
             # フォールバック: ffprobe
             result = subprocess.run([
                 'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
@@ -1375,14 +1428,14 @@ def _process_chunk_parallel(args: tuple) -> dict:
         "success": success,
         "path": chunk_path if success else None,
         "duration": duration,
-        "speech_duration": speech_duration,  # 無音を除いた実際の音声長
-        "silence_before": 3.0  # 冒頭の無音時間（秒）
+        "speech_duration": speech_duration,  # ジングルを除いた実際の音声長
+        "jingle_duration": jingle_duration,  # ジングルの長さ
     }
 
 
 def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir: Path, key_manager: GeminiKeyManager,
                                      chunk_interval: int = 30) -> tuple:
-    """対話音声をパラレル生成（29個のAPIキーを同時使用）
+    """対話音声をパラレル生成（セクション単位、各チャンク末尾にジングル付き）
 
     Args:
         dialogue: 対話リスト
@@ -1398,9 +1451,25 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
     segments = []
     current_time = 0.0
 
-    # チャンクに分割
-    chunks = split_dialogue_into_chunks(dialogue)
-    print(f"    [Gemini TTS] {len(dialogue)}セリフを{len(chunks)}チャンクに分割")
+    # ジングルをダウンロード
+    NORMAL_JINGLE_ID = "18JF1p4Maea9SPcZ6y0wCHnxI1FMAfyfT"
+    GREEN_ROOM_JINGLE_ID = "1zaJf-Oq7gzR26k33y2ccTS0yO_n5gY83"
+    normal_jingle_path = str(temp_dir / "normal_jingle.mp3")
+    green_room_jingle_path = str(temp_dir / "green_room_jingle.mp3")
+
+    print("    [ジングル] ダウンロード中...")
+    download_jingle_from_drive(NORMAL_JINGLE_ID, normal_jingle_path)
+    download_jingle_from_drive(GREEN_ROOM_JINGLE_ID, green_room_jingle_path)
+
+    # セクション単位でチャンクに分割
+    section_chunks = split_dialogue_by_section(dialogue)
+    print(f"    [Gemini TTS] {len(dialogue)}セリフを{len(section_chunks)}セクションに分割")
+    for sc in section_chunks:
+        print(f"      - {sc['section']}: {len(sc['lines'])}セリフ {'(控室)' if sc['is_green_room'] else ''}")
+
+    # 各セクションのセリフをチャンクとして扱う
+    chunks = [sc["lines"] for sc in section_chunks]
+    chunk_is_green_room = [sc["is_green_room"] for sc in section_chunks]
 
     # APIキーを取得
     api_keys = key_manager.get_all_keys()
@@ -1412,19 +1481,22 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
     max_workers = min(len(api_keys), len(chunks), 29)
     print(f"    [Gemini TTS] {len(api_keys)}個のAPIキーで並列処理（max_workers={max_workers}）")
 
-    # パラレル処理用のタスクを準備
+    # パラレル処理用のタスクを準備（ジングルパス付き）
     tasks = []
     for i, chunk in enumerate(chunks):
         api_key = api_keys[i % len(api_keys)]
         chunk_path = str(temp_dir / f"chunk_{i:03d}.wav")
-        tasks.append((chunk, api_key, chunk_path, i, key_manager))
+        # 控室チャンクは控室用ジングル、それ以外は通常ジングル
+        jingle_path = green_room_jingle_path if chunk_is_green_room[i] else normal_jingle_path
+        tasks.append((chunk, api_key, chunk_path, i, key_manager, jingle_path))
 
     # ThreadPoolExecutorでパラレル処理
     chunk_files = [None] * len(chunks)
     chunk_durations = [0.0] * len(chunks)
+    chunk_speech_durations = [0.0] * len(chunks)  # セリフ部分の長さ（ジングル除く）
     successful_chunk_indices = []
 
-    print(f"    [パラレル処理] {len(chunks)}チャンクを{max_workers}並列で処理開始...")
+    print(f"    [パラレル処理] {len(chunks)}セクションを{max_workers}並列で処理開始...")
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(_process_chunk_parallel, task): task[3] for task in tasks}
@@ -1436,12 +1508,14 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
                 if result["success"]:
                     chunk_files[result["index"]] = result["path"]
                     chunk_durations[result["index"]] = result["duration"]
+                    chunk_speech_durations[result["index"]] = result.get("speech_duration", result["duration"])
                     successful_chunk_indices.append(result["index"])
-                    print(f"    ✓ チャンク {result['index'] + 1}/{len(chunks)} 完了 ({result['duration']:.1f}秒)")
+                    jingle_dur = result.get("jingle_duration", 0)
+                    print(f"    ✓ セクション {result['index'] + 1}/{len(chunks)} 完了 (音声{result.get('speech_duration', 0):.1f}秒 + ジングル{jingle_dur:.1f}秒)")
                 else:
-                    print(f"    ✗ チャンク {result['index'] + 1}/{len(chunks)} 失敗")
+                    print(f"    ✗ セクション {result['index'] + 1}/{len(chunks)} 失敗")
             except Exception as e:
-                print(f"    ✗ チャンク {chunk_index + 1}/{len(chunks)} 例外: {e}")
+                print(f"    ✗ セクション {chunk_index + 1}/{len(chunks)} 例外: {e}")
 
     # 成功したチャンクを確認
     successful_chunks = [f for f in chunk_files if f is not None]
@@ -1508,18 +1582,16 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
     total_duration = float(result.stdout.strip()) if result.stdout.strip() else 0.0
     print(f"    [音声長] {total_duration:.1f}秒")
 
-    # チャンク単位のタイミングを計算（Whisperより正確）
-    print("    [字幕] チャンク単位でタイミング計算...")
+    # セクション単位のタイミングを計算（セリフ部分のみ、ジングルは除外）
+    print("    [字幕] セクション単位でタイミング計算...")
 
     current_time = 0.0
     successful_dialogue_count = 0
 
-    # 冒頭・末尾の無音時間（秒）
-    CHUNK_SILENCE_SEC = 3.0
-
     for idx in sorted(successful_chunk_indices):
         chunk_lines = chunks[idx]
         chunk_duration = chunk_durations[idx] if idx < len(chunk_durations) else 0.0
+        speech_duration = chunk_speech_durations[idx] if idx < len(chunk_speech_durations) else chunk_duration
 
         if chunk_duration <= 0:
             continue
@@ -1534,14 +1606,12 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
             line.get("silence_duration_ms", 3000) / 1000.0 for line in silence_lines
         )
 
-        # 通常セリフに割り当てる時間（チャンク前後の無音6秒を除く）
-        speech_duration = chunk_duration - (CHUNK_SILENCE_SEC * 2)  # 前後3秒ずつ除く
+        # 通常セリフに割り当てる時間（セリフ部分のみ、ジングル除く）
         normal_duration = speech_duration - total_silence_duration if total_silence_duration < speech_duration else 0.0
         total_text_len = sum(len(line.get("text", "")) for line in normal_lines) or 1
 
-        # チャンク冒頭の3秒無音をスキップ
-        chunk_start = current_time + CHUNK_SILENCE_SEC
-        segment_time = chunk_start
+        # セリフ開始位置
+        segment_time = current_time
         for line in chunk_lines:
             if line.get("is_silence"):
                 # 無音セグメントは固定長
@@ -2441,85 +2511,8 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
         import shutil
         shutil.copy(tts_audio_path, audio_path)
 
-    # 音声は1本で生成済み（本編→締め→控え室が自然に連続）
-    # 無音挿入や分割処理は不要
-
-    # トピック変更ジングル追加
-    TOPIC_JINGLE_FILE_ID = "18JF1p4Maea9SPcZ6y0wCHnxI1FMAfyfT"
-    topic_jingle_path = str(temp_dir / "topic_jingle.mp3")
-
-    # ニュースセクションの開始位置を取得（オープニング直後から）
-    topic_positions_ms = []
-    for marker in section_markers:
-        title = marker.get("title", "")
-        # オープニング・深掘り・まとめ・エンディング・控え室は除外
-        if title in ["オープニング", "深掘りコーナー", "今日のまとめ", "噂・参考情報", "エンディング", "控え室"]:
-            continue
-        start_idx = marker["start_idx"]
-        if start_idx < len(all_segments):
-            pos_ms = int(all_segments[start_idx]["start"] * 1000)
-            topic_positions_ms.append(pos_ms)
-
-    if topic_positions_ms and download_jingle_from_drive(TOPIC_JINGLE_FILE_ID, topic_jingle_path):
-        print(f"  [トピックジングル] {len(topic_positions_ms)}箇所に挿入...")
-        audio_with_topic_jingles = str(temp_dir / "audio_topic.wav")
-        success, offsets, insert_duration_ms = insert_jingles_at_positions(
-            audio_path, topic_jingle_path, topic_positions_ms, audio_with_topic_jingles,
-            silence_before_ms=300, silence_after_ms=300, volume_db=3
-        )
-        if success:
-            # 字幕タイミングを調整
-            for seg in all_segments:
-                seg_start_ms = int(seg["start"] * 1000)
-                # この位置より前に挿入されたジングルの累積オフセットを計算
-                offset_ms = 0
-                for pos in sorted(offsets.keys()):
-                    if pos <= seg_start_ms:
-                        offset_ms = offsets[pos]
-                    else:
-                        break
-                seg["start"] += offset_ms / 1000
-                seg["end"] += offset_ms / 1000
-            # 更新した音声を使用
-            import shutil
-            shutil.move(audio_with_topic_jingles, audio_path)
-            print(f"  ✓ トピックジングル挿入完了")
-    else:
-        if topic_positions_ms:
-            print("  ⚠ トピックジングルダウンロード失敗、スキップ")
-
-    # 控室ジングル追加
-    GREEN_ROOM_JINGLE_FILE_ID = "1zaJf-Oq7gzR26k33y2ccTS0yO_n5gY83"
-    green_room_jingle_path = str(temp_dir / "green_room_jingle.mp3")
-
-    # 控室セクションの開始位置を取得
-    green_room_start_ms = None
-    for seg in all_segments:
-        if seg.get("section") == "控え室":
-            green_room_start_ms = int(seg["start"] * 1000)
-            break
-
-    if green_room_start_ms is not None and download_jingle_from_drive(GREEN_ROOM_JINGLE_FILE_ID, green_room_jingle_path):
-        print(f"  [控室ジングル] {green_room_start_ms / 1000:.1f}秒位置に挿入...")
-        audio_with_gr_jingle = str(temp_dir / "audio_gr.wav")
-        success, offsets, insert_duration_ms = insert_jingles_at_positions(
-            audio_path, green_room_jingle_path, [green_room_start_ms], audio_with_gr_jingle,
-            silence_before_ms=500, silence_after_ms=500, volume_db=3
-        )
-        if success:
-            # 控室以降の字幕タイミングを調整
-            for seg in all_segments:
-                seg_start_ms = int(seg["start"] * 1000)
-                if seg_start_ms >= green_room_start_ms:
-                    seg["start"] += insert_duration_ms / 1000
-                    seg["end"] += insert_duration_ms / 1000
-            # 更新した音声を使用
-            import shutil
-            shutil.move(audio_with_gr_jingle, audio_path)
-            print(f"  ✓ 控室ジングル挿入完了")
-    else:
-        if green_room_start_ms is not None:
-            print("  ⚠ 控室ジングルダウンロード失敗、スキップ")
+    # 音声は1本で生成済み（各セクション末尾にジングル付き）
+    # 追加のジングル挿入処理は不要
 
     # 控え室BGMを追加（オプション）
     BACKROOM_BGM_FILE_ID = "1wP6bp0a0PlaaqM55b8zdwozxT0XTOvab"
