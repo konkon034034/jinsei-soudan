@@ -137,6 +137,7 @@ jobs:
           USE_MODAL_GPU: ${{ github.event.inputs.use_modal_gpu || '' }}
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
         run: |
           python nenkin_news.py
 
