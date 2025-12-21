@@ -13,6 +13,8 @@ image = modal.Image.debian_slim().apt_install(
     "ffmpeg",
     "fonts-noto-cjk",
     "fonts-noto-cjk-extra",
+    "fonts-ipafont",
+    "fonts-ipaexfont",
     "fontconfig"
 ).run_commands(
     "fc-cache -f -v"  # フォントキャッシュを更新
