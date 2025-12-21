@@ -714,8 +714,17 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager, test_mode: b
 - ヒロシは視聴者が思いそうな疑問を代弁（ちょっとお馬鹿な感じで）
 - 【重要】本編エンディングは丁寧モード、控え室は素のタメ口モード。ギャップが大事！
 - 【重要】控え室は視聴者が最も楽しみにするパート。素のカツミが本音・噂話・毒舌全開で語る
-- 控え室の最初のセリフは必ず「あー疲れた」「はぁ〜やっと終わった」など素が出る導入
 - deep_dive, chat_summaryはテストモードでは省略可（空配列[]）
+
+【控室の始め方】
+控室パートは必ず「お疲れ様」系の言葉から自然に始めてください。
+例:
+- カツミ「お疲れ様でした〜」
+- カツミ「おつかれ〜」
+- ヒロシ「お疲れさん」
+- カツミ「今日もおつかれ」
+※毎回同じセリフではなく、自然なバリエーションでOK
+※ただし必ず「おつかれ」「お疲れ様」等のニュアンスで始める
 
 【最重要：ニュースの鮮度を強調】
 - 最新ニュースから優先的に紹介する
@@ -789,29 +798,7 @@ NG:
         json_match = re.search(r'\{[\s\S]*\}', text)
         if json_match:
             script = json.loads(json_match.group())
-
-            # エンディングの最後に固定フレーズを追加
-            ending_fixed = [
-                {"speaker": "カツミ", "text": "それでは皆さん、また明日お会いしましょう"},
-                {"speaker": "ヒロシ", "text": "また明日〜"},
-                {"speaker": "カツミ", "text": "それでは、また明日"}
-            ]
-            if "ending" not in script:
-                script["ending"] = []
-            script["ending"].extend(ending_fixed)
-
-            # 控室の冒頭に固定フレーズを挿入
-            green_room_fixed = [
-                {"speaker": "カツミ", "text": "今日も収録お疲れ様でした〜"},
-                {"speaker": "ヒロシ", "text": "お疲れ様〜"},
-                {"speaker": "カツミ", "text": "おつかれ〜"}
-            ]
-            if "green_room" not in script:
-                script["green_room"] = []
-            script["green_room"] = green_room_fixed + script["green_room"]
-
             print(f"✓ 台本生成完了: {script.get('title', 'タイトルなし')}")
-            print(f"  → エンディング固定フレーズ追加、控室冒頭固定フレーズ挿入")
             return script
     except Exception as e:
         print(f"❌ 台本生成エラー: {e}")
