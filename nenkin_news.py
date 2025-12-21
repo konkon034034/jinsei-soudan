@@ -1349,14 +1349,16 @@ def _process_chunk_parallel(args: tuple) -> dict:
     )
 
     duration = 0.0
+    speech_duration = 0.0  # 実際の音声部分の長さ
     if success and os.path.exists(chunk_path):
-        # pydubで正確な音声長を取得し、3秒の無音を追加
+        # pydubで正確な音声長を取得し、前後に3秒の無音を追加
         try:
             from pydub import AudioSegment
             audio = AudioSegment.from_file(chunk_path)
-            # チャンク末尾に3秒の無音を追加（字幕ズレ防止）
+            speech_duration = len(audio) / 1000.0  # 実際の音声長（秒）
+            # チャンク前後に3秒の無音を追加（字幕ズレ防止）
             silence = AudioSegment.silent(duration=3000, frame_rate=24000)
-            audio_with_silence = audio + silence
+            audio_with_silence = silence + audio + silence  # 前後に無音
             audio_with_silence.export(chunk_path, format="wav")
             duration = len(audio_with_silence) / 1000.0  # ミリ秒→秒
         except Exception:
@@ -1366,12 +1368,15 @@ def _process_chunk_parallel(args: tuple) -> dict:
                 '-of', 'default=noprint_wrappers=1:nokey=1', chunk_path
             ], capture_output=True, text=True)
             duration = float(result.stdout.strip()) if result.stdout.strip() else 0.0
+            speech_duration = duration  # フォールバック時は同じ
 
     return {
         "index": chunk_index,
         "success": success,
         "path": chunk_path if success else None,
-        "duration": duration
+        "duration": duration,
+        "speech_duration": speech_duration,  # 無音を除いた実際の音声長
+        "silence_before": 3.0  # 冒頭の無音時間（秒）
     }
 
 
@@ -1509,6 +1514,9 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
     current_time = 0.0
     successful_dialogue_count = 0
 
+    # 冒頭・末尾の無音時間（秒）
+    CHUNK_SILENCE_SEC = 3.0
+
     for idx in sorted(successful_chunk_indices):
         chunk_lines = chunks[idx]
         chunk_duration = chunk_durations[idx] if idx < len(chunk_durations) else 0.0
@@ -1526,11 +1534,14 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
             line.get("silence_duration_ms", 3000) / 1000.0 for line in silence_lines
         )
 
-        # 通常セリフに割り当てる時間
-        normal_duration = chunk_duration - total_silence_duration if total_silence_duration < chunk_duration else 0.0
+        # 通常セリフに割り当てる時間（チャンク前後の無音6秒を除く）
+        speech_duration = chunk_duration - (CHUNK_SILENCE_SEC * 2)  # 前後3秒ずつ除く
+        normal_duration = speech_duration - total_silence_duration if total_silence_duration < speech_duration else 0.0
         total_text_len = sum(len(line.get("text", "")) for line in normal_lines) or 1
 
-        chunk_start = current_time
+        # チャンク冒頭の3秒無音をスキップ
+        chunk_start = current_time + CHUNK_SILENCE_SEC
+        segment_time = chunk_start
         for line in chunk_lines:
             if line.get("is_silence"):
                 # 無音セグメントは固定長
@@ -1538,8 +1549,8 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
                 segments.append({
                     "speaker": line["speaker"],
                     "text": line["text"],
-                    "start": current_time,
-                    "end": current_time + line_duration,
+                    "start": segment_time,
+                    "end": segment_time + line_duration,
                     "color": "#FFFFFF",  # 無音セグメントは白（表示されないが）
                     "section": line.get("section", ""),
                     "is_silence": True,
@@ -1553,16 +1564,16 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
                 segments.append({
                     "speaker": speaker,
                     "text": line["text"],
-                    "start": current_time,
-                    "end": current_time + line_duration,
+                    "start": segment_time,
+                    "end": segment_time + line_duration,
                     "color": color,
                     "section": line.get("section", ""),
                 })
-            current_time += line_duration
+            segment_time += line_duration
             successful_dialogue_count += 1
 
-        # チャンク境界を厳密に合わせる
-        current_time = chunk_start + chunk_duration
+        # チャンク境界を厳密に合わせる（前後無音含む全体長）
+        current_time += chunk_duration
 
     print(f"    [字幕] 成功したセリフ数: {successful_dialogue_count}/{len(dialogue)}")
 
@@ -2125,14 +2136,10 @@ def generate_ass_subtitles(segments: list, output_path: str, section_markers: li
     orange_color = "&H00356BFF&"   # #FF6B35 → BGR: 356BFF（オレンジ）
     gold_color = "&H0000D7FF&"     # #FFD700 → BGR: 00D7FF（ゴールド）
 
-    # 出典表示設定（右上、太字、小さめ、灰色）
-    source_font_size = 62  # 72から-10px
-    source_margin_top = 30  # 画面上部からのマージン
-    source_color = "&H00A0A0A0&"  # 明るめのグレー
-
-    # トピック縦書き設定（左上、太字、上半分に制限）
-    topic_font_size = 72  # 縦書き用に少し小さく
-    topic_max_chars = 6   # 上半分(540px)に収まる文字数
+    # 出典・トピック共通設定（灰色、同じフォント・サイズ）
+    info_font_size = 48  # 出典・トピック共通サイズ
+    info_color = "&H00A0A0A0&"  # 明るめのグレー
+    info_margin = 30  # マージン共通
 
     # 控室タイトル設定（右上寄り、白文字）
     backroom_title_size = 180
@@ -2152,9 +2159,9 @@ WrapStyle: 0
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF&,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
 Style: Backroom,Noto Sans CJK JP Medium,{font_size},{backroom_text_color},&H000000FF&,&H80000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,1,0,1,{margin_left},{margin_right},{margin_bottom},1
-Style: Source,Noto Sans CJK JP,{source_font_size},{source_color},&H000000FF&,&H00FFFFFF&,&H00000000&,-1,0,0,0,100,100,0,0,1,0,0,9,0,30,{source_margin_top},1
+Style: Source,Noto Sans CJK JP,{info_font_size},{info_color},&H000000FF&,&H00000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,0,0,3,0,{info_margin},{info_margin},1
 Style: BackroomTitle,Noto Sans CJK JP,{backroom_title_size},&H00FFFFFF&,&H000000FF&,&H00FFFFFF&,&H00000000&,-1,0,0,0,100,100,0,0,1,2,0,6,0,150,{backroom_title_margin_v},1
-Style: TopicVertical,@Noto Sans CJK JP,{topic_font_size},{primary_color},&H000000FF&,&H80000000&,&H00000000&,-1,0,0,0,100,100,-5,0,1,1,0,7,30,0,30,1
+Style: Topic,Noto Sans CJK JP,{info_font_size},{info_color},&H000000FF&,&H00000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,0,0,7,{info_margin},0,{info_margin},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -2215,10 +2222,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     end_time = segments[-1]["end"] if segments else start_time + 5
                 start = f"0:{int(start_time//60):02d}:{int(start_time%60):02d}.{int((start_time%1)*100):02d}"
                 end = f"0:{int(end_time//60):02d}:{int(end_time%60):02d}.{int((end_time%1)*100):02d}"
-                # 縦書き変換（上半分に制限）
-                vertical_title = to_vertical(title, max_chars=6)
-                # clip(0,0,1920,540) で画面上半分に厳密制限
-                lines.append(f"Dialogue: 3,{start},{end},TopicVertical,,0,0,0,,{{\\clip(0,0,1920,540)}}{vertical_title}")
+                # トピック（左上、出典と同じスタイル）
+                # 長い場合は省略
+                display_title = title if len(title) <= 20 else title[:19] + "…"
+                lines.append(f"Dialogue: 3,{start},{end},Topic,,0,0,0,,{display_title}")
 
     # セリフ字幕を追加（控室セクションは黄色、無音セグメントはスキップ）
     backroom_start = None
