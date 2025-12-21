@@ -757,7 +757,29 @@ NG:
         json_match = re.search(r'\{[\s\S]*\}', text)
         if json_match:
             script = json.loads(json_match.group())
+
+            # エンディングの最後に固定フレーズを追加
+            ending_fixed = [
+                {"speaker": "カツミ", "text": "それでは皆さん、また明日お会いしましょう"},
+                {"speaker": "ヒロシ", "text": "また明日〜"},
+                {"speaker": "カツミ", "text": "それでは、また明日"}
+            ]
+            if "ending" not in script:
+                script["ending"] = []
+            script["ending"].extend(ending_fixed)
+
+            # 控室の冒頭に固定フレーズを挿入
+            green_room_fixed = [
+                {"speaker": "カツミ", "text": "今日も収録お疲れ様でした〜"},
+                {"speaker": "ヒロシ", "text": "お疲れ様〜"},
+                {"speaker": "カツミ", "text": "おつかれ〜"}
+            ]
+            if "green_room" not in script:
+                script["green_room"] = []
+            script["green_room"] = green_room_fixed + script["green_room"]
+
             print(f"✓ 台本生成完了: {script.get('title', 'タイトルなし')}")
+            print(f"  → エンディング固定フレーズ追加、控室冒頭固定フレーズ挿入")
             return script
     except Exception as e:
         print(f"❌ 台本生成エラー: {e}")
