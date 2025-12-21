@@ -1350,11 +1350,15 @@ def _process_chunk_parallel(args: tuple) -> dict:
 
     duration = 0.0
     if success and os.path.exists(chunk_path):
-        # pydubで正確な音声長を取得（ミリ秒精度）
+        # pydubで正確な音声長を取得し、3秒の無音を追加
         try:
             from pydub import AudioSegment
             audio = AudioSegment.from_file(chunk_path)
-            duration = len(audio) / 1000.0  # ミリ秒→秒
+            # チャンク末尾に3秒の無音を追加（字幕ズレ防止）
+            silence = AudioSegment.silent(duration=3000, frame_rate=24000)
+            audio_with_silence = audio + silence
+            audio_with_silence.export(chunk_path, format="wav")
+            duration = len(audio_with_silence) / 1000.0  # ミリ秒→秒
         except Exception:
             # フォールバック: ffprobe
             result = subprocess.run([
@@ -1870,29 +1874,20 @@ def wrap_text(text: str, max_chars: int = 30) -> str:
     return "\\N".join(lines)
 
 
-def to_vertical(text: str, max_chars_per_line: int = 6, max_lines: int = 2) -> str:
-    """テキストを縦書き用に変換（ASS用）
+def to_vertical(text: str, max_chars: int = 6) -> str:
+    """テキストを縦書き用に変換（@フォント使用時）
 
-    各文字を \\N で区切ることで縦書き表示を実現
-    例: "年金改正" → "年\\N金\\N改\\N正"
+    @フォント（縦書きフォント）を使用する場合、
+    テキストはそのまま出力し、フォントが縦書き処理を行う。
+    文字数を制限して画面上半分(540px)に収める。
 
     Args:
         text: 元テキスト
-        max_chars_per_line: 1行あたりの最大文字数（デフォルト6）
-        max_lines: 最大行数（デフォルト2）
+        max_chars: 最大文字数（デフォルト6、上半分に収まる数）
     """
-    max_total_chars = max_chars_per_line * max_lines
-    if len(text) > max_total_chars:
-        text = text[:max_total_chars - 1] + "…"
-
-    # 2列以上になる場合は列を分ける
-    if len(text) > max_chars_per_line:
-        # 1列目（左）と2列目（右）に分割
-        col1 = text[:max_chars_per_line]
-        col2 = text[max_chars_per_line:]
-        # 右から左に表示（ASS縦書き: 列間は2スペース）
-        return "\\N".join(list(col1)) + "  " + "\\N".join(list(col2))
-    return "\\N".join(list(text))
+    if len(text) > max_chars:
+        text = text[:max_chars - 1] + "…"
+    return text
 
 
 def draw_topic_overlay(base_img: Image.Image, title: str, date_str: str = "") -> Image.Image:
@@ -2130,16 +2125,21 @@ def generate_ass_subtitles(segments: list, output_path: str, section_markers: li
     orange_color = "&H00356BFF&"   # #FF6B35 → BGR: 356BFF（オレンジ）
     gold_color = "&H0000D7FF&"     # #FFD700 → BGR: 00D7FF（ゴールド）
 
-    # 出典表示設定（右上、太字、小さめ）
+    # 出典表示設定（右上、太字、小さめ、灰色）
     source_font_size = 62  # 72から-10px
     source_margin_top = 30  # 画面上部からのマージン
+    source_color = "&H00A0A0A0&"  # 明るめのグレー
 
-    # トピック縦書き設定（左上、太字）
-    topic_font_size = 90
+    # トピック縦書き設定（左上、太字、上半分に制限）
+    topic_font_size = 72  # 縦書き用に少し小さく
+    topic_max_chars = 6   # 上半分(540px)に収まる文字数
 
     # 控室タイトル設定（右上寄り、白文字）
     backroom_title_size = 180
     backroom_title_margin_v = 250  # もっと上
+
+    # 控室字幕設定（白文字）
+    backroom_text_color = "&H00FFFFFF&"  # 白
 
     header = f"""[Script Info]
 Title: 年金ニュース
@@ -2151,10 +2151,10 @@ WrapStyle: 0
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF&,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
-Style: Backroom,Noto Sans CJK JP,{font_size},{gold_color},&H000000FF&,&H80000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,1,0,1,{margin_left},{margin_right},{margin_bottom},1
-Style: Source,Noto Sans CJK JP,{source_font_size},{primary_color},&H000000FF&,&H00FFFFFF&,&H00000000&,-1,0,0,0,100,100,0,0,1,0,0,9,0,30,{source_margin_top},1
+Style: Backroom,Noto Sans CJK JP Medium,{font_size},{backroom_text_color},&H000000FF&,&H80000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,1,0,1,{margin_left},{margin_right},{margin_bottom},1
+Style: Source,Noto Sans CJK JP,{source_font_size},{source_color},&H000000FF&,&H00FFFFFF&,&H00000000&,-1,0,0,0,100,100,0,0,1,0,0,9,0,30,{source_margin_top},1
 Style: BackroomTitle,Noto Sans CJK JP,{backroom_title_size},&H00FFFFFF&,&H000000FF&,&H00FFFFFF&,&H00000000&,-1,0,0,0,100,100,0,0,1,2,0,6,0,150,{backroom_title_margin_v},1
-Style: TopicVertical,Noto Sans CJK JP,{topic_font_size},{primary_color},&H000000FF&,&H80000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,1,0,7,30,0,50,1
+Style: TopicVertical,@Noto Sans CJK JP,{topic_font_size},{primary_color},&H000000FF&,&H80000000&,&H00000000&,-1,0,0,0,100,100,-5,0,1,1,0,7,30,0,30,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -2215,9 +2215,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     end_time = segments[-1]["end"] if segments else start_time + 5
                 start = f"0:{int(start_time//60):02d}:{int(start_time%60):02d}.{int((start_time%1)*100):02d}"
                 end = f"0:{int(end_time//60):02d}:{int(end_time%60):02d}.{int((end_time%1)*100):02d}"
-                # 縦書き変換
-                vertical_title = to_vertical(title)
-                lines.append(f"Dialogue: 3,{start},{end},TopicVertical,,0,0,0,,{vertical_title}")
+                # 縦書き変換（上半分に制限）
+                vertical_title = to_vertical(title, max_chars=6)
+                # clip(0,0,1920,540) で画面上半分に厳密制限
+                lines.append(f"Dialogue: 3,{start},{end},TopicVertical,,0,0,0,,{{\\clip(0,0,1920,540)}}{vertical_title}")
 
     # セリフ字幕を追加（控室セクションは黄色、無音セグメントはスキップ）
     backroom_start = None
