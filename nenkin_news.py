@@ -29,6 +29,7 @@ from googleapiclient.http import MediaFileUpload
 from PIL import Image, ImageDraw, ImageFont
 from gtts import gTTS
 from google.cloud import texttospeech
+import anthropic  # Claude API for fact-checking
 
 # ===== 定数 =====
 VIDEO_WIDTH = 1920
@@ -721,6 +722,327 @@ OK例：「繰り下げ受給、つまり受け取りを遅らせると、その
         key_manager.mark_failed(key_name)
 
     return None
+
+
+# ===== 3重ファクトチェック機能 =====
+
+def extract_facts_from_script(script: dict) -> list:
+    """台本から検証すべき事実（数字・日付・制度名）を抽出"""
+    facts = []
+
+    # 全セリフを収集
+    all_texts = []
+    for section_key in ["opening", "deep_dive", "chat_summary", "ending", "green_room"]:
+        for item in script.get(section_key, []):
+            if isinstance(item, dict) and "text" in item:
+                all_texts.append(item["text"])
+
+    for section in script.get("news_sections", []):
+        for item in section.get("dialogue", []):
+            if isinstance(item, dict) and "text" in item:
+                all_texts.append(item["text"])
+
+    full_text = " ".join(all_texts)
+
+    # 金額パターン（○万円、○円、○億円）
+    money_patterns = re.findall(r'[\d,]+(?:万|億|兆)?円', full_text)
+    facts.extend([{"type": "金額", "value": m} for m in money_patterns])
+
+    # パーセントパターン
+    percent_patterns = re.findall(r'[\d.]+(?:%|パーセント|ポイント)', full_text)
+    facts.extend([{"type": "割合", "value": p} for p in percent_patterns])
+
+    # 年齢パターン
+    age_patterns = re.findall(r'\d+歳', full_text)
+    facts.extend([{"type": "年齢", "value": a} for a in age_patterns])
+
+    # 日付パターン
+    date_patterns = re.findall(r'(?:\d+年)?\d+月\d*日?|来年度|今年度|令和\d+年', full_text)
+    facts.extend([{"type": "日付", "value": d} for d in date_patterns])
+
+    return facts
+
+
+def gemini_fact_check(script: dict, news_data: dict, key_manager) -> dict:
+    """Geminiによるファクトチェック"""
+    api_key, key_name = key_manager.get_working_key()
+    if not api_key:
+        return {"has_error": False, "errors": [], "message": "APIキーなし（スキップ）"}
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-2.0-flash")
+
+    # 台本をテキスト化
+    script_text = json.dumps(script, ensure_ascii=False, indent=2)
+    news_text = json.dumps(news_data, ensure_ascii=False, indent=2)
+
+    prompt = f"""
+【重要】以下の年金ニュース台本を厳密にファクトチェックしてください。
+
+確認項目:
+1. 金額（〇〇円、〇〇万円）は元のニュース情報と一致しているか？
+2. パーセント（〇%増加、〇%減少）は正確か？
+3. 年齢（〇歳から、〇歳以上）は正確か？
+4. 日付（〇月〇日、来年度から）は正確か？
+5. 制度名・法律名は正確か？
+6. ニュース内容と矛盾していないか？
+
+【元のニュース情報】
+{news_text}
+
+【台本】
+{script_text}
+
+【出力形式】必ずJSON形式で出力してください:
+```json
+{{
+    "has_error": true または false,
+    "errors": [
+        {{"箇所": "問題のあるセリフ", "問題": "何が間違っているか", "正しい情報": "正しい値"}}
+    ]
+}}
+```
+
+少しでも怪しい情報、元ニュースと異なる数字があれば指摘してください。
+エラーがなければ has_error: false で空の errors 配列を返してください。
+"""
+
+    try:
+        response = model.generate_content(prompt)
+        text = response.text
+
+        json_match = re.search(r'\{[\s\S]*\}', text)
+        if json_match:
+            result = json.loads(json_match.group())
+            return result
+    except Exception as e:
+        print(f"    [Geminiチェック] エラー: {e}")
+
+    return {"has_error": False, "errors": [], "message": "チェック失敗（スキップ）"}
+
+
+def web_search_fact_check(script: dict, key_manager) -> dict:
+    """Web検索で数字・日付を裏取り"""
+    api_key, key_name = key_manager.get_working_key()
+    if not api_key:
+        return {"has_error": False, "errors": [], "message": "APIキーなし（スキップ）"}
+
+    # 台本から事実を抽出
+    facts = extract_facts_from_script(script)
+    if not facts:
+        return {"has_error": False, "errors": [], "message": "検証対象なし"}
+
+    # 重要な事実のみ検証（最大5件）
+    important_facts = facts[:5]
+
+    client = genai_tts.Client(api_key=api_key)
+    errors = []
+
+    for fact in important_facts:
+        search_prompt = f"""
+年金に関する「{fact['value']}」という{fact['type']}について、最新の公式情報を検索して確認してください。
+
+この値が正確かどうか、公式ソース（厚生労働省、日本年金機構など）の情報と照らし合わせて判定してください。
+
+【出力形式】JSON:
+```json
+{{
+    "is_accurate": true または false,
+    "official_value": "公式情報による正しい値（わかる場合）",
+    "source": "情報源",
+    "note": "補足"
+}}
+```
+"""
+
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=search_prompt,
+                config=types.GenerateContentConfig(
+                    tools=[types.Tool(google_search=types.GoogleSearch())],
+                )
+            )
+
+            json_match = re.search(r'\{[\s\S]*?\}', response.text)
+            if json_match:
+                result = json.loads(json_match.group())
+                if not result.get("is_accurate", True):
+                    errors.append({
+                        "箇所": f"{fact['type']}: {fact['value']}",
+                        "問題": "Web検索結果と一致しない可能性",
+                        "正しい情報": result.get("official_value", "要確認")
+                    })
+        except Exception as e:
+            print(f"    [Web検索] {fact['value']} の検証エラー: {e}")
+            continue
+
+    return {"has_error": len(errors) > 0, "errors": errors}
+
+
+def claude_fact_check(script: dict, news_data: dict) -> dict:
+    """Claude APIによるクロスチェック"""
+    claude_api_key = os.environ.get("CLAUDE_API_KEY")
+    if not claude_api_key:
+        print("    [Claudeチェック] CLAUDE_API_KEY未設定（スキップ）")
+        return {"has_error": False, "errors": [], "message": "APIキー未設定"}
+
+    try:
+        client = anthropic.Anthropic(api_key=claude_api_key)
+
+        script_text = json.dumps(script, ensure_ascii=False, indent=2)
+        news_text = json.dumps(news_data, ensure_ascii=False, indent=2)
+
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=2000,
+            messages=[{
+                "role": "user",
+                "content": f"""
+【最重要タスク】年金ニュース台本のファクトチェック
+
+あなたは年金制度の専門家です。
+以下の台本に事実誤認がないか、厳密にチェックしてください。
+
+特に注意:
+- 金額の桁違い（例: 1万円と10万円の間違い）
+- パーセンテージの誤り（例: 2%と0.2%の間違い）
+- 年齢条件の誤り（例: 60歳と65歳の間違い）
+- 制度の適用条件の誤り
+- 開始時期の誤り
+
+【元のニュース情報】
+{news_text}
+
+【台本】
+{script_text}
+
+【出力形式】必ずJSON形式で出力してください:
+```json
+{{
+    "has_error": true または false,
+    "errors": [
+        {{"箇所": "問題のあるセリフ", "問題": "何が間違っているか", "正しい情報": "正しい値"}}
+    ]
+}}
+```
+
+疑わしい情報は全て指摘してください。問題なければ has_error: false で空配列を返してください。
+"""
+            }]
+        )
+
+        text = response.content[0].text
+        json_match = re.search(r'\{[\s\S]*\}', text)
+        if json_match:
+            result = json.loads(json_match.group())
+            return result
+    except Exception as e:
+        print(f"    [Claudeチェック] エラー: {e}")
+
+    return {"has_error": False, "errors": [], "message": "チェック失敗（スキップ）"}
+
+
+def fix_script_errors(script: dict, errors: list, key_manager) -> dict:
+    """エラーを修正した台本を生成"""
+    api_key, key_name = key_manager.get_working_key()
+    if not api_key:
+        return script
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-2.0-flash")
+
+    script_text = json.dumps(script, ensure_ascii=False, indent=2)
+    errors_text = json.dumps(errors, ensure_ascii=False, indent=2)
+
+    fix_prompt = f"""
+以下の年金ニュース台本にエラーが見つかりました。修正してください。
+
+【エラー一覧】
+{errors_text}
+
+【元の台本】
+{script_text}
+
+【指示】
+- エラー箇所のみを修正し、他は変えないでください
+- 修正後の台本全文をJSON形式で出力してください
+- 元の台本と同じ構造を維持してください
+"""
+
+    try:
+        response = model.generate_content(fix_prompt)
+        text = response.text
+
+        json_match = re.search(r'\{[\s\S]*\}', text)
+        if json_match:
+            fixed_script = json.loads(json_match.group())
+            print(f"    ✓ 台本を修正しました")
+            return fixed_script
+    except Exception as e:
+        print(f"    ❌ 台本修正エラー: {e}")
+
+    return script
+
+
+def triple_fact_check(script: dict, news_data: dict, key_manager) -> dict:
+    """3重ファクトチェック - 1つでもNGなら修正"""
+
+    max_retries = 3
+
+    for attempt in range(max_retries):
+        print(f"\n  === ファクトチェック {attempt + 1}回目 ===")
+
+        all_errors = []
+
+        # Step 1: Geminiで自己チェック
+        print("    [1/3] Geminiチェック...")
+        gemini_result = gemini_fact_check(script, news_data, key_manager)
+        if gemini_result.get("has_error"):
+            all_errors.extend(gemini_result.get("errors", []))
+            print(f"    ❌ Gemini: {len(gemini_result.get('errors', []))}件のエラー")
+            for err in gemini_result.get("errors", [])[:3]:
+                print(f"       - {err.get('箇所', '')}: {err.get('問題', '')}")
+        else:
+            print("    ✅ Gemini: OK")
+
+        # Step 2: Web検索で裏取り
+        print("    [2/3] Web検索チェック...")
+        web_result = web_search_fact_check(script, key_manager)
+        if web_result.get("has_error"):
+            all_errors.extend(web_result.get("errors", []))
+            print(f"    ❌ Web検索: {len(web_result.get('errors', []))}件の不一致")
+            for err in web_result.get("errors", [])[:3]:
+                print(f"       - {err.get('箇所', '')}: {err.get('問題', '')}")
+        else:
+            print("    ✅ Web検索: OK")
+
+        # Step 3: Claude APIでクロスチェック
+        print("    [3/3] Claudeチェック...")
+        claude_result = claude_fact_check(script, news_data)
+        if claude_result.get("has_error"):
+            all_errors.extend(claude_result.get("errors", []))
+            print(f"    ❌ Claude: {len(claude_result.get('errors', []))}件のエラー")
+            for err in claude_result.get("errors", [])[:3]:
+                print(f"       - {err.get('箇所', '')}: {err.get('問題', '')}")
+        else:
+            print("    ✅ Claude: OK")
+
+        # 全チェックOKなら終了
+        if not all_errors:
+            print("  🎉 3重ファクトチェック全てOK！")
+            return script
+
+        # 最後の試行でもエラーがあれば警告して続行
+        if attempt == max_retries - 1:
+            print(f"  ⚠️ {len(all_errors)}件のエラーが残っていますが、続行します")
+            return script
+
+        # エラーがあれば修正
+        print(f"  ⚠️ {len(all_errors)}件のエラーを修正中...")
+        script = fix_script_errors(script, all_errors, key_manager)
+
+    return script
 
 
 def save_wav_file(filename: str, pcm_data: bytes, channels: int = 1, rate: int = 24000, sample_width: int = 2):
@@ -3617,6 +3939,10 @@ def main():
         print("❌ 台本生成に失敗しました")
         log_to_spreadsheet(status="エラー", news_count=news_count, error_message="台本生成に失敗しました")
         return
+
+    # 2.5 3重ファクトチェック
+    print("\n[2.5/4] 3重ファクトチェック実行中...")
+    script = triple_fact_check(script, news_data, key_manager)
 
     # セリフ数をカウント
     dialogue_count = len(script.get("opening", []))
