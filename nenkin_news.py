@@ -3558,8 +3558,12 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     return output_path, ass_path
 
 
-def get_or_create_playlist(youtube, title="聞くだけでわかる年金のお話"):
+def get_or_create_playlist(youtube, title: str, description: str = None):
     """再生リストを取得または作成"""
+    # デフォルトの説明文
+    if description is None:
+        description = "毎朝届く年金ニュースをまとめてお届け。聞き流すだけで年金の知識が身につきます。"
+
     # 既存の再生リストを検索
     request = youtube.playlists().list(
         part="snippet",
@@ -3570,7 +3574,7 @@ def get_or_create_playlist(youtube, title="聞くだけでわかる年金のお�
 
     for playlist in response.get("items", []):
         if playlist["snippet"]["title"] == title:
-            print(f"  ✓ 既存の再生リスト発見: {playlist['id']}")
+            print(f"  ✓ 既存の再生リスト発見: {title} ({playlist['id']})")
             return playlist["id"]
 
     # なければ作成
@@ -3579,7 +3583,7 @@ def get_or_create_playlist(youtube, title="聞くだけでわかる年金のお�
         body={
             "snippet": {
                 "title": title,
-                "description": "毎朝届く年金ニュースをまとめてお届け。聞き流すだけで年金の知識が身につきます。"
+                "description": description
             },
             "status": {
                 "privacyStatus": "public"
@@ -3587,7 +3591,7 @@ def get_or_create_playlist(youtube, title="聞くだけでわかる年金のお�
         }
     )
     response = request.execute()
-    print(f"  ✓ 再生リスト作成: {response['id']}")
+    print(f"  ✓ 再生リスト作成: {title} ({response['id']})")
     return response["id"]
 
 
@@ -3608,6 +3612,39 @@ def add_to_playlist(youtube, playlist_id, video_id):
     response = request.execute()
     print(f"  ✓ 再生リストに追加完了: {video_id}")
     return response
+
+
+def add_to_playlists(youtube, video_id):
+    """動画を再生リストとポッドキャストの両方に追加"""
+    results = {"playlist": False, "podcast": False}
+
+    # 通常の再生リスト
+    try:
+        playlist_id = get_or_create_playlist(
+            youtube,
+            title="聞くだけでわかる年金のお話",
+            description="毎朝届く年金ニュースをまとめてお届け。聞き流すだけで年金の知識が身につきます。"
+        )
+        add_to_playlist(youtube, playlist_id, video_id)
+        results["playlist"] = True
+        print(f"  ✓ 再生リストに追加: {playlist_id}")
+    except Exception as e:
+        print(f"  ⚠ 再生リスト追加エラー: {e}")
+
+    # ポッドキャスト用再生リスト
+    try:
+        podcast_id = get_or_create_playlist(
+            youtube,
+            title="おはよう年金ラジオ",
+            description="毎朝届く年金ニュース。カツミとヒロシが今日の年金情報をわかりやすくお届けします。家事をしながら、散歩しながら、聞き流すだけで年金の知識が身につきます。"
+        )
+        add_to_playlist(youtube, podcast_id, video_id)
+        results["podcast"] = True
+        print(f"  ✓ ポッドキャストに追加: {podcast_id}")
+    except Exception as e:
+        print(f"  ⚠ ポッドキャスト追加エラー: {e}")
+
+    return results
 
 
 def upload_to_youtube(video_path: str, title: str, description: str, tags: list) -> str:
@@ -3663,14 +3700,8 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list)
     video_id = response["id"]
     url = f"https://www.youtube.com/watch?v={video_id}"
 
-    # 再生リストに追加
-    try:
-        playlist_id = get_or_create_playlist(youtube)
-        add_to_playlist(youtube, playlist_id, video_id)
-        playlist_added = True
-    except Exception as e:
-        print(f"  ⚠ 再生リスト追加エラー: {e}")
-        playlist_added = False
+    # 再生リストとポッドキャストに追加
+    playlist_results = add_to_playlists(youtube, video_id)
 
     # アップロード完了メッセージを表示
     print("\n" + "=" * 40)
@@ -3680,8 +3711,10 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list)
     print(f"チャンネル: TOKEN_23")
     print(f"タイトル: {title}")
     print(f"公開設定: 公開")
-    if playlist_added:
+    if playlist_results["playlist"]:
         print(f"再生リスト: 聞くだけでわかる年金のお話")
+    if playlist_results["podcast"]:
+        print(f"ポッドキャスト: おはよう年金ラジオ")
     print("=" * 40)
 
     return url
@@ -4208,7 +4241,7 @@ def send_discord_notification(title: str, url: str, video_duration: float, proce
 ━━━━━━━━━━━━━━━━━━
 📺 タイトル: {title}
 🔗 URL: {url}
-📂 再生リスト: 聞くだけでわかる年金のお話
+📂 再生リスト・ポッドキャストに追加しました
 ⏱️ 動画長: {vid_time_str}
 🕐 処理時間: {proc_time_str}"""
 
