@@ -205,8 +205,8 @@ def generate_tts_audio(dialogue: list, output_path: str, key_manager: GeminiKeyM
         text = line["text"]
         script_text += f"[{speaker}] {text}\n"
 
-    # リトライロジック（最大3回、異なるAPIキーを試す）
-    max_retries = 3
+    # リトライロジック（最大10回、異なるAPIキーを試す）
+    max_retries = 10
     last_error = None
 
     for attempt in range(max_retries):
