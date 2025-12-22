@@ -181,6 +181,25 @@ def get_all_comments(youtube, channel_id: str) -> list:
 
     video_ids = [item["id"]["videoId"] for item in videos_response.get("items", [])]
 
+    # デバッグ: 検出された動画一覧
+    print(f"\n  [デバッグ] 検出された動画数: {len(video_ids)}")
+
+    if video_ids:
+        # 動画の詳細情報を取得
+        videos_detail = youtube.videos().list(
+            part="snippet,statistics",
+            id=",".join(video_ids)
+        ).execute()
+
+        print("  [デバッグ] 監視対象動画一覧:")
+        for video in videos_detail.get("items", []):
+            video_id = video["id"]
+            title = video["snippet"]["title"][:40]
+            comment_count = video["statistics"].get("commentCount", "無効")
+            print(f"    - {video_id}: {title}... (コメント数: {comment_count})")
+    else:
+        print("  [デバッグ] 動画が見つかりません")
+
     for video_id in video_ids:
         try:
             # 動画のコメントを取得
@@ -190,6 +209,9 @@ def get_all_comments(youtube, channel_id: str) -> list:
                 maxResults=100,
                 order="time"
             ).execute()
+
+            comment_count = len(comments_response.get("items", []))
+            print(f"  [デバッグ] 動画 {video_id}: {comment_count}件のコメント取得")
 
             for item in comments_response.get("items", []):
                 snippet = item["snippet"]["topLevelComment"]["snippet"]
