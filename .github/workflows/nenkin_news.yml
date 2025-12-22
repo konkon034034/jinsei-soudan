@@ -72,7 +72,8 @@ jobs:
             fonts-noto-cjk \
             fonts-noto-cjk-extra \
             fonts-ipafont \
-            fonts-ipaexfont
+            fonts-ipaexfont \
+            fonts-kosugi-maru
 
       - name: Python依存関係をインストール
         run: |
