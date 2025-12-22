@@ -196,10 +196,7 @@ def generate_short_script(news: dict, key_manager: GeminiKeyManager) -> dict:
 
 
 def generate_tts_audio(dialogue: list, output_path: str, key_manager: GeminiKeyManager) -> float:
-    """Gemini TTSで音声生成"""
-    api_key, _ = key_manager.get_working_key()
-    if not api_key:
-        raise ValueError("Gemini APIキーが設定されていません")
+    """Gemini TTSで音声生成（リトライ付き）"""
 
     # 台本をテキスト形式に変換
     script_text = ""
@@ -208,41 +205,63 @@ def generate_tts_audio(dialogue: list, output_path: str, key_manager: GeminiKeyM
         text = line["text"]
         script_text += f"[{speaker}] {text}\n"
 
-    client = genai_tts.Client(api_key=api_key)
+    # リトライロジック（最大3回、異なるAPIキーを試す）
+    max_retries = 3
+    last_error = None
 
-    response = client.models.generate_content(
-        model=GEMINI_TTS_MODEL,
-        contents=script_text,
-        config=types.GenerateContentConfig(
-            response_modalities=["AUDIO"],
-            speech_config=types.SpeechConfig(
-                multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
-                    speaker_voice_configs=[
-                        types.SpeakerVoiceConfig(
-                            speaker="カツミ",
-                            voice_config=types.VoiceConfig(
-                                prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                    voice_name=TTS_VOICE_KATSUMI
+    for attempt in range(max_retries):
+        api_key, key_name = key_manager.get_working_key()
+        if not api_key:
+            raise ValueError("Gemini APIキーが設定されていません")
+
+        try:
+            print(f"  TTS生成試行 {attempt + 1}/{max_retries} ({key_name})")
+            client = genai_tts.Client(api_key=api_key)
+
+            response = client.models.generate_content(
+                model=GEMINI_TTS_MODEL,
+                contents=script_text,
+                config=types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=types.SpeechConfig(
+                        multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
+                            speaker_voice_configs=[
+                                types.SpeakerVoiceConfig(
+                                    speaker="カツミ",
+                                    voice_config=types.VoiceConfig(
+                                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                            voice_name=TTS_VOICE_KATSUMI
+                                        )
+                                    )
+                                ),
+                                types.SpeakerVoiceConfig(
+                                    speaker="ヒロシ",
+                                    voice_config=types.VoiceConfig(
+                                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                            voice_name=TTS_VOICE_HIROSHI
+                                        )
+                                    )
                                 )
-                            )
-                        ),
-                        types.SpeakerVoiceConfig(
-                            speaker="ヒロシ",
-                            voice_config=types.VoiceConfig(
-                                prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                    voice_name=TTS_VOICE_HIROSHI
-                                )
-                            )
+                            ]
                         )
-                    ]
+                    ),
+                    system_instruction=TTS_INSTRUCTION
                 )
-            ),
-            system_instruction=TTS_INSTRUCTION
-        )
-    )
+            )
 
-    # 音声データを保存
-    audio_data = response.candidates[0].content.parts[0].inline_data.data
+            # 音声データを保存
+            audio_data = response.candidates[0].content.parts[0].inline_data.data
+            break  # 成功したらループを抜ける
+
+        except Exception as e:
+            last_error = e
+            print(f"  ⚠ TTS生成エラー (試行 {attempt + 1}): {e}")
+            key_manager.mark_failed(key_name)
+            if attempt < max_retries - 1:
+                print(f"  リトライします...")
+                time.sleep(2)  # 2秒待機
+            else:
+                raise ValueError(f"TTS生成に{max_retries}回失敗しました: {last_error}")
 
     with open(output_path, "wb") as f:
         f.write(audio_data)
