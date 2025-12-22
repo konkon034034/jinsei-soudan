@@ -1279,7 +1279,9 @@ def generate_gemini_tts_chunk(dialogue_chunk: list, api_key: str, output_path: s
             if response.candidates and response.candidates[0].content.parts:
                 audio_data = response.candidates[0].content.parts[0].inline_data.data
                 save_wav_file(output_path, audio_data)
-                print(f"      ✓ チャンク{chunk_index + 1} 生成完了 (KEY_{key_index})")
+                # 音声品質確認用ログ（サイズ）
+                audio_size_kb = len(audio_data) / 1024
+                print(f"      ✓ チャンク{chunk_index + 1} 生成完了 (KEY_{key_index}, {audio_size_kb:.1f}KB)")
                 return True
 
         except Exception as e:
@@ -2174,6 +2176,12 @@ def _process_chunk_parallel(args: tuple) -> dict:
         chunk, api_key, chunk_path, chunk_index, key_manager = args
         jingle_path = None
 
+    # API負荷軽減: チャンクインデックスに応じて遅延（声質劣化防止）
+    # 0.5秒間隔でスタートをずらす
+    stagger_delay = chunk_index * 0.5
+    if stagger_delay > 0:
+        time.sleep(min(stagger_delay, 5.0))  # 最大5秒
+
     success = generate_gemini_tts_chunk(
         chunk, api_key, chunk_path, chunk_index,
         key_manager=key_manager,
@@ -2265,7 +2273,9 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
         return None, [], 0.0
 
     # パラレル処理のワーカー数（APIキー数とチャンク数の小さい方）
-    max_workers = min(len(api_keys), len(chunks), 29)
+    # max_workersを制限（API負荷軽減、声質劣化防止）
+    # 多すぎるとAPIが不安定になり声質が劣化する可能性がある
+    max_workers = min(len(api_keys), len(chunks), 10)  # 29→10に制限
     print(f"    [Gemini TTS] {len(api_keys)}個のAPIキーで並列処理（max_workers={max_workers}）")
 
     # パラレル処理用のタスクを準備（ジングルパス付き）
