@@ -2385,6 +2385,15 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
     # セクション単位のタイミングを計算（セリフ部分のみ、ジングルは除外）
     print("    [字幕] セクション単位でタイミング計算...")
 
+    # デバッグ: 成功したセクションを確認
+    print(f"    [デバッグ] 成功セクション: {sorted(successful_chunk_indices)}/{len(chunks)}")
+    for idx in range(len(section_chunks)):
+        section_name = section_chunks[idx]["section"]
+        is_success = idx in successful_chunk_indices
+        is_green = section_chunks[idx]["is_green_room"]
+        line_count = len(section_chunks[idx]["lines"])
+        print(f"      セクション{idx}: {section_name} {'(控室)' if is_green else ''} - {'✓成功' if is_success else '✗失敗'} ({line_count}セリフ)")
+
     current_time = 0.0
     successful_dialogue_count = 0
 
@@ -3185,6 +3194,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 backroom_start = subtitle_start
             backroom_end = subtitle_end
 
+    # デバッグ: 控室字幕数をカウント
+    backroom_count = sum(1 for seg in segments if seg.get("section") == "控え室" and not seg.get("is_silence"))
+    total_subtitle_count = len([l for l in lines if l.startswith("Dialogue: 0")])
+    print(f"  [デバッグ] 控室セリフ数: {backroom_count}, 字幕行数: {total_subtitle_count}")
+    if backroom_start is not None and backroom_end is not None:
+        print(f"  [デバッグ] 控室字幕範囲: {backroom_start:.1f}秒 〜 {backroom_end:.1f}秒")
+
     # 控室タイトル「控室にて。」を画面中央に表示
     if backroom_start is not None and backroom_end is not None:
         br_start = f"0:{int(backroom_start//60):02d}:{int(backroom_start%60):02d}.{int((backroom_start%1)*100):02d}"
@@ -3258,6 +3274,7 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
 
     # 控え室パート
     green_room = script.get("green_room", [])
+    print(f"  [デバッグ] 控室台本セリフ数: {len(green_room)}")
 
     # 控え室（素のボヤキ）※エンディングジングルの後に再生
     for d in green_room:
