@@ -32,6 +32,12 @@ VIDEO_WIDTH = 1080   # 縦型
 VIDEO_HEIGHT = 1920  # 縦型
 MAX_DURATION = 60    # 60秒以内
 
+# 背景画像（Google Drive ID）
+SHORT_BACKGROUND_IMAGE_ID = os.environ.get(
+    "SHORT_BACKGROUND_IMAGE_ID",
+    "1ywnGZHMZWavnus1-fPD1MVI3fWxSrAIp"
+)
+
 # テストモード
 TEST_MODE = os.environ.get("TEST_MODE", "").lower() == "true"
 
@@ -273,23 +279,59 @@ def generate_tts_audio(dialogue: list, output_path: str, key_manager: GeminiKeyM
     return duration
 
 
-def generate_thumbnail(title: str, output_path: str):
-    """縦型サムネイル生成（赤と黄色で派手に）"""
+def download_background_image(file_id: str, output_path: str) -> bool:
+    """Google Driveから背景画像をダウンロード"""
+    try:
+        # Google Drive直接ダウンロードURL
+        url = f"https://drive.google.com/uc?export=download&id={file_id}"
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+
+        with open(output_path, 'wb') as f:
+            f.write(response.content)
+
+        print(f"  ✓ 背景画像ダウンロード完了")
+        return True
+    except Exception as e:
+        print(f"  ⚠ 背景画像ダウンロードエラー: {e}")
+        return False
+
+
+def generate_thumbnail(title: str, output_path: str, temp_dir: str = None):
+    """縦型サムネイル生成（Google Drive背景画像使用）"""
     width, height = 1080, 1920
 
-    # 赤いグラデーション背景
-    img = Image.new('RGB', (width, height), '#CC0000')
-    draw = ImageDraw.Draw(img)
+    # 背景画像をダウンロードして使用
+    bg_downloaded = False
+    if SHORT_BACKGROUND_IMAGE_ID and temp_dir:
+        bg_path = os.path.join(temp_dir, "background.jpg")
+        if download_background_image(SHORT_BACKGROUND_IMAGE_ID, bg_path):
+            try:
+                bg_img = Image.open(bg_path)
+                # 縦型にリサイズ（アスペクト比維持、はみ出し部分はクロップ）
+                bg_ratio = max(width / bg_img.width, height / bg_img.height)
+                new_size = (int(bg_img.width * bg_ratio), int(bg_img.height * bg_ratio))
+                bg_img = bg_img.resize(new_size, Image.LANCZOS)
+                # 中央クロップ
+                left = (bg_img.width - width) // 2
+                top = (bg_img.height - height) // 2
+                bg_img = bg_img.crop((left, top, left + width, top + height))
+                img = bg_img.convert('RGB')
+                bg_downloaded = True
+                print(f"  ✓ 背景画像適用完了")
+            except Exception as e:
+                print(f"  ⚠ 背景画像処理エラー: {e}")
 
-    # 黄色の斜めストライプ
-    for i in range(-height, width + height, 80):
-        draw.line([(i, 0), (i + height, height)], fill='#FFD700', width=30)
+    # フォールバック：シンプルな背景
+    if not bg_downloaded:
+        img = Image.new('RGB', (width, height), '#1a1a2e')
+        print(f"  → フォールバック背景使用")
 
-    # 黒い半透明オーバーレイ（中央）
-    overlay = Image.new('RGBA', (width, 400), (0, 0, 0, 180))
-    img.paste(Image.alpha_composite(
-        Image.new('RGBA', overlay.size, (0, 0, 0, 0)), overlay
-    ).convert('RGB'), (0, height // 2 - 200))
+    # 半透明オーバーレイ（タイトル部分を見やすく）
+    img = img.convert('RGBA')
+    overlay = Image.new('RGBA', (width, 500), (0, 0, 0, 150))
+    img.paste(overlay, (0, height // 2 - 250), overlay)
+    img = img.convert('RGB')
 
     # フォント設定
     try:
@@ -305,7 +347,7 @@ def generate_thumbnail(title: str, output_path: str):
 
     draw = ImageDraw.Draw(img)
 
-    # タイトルを描画（黄色、縁取り）
+    # タイトルを描画（白、縁取り）
     title_short = title[:15] if len(title) > 15 else title
 
     # 縁取り（黒）
@@ -313,9 +355,9 @@ def generate_thumbnail(title: str, output_path: str):
         draw.text((width // 2 + dx, height // 2 + dy), title_short,
                   font=font_large, fill='black', anchor='mm')
 
-    # 本体（黄色）
+    # 本体（白）
     draw.text((width // 2, height // 2), title_short,
-              font=font_large, fill='#FFD700', anchor='mm')
+              font=font_large, fill='white', anchor='mm')
 
     # 「#Shorts」ラベル
     draw.text((width // 2, height // 2 + 150), "#Shorts",
@@ -590,7 +632,7 @@ def main():
         # 3. サムネイル生成
         print("\n[3/4] サムネイル生成中...")
         thumbnail_path = str(temp_path / "thumbnail.jpg")
-        generate_thumbnail(script['title'], thumbnail_path)
+        generate_thumbnail(script['title'], thumbnail_path, temp_dir)
 
         # 4. 動画生成
         print("\n[4/4] 動画生成中...")
