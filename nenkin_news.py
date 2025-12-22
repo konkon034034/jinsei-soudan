@@ -406,6 +406,63 @@ def log_to_spreadsheet(status: str, title: str = "", url: str = "", news_count: 
         print(f"  ⚠ ログ記録エラー: {e}")
 
 
+# ===== 控室トーク保存（ショート動画用） =====
+GREEN_ROOM_SHEET_NAME = "控室トーク"
+
+
+def save_green_room_content(green_room: list, title: str = ""):
+    """控室トークの内容をスプレッドシートに保存（ショート動画用）"""
+    if not green_room:
+        print("  [控室保存] 控室トークがありません")
+        return
+
+    try:
+        from datetime import datetime
+        creds = get_google_credentials()
+        service = build("sheets", "v4", credentials=creds)
+
+        # シートが存在するか確認
+        spreadsheet = service.spreadsheets().get(spreadsheetId=LOG_SPREADSHEET_ID).execute()
+        sheet_names = [s["properties"]["title"] for s in spreadsheet.get("sheets", [])]
+
+        if GREEN_ROOM_SHEET_NAME not in sheet_names:
+            # シートを作成
+            service.spreadsheets().batchUpdate(
+                spreadsheetId=LOG_SPREADSHEET_ID,
+                body={
+                    "requests": [{
+                        "addSheet": {
+                            "properties": {"title": GREEN_ROOM_SHEET_NAME}
+                        }
+                    }]
+                }
+            ).execute()
+            # ヘッダーを追加
+            service.spreadsheets().values().update(
+                spreadsheetId=LOG_SPREADSHEET_ID,
+                range=f"{GREEN_ROOM_SHEET_NAME}!A1:D1",
+                valueInputOption="RAW",
+                body={"values": [["日時", "タイトル", "控室トーク内容", "セリフ数"]]}
+            ).execute()
+
+        # 控室トークをJSON形式で保存
+        green_room_json = json.dumps(green_room, ensure_ascii=False)
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        service.spreadsheets().values().append(
+            spreadsheetId=LOG_SPREADSHEET_ID,
+            range=f"{GREEN_ROOM_SHEET_NAME}!A:D",
+            valueInputOption="RAW",
+            insertDataOption="INSERT_ROWS",
+            body={"values": [[now, title, green_room_json, len(green_room)]]}
+        ).execute()
+
+        print(f"  [控室保存] 保存完了: {len(green_room)}セリフ")
+
+    except Exception as e:
+        print(f"  ⚠ 控室トーク保存エラー: {e}")
+
+
 # 信頼度の高いソース（confirmed情報として扱う）
 TRUSTED_SOURCES = [
     "厚生労働省", "mhlw.go.jp",
@@ -4323,6 +4380,11 @@ def main():
     dialogue_count += len(script.get("rumor_section", []))
     dialogue_count += len(script.get("ending", []))
     print(f"  生成されたセリフ数: {dialogue_count}セリフ")
+
+    # 控室トークをスプレッドシートに保存（ショート動画用）
+    green_room = script.get("green_room", [])
+    if green_room:
+        save_green_room_content(green_room, script.get("title", ""))
 
     # テストモード: 台本を短縮（安全措置として残す）
     if TEST_MODE and dialogue_count > 20:
