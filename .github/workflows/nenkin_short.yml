@@ -1,0 +1,95 @@
+name: 年金ショート動画自動生成
+
+on:
+  schedule:
+    # 毎日13:00 JST = UTC 4:00
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'テストモード（YouTubeアップロードスキップ）'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  generate-short:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Python環境をセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: システム依存関係をインストール
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ffmpeg \
+            fonts-noto-cjk \
+            fonts-noto-cjk-extra \
+            fonts-ipafont \
+            fonts-ipaexfont
+
+      - name: Python依存関係をインストール
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 環境変数チェック
+        env:
+          YOUTUBE_REFRESH_TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
+        run: |
+          echo "=== 環境変数チェック ==="
+          echo "YOUTUBE_REFRESH_TOKEN_23: $([ -n \"$YOUTUBE_REFRESH_TOKEN_23\" ] && echo '設定済み' || echo '未設定')"
+
+      - name: ショート動画を生成・投稿
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
+          GEMINI_API_KEY_4: ${{ secrets.GEMINI_API_KEY_4 }}
+          GEMINI_API_KEY_5: ${{ secrets.GEMINI_API_KEY_5 }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
+        run: |
+          python nenkin_news_short.py
+
+      - name: 成果物をアップロード
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nenkin-short-${{ github.run_id }}
+          path: |
+            *.mp4
+          retention-days: 3
+          if-no-files-found: ignore
+
+      - name: エラー時にDiscord通知
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"content\": \"❌ **年金ショート動画生成に失敗しました**\n━━━━━━━━━━━━━━━━━━\n\n🔗 ワークフロー: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\n━━━━━━━━━━━━━━━━━━\"
+              }"
+          fi
