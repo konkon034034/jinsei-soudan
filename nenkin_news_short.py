@@ -70,7 +70,7 @@ class GeminiKeyManager:
         base_key = os.environ.get("GEMINI_API_KEY")
         if base_key:
             self.keys.append(base_key)
-        for i in range(1, 10):
+        for i in range(1, 29):
             key = os.environ.get(f"GEMINI_API_KEY_{i}")
             if key:
                 self.keys.append(key)
@@ -205,8 +205,8 @@ def generate_tts_audio(dialogue: list, output_path: str, key_manager: GeminiKeyM
         text = line["text"]
         script_text += f"[{speaker}] {text}\n"
 
-    # リトライロジック（最大10回、異なるAPIキーを試す）
-    max_retries = 10
+    # リトライロジック（最大29回、異なるAPIキーを試す）
+    max_retries = 29
     last_error = None
 
     for attempt in range(max_retries):
