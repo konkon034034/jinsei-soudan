@@ -3558,8 +3558,60 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     return output_path, ass_path
 
 
+def get_or_create_playlist(youtube, title="聞くだけでわかる年金のお話"):
+    """再生リストを取得または作成"""
+    # 既存の再生リストを検索
+    request = youtube.playlists().list(
+        part="snippet",
+        mine=True,
+        maxResults=50
+    )
+    response = request.execute()
+
+    for playlist in response.get("items", []):
+        if playlist["snippet"]["title"] == title:
+            print(f"  ✓ 既存の再生リスト発見: {playlist['id']}")
+            return playlist["id"]
+
+    # なければ作成
+    request = youtube.playlists().insert(
+        part="snippet,status",
+        body={
+            "snippet": {
+                "title": title,
+                "description": "毎朝届く年金ニュースをまとめてお届け。聞き流すだけで年金の知識が身につきます。"
+            },
+            "status": {
+                "privacyStatus": "public"
+            }
+        }
+    )
+    response = request.execute()
+    print(f"  ✓ 再生リスト作成: {response['id']}")
+    return response["id"]
+
+
+def add_to_playlist(youtube, playlist_id, video_id):
+    """動画を再生リストに追加"""
+    request = youtube.playlistItems().insert(
+        part="snippet",
+        body={
+            "snippet": {
+                "playlistId": playlist_id,
+                "resourceId": {
+                    "kind": "youtube#video",
+                    "videoId": video_id
+                }
+            }
+        }
+    )
+    response = request.execute()
+    print(f"  ✓ 再生リストに追加完了: {video_id}")
+    return response
+
+
 def upload_to_youtube(video_path: str, title: str, description: str, tags: list) -> str:
-    """YouTubeにアップロード（TOKEN_23、限定公開）"""
+    """YouTubeにアップロード（TOKEN_23、公開）"""
     client_id = os.environ.get("YOUTUBE_CLIENT_ID")
     client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
     refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_23")
@@ -3594,7 +3646,7 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list)
             "categoryId": "25"  # ニュース
         },
         "status": {
-            "privacyStatus": "unlisted",
+            "privacyStatus": "public",
             "selfDeclaredMadeForKids": False
         }
     }
@@ -3611,6 +3663,15 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list)
     video_id = response["id"]
     url = f"https://www.youtube.com/watch?v={video_id}"
 
+    # 再生リストに追加
+    try:
+        playlist_id = get_or_create_playlist(youtube)
+        add_to_playlist(youtube, playlist_id, video_id)
+        playlist_added = True
+    except Exception as e:
+        print(f"  ⚠ 再生リスト追加エラー: {e}")
+        playlist_added = False
+
     # アップロード完了メッセージを表示
     print("\n" + "=" * 40)
     print("YouTube投稿完了!")
@@ -3618,7 +3679,9 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list)
     print(f"動画URL: {url}")
     print(f"チャンネル: TOKEN_23")
     print(f"タイトル: {title}")
-    print(f"公開設定: 限定公開")
+    print(f"公開設定: 公開")
+    if playlist_added:
+        print(f"再生リスト: 聞くだけでわかる年金のお話")
     print("=" * 40)
 
     return url
@@ -4145,6 +4208,7 @@ def send_discord_notification(title: str, url: str, video_duration: float, proce
 ━━━━━━━━━━━━━━━━━━
 📺 タイトル: {title}
 🔗 URL: {url}
+📂 再生リスト: 聞くだけでわかる年金のお話
 ⏱️ 動画長: {vid_time_str}
 🕐 処理時間: {proc_time_str}"""
 
