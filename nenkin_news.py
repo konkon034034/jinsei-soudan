@@ -3048,7 +3048,7 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF&,{primary_color},{shadow_color},-1,0,0,0,100,100,0,0,1,0,0,1,{margin_left},{margin_right},{margin_bottom},1
 Style: Backroom,Noto Sans CJK JP Medium,{font_size},{backroom_text_color},&H000000FF&,&H80000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,1,0,1,{margin_left},{margin_right},{margin_bottom},1
 Style: Source,Noto Sans CJK JP,{info_font_size},{info_color},&H000000FF&,&H00000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,0,0,9,0,{info_margin_r},{info_margin_v},1
-Style: BackroomTitle,Kosugi Maru,{backroom_title_size},{backroom_title_color},&H000000FF&,{backroom_title_color},&H00000000&,-1,0,0,0,100,100,0,0,1,2,0,9,0,50,50,1
+Style: BackroomTitle,IPAPGothic,{backroom_title_size},{backroom_title_color},&H000000FF&,{backroom_title_color},&H00000000&,-1,0,0,0,100,100,0,0,1,2,0,9,0,50,50,1
 Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_color},&H000000FF&,&H00000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,0,0,7,30,0,30,1
 
 [Events]
