@@ -285,59 +285,51 @@ def generate_reply(comment_text: str, author_name: str, key_manager: GeminiKeyMa
         return ""
 
 
-def send_slack_notification(comment: dict, ai_reply: str):
-    """Slackに通知を送信"""
-    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+def send_discord_notification(comment: dict, ai_reply: str):
+    """Discordに通知を送信"""
+    webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
     if not webhook_url:
-        print("  ⚠ SLACK_WEBHOOK_URL未設定")
+        print("  ⚠ DISCORD_WEBHOOK_URL未設定")
         return False
 
-    # 投稿日時をフォーマット
-    try:
-        dt = datetime.fromisoformat(comment["published_at"].replace("Z", "+00:00"))
-        published_str = dt.strftime("%Y/%m/%d %H:%M")
-    except:
-        published_str = comment["published_at"]
+    # コメントテキストを短縮（Discord制限対策）
+    comment_text = comment['text'][:200] + "..." if len(comment['text']) > 200 else comment['text']
 
-    # 返信テキストをエスケープ（シェルコマンド用）
-    escaped_reply = ai_reply.replace('"', '\\"').replace("'", "\\'").replace("\n", " ")
+    message = f"""📬 **新しいコメント**
 
-    message = f"""📬 *新しいコメントがありました*
+👤 **投稿者**: {comment['author']}
+💬 **コメント**: {comment_text}
+🎬 **動画**: https://youtube.com/watch?v={comment['video_id']}
 
-👤 *投稿者:* {comment['author']}
-💬 *コメント:* {comment['text']}
-📅 *投稿日時:* {published_str}
-🎬 *動画:* https://youtube.com/watch?v={comment['video_id']}
-
----
-
-🤖 *カツミの返信案:*
+🤖 **カツミの返信案**:
 {ai_reply}
 
----
+━━━━━━━━━━━━━━
+✅ 承認:
+`gh workflow run reply_comment.yml -f comment_id="{comment['comment_id']}" -f action=approve`
 
-✅ *承認する場合:*
-```
-gh workflow run reply_comment.yml -f comment_id="{comment['comment_id']}" -f reply_text="{escaped_reply}"
-```
+🔄 再生成:
+`gh workflow run reply_comment.yml -f comment_id="{comment['comment_id']}" -f action=regenerate`
 
-❌ 承認しない場合は何もしなくてOKです"""
+❌ スキップ:
+`gh workflow run reply_comment.yml -f comment_id="{comment['comment_id']}" -f action=skip`
+━━━━━━━━━━━━━━"""
 
     try:
         response = requests.post(
             webhook_url,
-            json={"text": message},
+            json={"content": message},
             headers={"Content-Type": "application/json"},
             timeout=30
         )
         if response.status_code in [200, 204]:
-            print(f"  ✓ Slack通知送信完了: {comment['author']}")
+            print(f"  ✓ Discord通知送信完了: {comment['author']}")
             return True
         else:
-            print(f"  ⚠ Slack通知失敗: {response.status_code}")
+            print(f"  ⚠ Discord通知失敗: {response.status_code}")
             return False
     except Exception as e:
-        print(f"  ⚠ Slack通知エラー: {e}")
+        print(f"  ⚠ Discord通知エラー: {e}")
         return False
 
 
@@ -443,8 +435,8 @@ def main():
 
         if ai_reply:
             print(f"  返信案: {ai_reply[:50]}...")
-            # Slack通知
-            notified = send_slack_notification(comment, ai_reply)
+            # Discord通知
+            notified = send_discord_notification(comment, ai_reply)
         else:
             print("  ⚠ 返信生成に失敗")
             notified = False
