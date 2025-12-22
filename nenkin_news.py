@@ -3768,6 +3768,81 @@ THUMBNAIL_WIDTH = 1280
 THUMBNAIL_HEIGHT = 720
 
 
+def generate_video_title(script: dict, key_manager: GeminiKeyManager) -> str:
+    """YouTube動画タイトルを生成（Gemini API）
+
+    Args:
+        script: 台本データ
+        key_manager: APIキーマネージャー
+
+    Returns:
+        str: 動画タイトル（形式: [キーワード]｜[日付]）
+    """
+    from datetime import datetime
+    date_str = datetime.now().strftime('%Y年%m月%d日')
+    default_title = f"今日の年金ニュース｜{date_str}"
+
+    api_key, key_name = key_manager.get_working_key()
+    if not api_key:
+        return default_title
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-2.0-flash")
+
+    # ニュースタイトルを取得
+    news_titles = []
+    for section in script.get("news_sections", []):
+        title = section.get("news_title", "")
+        if title:
+            news_titles.append(title)
+
+    news_text = "\n".join(news_titles) if news_titles else "年金ニュース"
+
+    prompt = f"""
+今日の年金ニュースから、視聴者が気になるキーワードを抽出してYouTube動画タイトルを生成してください。
+
+【今日のニュース】
+{news_text}
+
+【形式】
+[気になるキーワード・話題]｜{date_str}
+
+【トーン】
+- 落ち着いた、信頼感のある表現
+- 高齢者に優しく、不快に感じない言葉選び
+- 煽りすぎない、冷静なトーン
+
+【良い例】
+- 「年金2%増額の真相とは｜{date_str}」
+- 「繰り下げ受給で得する人・損する人｜{date_str}」
+- 「iDeCo改正で変わること｜{date_str}」
+- 「知らないと損する年金の基礎知識｜{date_str}」
+
+【NG】
+- 「！」「？」「緊急」「衝撃」「崩壊」等の過激な表現
+- 煽りすぎる表現
+- 日付を先頭に置く
+
+【出力】
+タイトルのみを出力してください（日付部分「｜{date_str}」は含めない）。
+"""
+
+    try:
+        response = model.generate_content(prompt)
+        keyword = response.text.strip().strip('"\'「」『』')
+        # 日付が含まれていたら削除
+        if "｜" in keyword:
+            keyword = keyword.split("｜")[0].strip()
+        if len(keyword) > 35:
+            keyword = keyword[:32] + "..."
+        title = f"{keyword}｜{date_str}"
+        print(f"  [動画タイトル] {title}")
+        return title
+    except Exception as e:
+        print(f"  ⚠ 動画タイトル生成エラー: {e}")
+        return default_title
+
+
 def generate_thumbnail_title(script: dict, key_manager: GeminiKeyManager) -> str:
     """サムネイル用のキャッチーなタイトルを生成（Gemini API）
 
@@ -4192,7 +4267,7 @@ def main():
 
         # 5. YouTube投稿
         print("\n[5/7] YouTubeに投稿中...")
-        title = f"【{datetime.now().strftime('%Y/%m/%d')}】今日の年金ニュース"
+        title = generate_video_title(script, key_manager)
 
         # 概要欄（海外メディア超多読ラジオ風フォーマット）
         date_str = datetime.now().strftime('%Y年%m月%d日')
