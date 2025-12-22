@@ -15,7 +15,6 @@ image = modal.Image.debian_slim().apt_install(
     "fonts-noto-cjk-extra",
     "fonts-ipafont",
     "fonts-ipaexfont",
-    "fonts-kosugi-maru",
     "fontconfig"
 ).run_commands(
     "fc-cache -f -v"  # フォントキャッシュを更新
