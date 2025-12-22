@@ -2740,20 +2740,23 @@ KINSOKU_HEAD = set(
 KINSOKU_TAIL = set("'（〔［｛〈《「『【")
 
 
-def truncate_subtitle(text: str, max_chars: int = 32) -> str:
-    """字幕テキストを制限内に収める（はみ出し防止）"""
+def truncate_subtitle(text: str, max_chars: int = 60) -> str:
+    """字幕テキストを制限内に収める（はみ出し防止）
+
+    デフォルト60文字 = 1行20文字×3行
+    """
     if len(text) <= max_chars:
         return text
     return text[:max_chars - 3] + "..."
 
 
-def wrap_text(text: str, max_chars: int = 16, max_lines: int = 2) -> str:
+def wrap_text(text: str, max_chars: int = 20, max_lines: int = 3) -> str:
     """長いテキストを自動折り返し（ASS用、禁則処理対応）
 
     Args:
         text: 折り返すテキスト
-        max_chars: 1行あたりの最大文字数（デフォルト16）
-        max_lines: 最大行数（デフォルト2、はみ出し防止）
+        max_chars: 1行あたりの最大文字数（デフォルト20）
+        max_lines: 最大行数（デフォルト3）
     """
     # まず全体の文字数を制限（max_chars * max_lines）
     total_max = max_chars * max_lines
@@ -3171,9 +3174,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         start = f"0:{int(subtitle_start//60):02d}:{int(subtitle_start%60):02d}.{int((subtitle_start%1)*100):02d}"
         end = f"0:{int(subtitle_end//60):02d}:{int(subtitle_end%60):02d}.{int((subtitle_end%1)*100):02d}"
         # セリフのみ表示（話者名なし）、折り返し
-        # 1行20文字×2行=最大40文字、はみ出し防止
+        # 1行20文字×3行=最大60文字
         dialogue_text = seg['text']
-        wrapped_text = wrap_text(dialogue_text, max_chars=20, max_lines=2)
+        wrapped_text = wrap_text(dialogue_text, max_chars=20, max_lines=3)
         # 控室セクションは黄色(Backroom)、それ以外は白(Default)
         is_backroom = seg.get("section") == "控え室"
         style = "Backroom" if is_backroom else "Default"
