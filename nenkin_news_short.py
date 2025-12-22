@@ -25,6 +25,7 @@ from google.genai import types
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from PIL import Image, ImageDraw, ImageFont
+from gtts import gTTS
 
 # ===== 定数 =====
 VIDEO_WIDTH = 1080   # 縦型
@@ -195,24 +196,48 @@ def generate_short_script(news: dict, key_manager: GeminiKeyManager) -> dict:
     raise ValueError("台本生成失敗")
 
 
+def generate_gtts_fallback(text: str, output_path: str) -> bool:
+    """gTTSフォールバック（Gemini TTS失敗時の代替）"""
+    try:
+        tts = gTTS(text=text, lang='ja')
+        temp_mp3 = output_path.replace('.wav', '.mp3')
+        tts.save(temp_mp3)
+        subprocess.run([
+            'ffmpeg', '-y', '-i', temp_mp3,
+            '-acodec', 'pcm_s16le', '-ar', '24000', '-ac', '1',
+            output_path
+        ], capture_output=True)
+        if os.path.exists(temp_mp3):
+            os.remove(temp_mp3)
+        print(f"  ✓ gTTSフォールバック成功")
+        return True
+    except Exception as e:
+        print(f"  ⚠ gTTSフォールバックエラー: {e}")
+        return False
+
+
 def generate_tts_audio(dialogue: list, output_path: str, key_manager: GeminiKeyManager) -> float:
-    """Gemini TTSで音声生成（リトライ付き）"""
+    """Gemini TTSで音声生成（リトライ付き、gTTSフォールバック対応）"""
 
     # 台本をテキスト形式に変換
     script_text = ""
+    all_text_for_fallback = []  # gTTSフォールバック用
     for line in dialogue:
         speaker = line["speaker"]
         text = line["text"]
         script_text += f"[{speaker}] {text}\n"
+        all_text_for_fallback.append(text)
 
     # リトライロジック（最大29回、異なるAPIキーを試す）
     max_retries = 29
     last_error = None
+    audio_data = None
+    tts_success = False
 
     for attempt in range(max_retries):
         api_key, key_name = key_manager.get_working_key()
         if not api_key:
-            raise ValueError("Gemini APIキーが設定されていません")
+            break
 
         try:
             print(f"  TTS生成試行 {attempt + 1}/{max_retries} ({key_name})")
@@ -251,20 +276,34 @@ def generate_tts_audio(dialogue: list, output_path: str, key_manager: GeminiKeyM
 
             # 音声データを保存
             audio_data = response.candidates[0].content.parts[0].inline_data.data
+            tts_success = True
             break  # 成功したらループを抜ける
 
         except Exception as e:
             last_error = e
-            print(f"  ⚠ TTS生成エラー (試行 {attempt + 1}): {e}")
-            key_manager.mark_failed(key_name)
-            if attempt < max_retries - 1:
-                print(f"  リトライします...")
-                time.sleep(2)  # 2秒待機
-            else:
-                raise ValueError(f"TTS生成に{max_retries}回失敗しました: {last_error}")
+            error_str = str(e)
+            is_429 = "429" in error_str or "RESOURCE_EXHAUSTED" in error_str
+            is_500 = "500" in error_str or "INTERNAL" in error_str
 
-    with open(output_path, "wb") as f:
-        f.write(audio_data)
+            error_type = "429" if is_429 else ("500" if is_500 else "その他")
+            print(f"  ⚠ TTS生成エラー ({error_type}) 試行 {attempt + 1}: {e}")
+            key_manager.mark_failed(key_name)
+
+            if attempt < max_retries - 1:
+                # 429エラーは5秒、その他は3秒待機
+                wait_time = 5 if is_429 else 3
+                print(f"  → {wait_time}秒待機後リトライ...")
+                time.sleep(wait_time)
+
+    # Gemini TTS失敗時はgTTSフォールバック
+    if not tts_success:
+        print(f"  ❌ Gemini TTS {max_retries}回失敗、gTTSフォールバック...")
+        fallback_text = "。".join(all_text_for_fallback)
+        if not generate_gtts_fallback(fallback_text, output_path):
+            raise ValueError(f"TTS生成に完全に失敗しました: {last_error}")
+    else:
+        with open(output_path, "wb") as f:
+            f.write(audio_data)
 
     # 音声長を取得
     result = subprocess.run(
