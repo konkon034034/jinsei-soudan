@@ -22,15 +22,10 @@ from pathlib import Path
 import google.generativeai as genai
 from google import genai as genai_tts
 from google.genai import types
-from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from PIL import Image, ImageDraw, ImageFont
 from gtts import gTTS
-
-# ===== スプレッドシート設定（控室トーク取得用） =====
-SPREADSHEET_ID = "15_ixYlyRp9sOlS0tdklhz6wQmwRxWlOL9cPndFWwOFo"
-GREEN_ROOM_SHEET_NAME = "控室トーク"
 
 # ===== 定数 =====
 VIDEO_WIDTH = 1080   # 縦型
@@ -95,61 +90,8 @@ class GeminiKeyManager:
             self.failed_keys.add(self.keys[idx])
 
 
-def get_sheets_client():
-    """Google Sheets クライアントを取得"""
-    key_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_KEY")
-    if not key_json:
-        return None
-    key_data = json.loads(key_json)
-    creds = Credentials.from_service_account_info(
-        key_data,
-        scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
-    )
-    return build("sheets", "v4", credentials=creds)
-
-
-def fetch_latest_green_room() -> tuple:
-    """本編の最新控室トークを取得
-
-    Returns:
-        tuple: (green_room_content: list, title: str) または (None, None)
-    """
-    try:
-        sheets = get_sheets_client()
-        if not sheets:
-            print("  [控室取得] サービスアカウントキー未設定")
-            return None, None
-
-        # 最新の控室トークを取得（最後の行）
-        result = sheets.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range=f"{GREEN_ROOM_SHEET_NAME}!A:D"
-        ).execute()
-
-        values = result.get("values", [])
-        if len(values) < 2:  # ヘッダーのみ or 空
-            print("  [控室取得] 控室トークデータなし")
-            return None, None
-
-        # 最新行（最後の行）を取得
-        latest = values[-1]
-        date = latest[0] if len(latest) > 0 else ""
-        title = latest[1] if len(latest) > 1 else ""
-        green_room_json = latest[2] if len(latest) > 2 else "[]"
-
-        # JSONをパース
-        green_room = json.loads(green_room_json)
-        print(f"  [控室取得] 本編の控室トーク取得: {len(green_room)}セリフ ({date})")
-
-        return green_room, title
-
-    except Exception as e:
-        print(f"  ⚠ 控室トーク取得エラー: {e}")
-        return None, None
-
-
-def fetch_pension_news(key_manager: GeminiKeyManager) -> dict:
-    """年金ニュースを1件取得"""
+def generate_green_room_script(key_manager: GeminiKeyManager) -> dict:
+    """控室トーク風の台本を独自に生成（60秒版）"""
     api_key, key_name = key_manager.get_working_key()
     if not api_key:
         raise ValueError("Gemini APIキーが設定されていません")
@@ -159,78 +101,33 @@ def fetch_pension_news(key_manager: GeminiKeyManager) -> dict:
 
     today = datetime.now().strftime("%Y年%m月%d日")
 
-    prompt = f"""今日は{today}です。
+    prompt = f"""あなたは年金ニュースラジオの控室にいるカツミとヒロシです。
+本番が終わった後の本音トークを60秒で。今日は{today}です。
 
-年金に関する最新ニュースを1件、インターネットで検索して教えてください。
-ショート動画で使うので、インパクトのある話題を選んでください。
-
-【出力形式】JSONのみ出力
-```json
-{{
-  "headline": "ニュースの見出し（30文字以内）",
-  "summary": "ニュースの要約（100文字以内）",
-  "impact": "国民への影響（50文字以内）",
-  "source": "情報源",
-  "date": "ニュースの日付"
-}}
-```"""
-
-    response = model.generate_content(
-        prompt,
-        generation_config={"temperature": 0.7}
-    )
-
-    text = response.text
-    json_match = re.search(r'```json\s*(.*?)\s*```', text, re.DOTALL)
-    if json_match:
-        return json.loads(json_match.group(1))
-
-    # JSONブロックがない場合
-    json_match = re.search(r'\{.*\}', text, re.DOTALL)
-    if json_match:
-        return json.loads(json_match.group(0))
-
-    raise ValueError("ニュース取得失敗")
-
-
-def generate_short_script(green_room_content: list, key_manager: GeminiKeyManager) -> dict:
-    """ショート用の控室トーク台本を生成（本編ベース、60秒以内）"""
-    api_key, key_name = key_manager.get_working_key()
-    if not api_key:
-        raise ValueError("Gemini APIキーが設定されていません")
-
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.0-flash")
-
-    # 本編の控室トークをテキスト形式に変換
-    green_room_text = ""
-    for line in green_room_content:
-        speaker = line.get("speaker", "")
-        text = line.get("text", "")
-        green_room_text += f"{speaker}「{text}」\n"
-
-    prompt = f"""あなたは年金ニュースラジオのカツミとヒロシです。
-今朝の本編で話した控室トークの内容をベースに、60秒のショート動画用に再編集してください。
-
-【本編の控室トーク内容】
-{green_room_text}
+【キャラクター】
+- カツミ（50代女性）: 元・年金事務所勤務、年金の専門家、毒舌も出る、ズバッと言う
+- ヒロシ（40代男性）: ツッコミ役、「え、マジで？」担当、視聴者目線
 
 【ルール】
-- 60秒以内（6〜8セリフ、各30文字以内）
-- 本編で話した内容の「一番面白い部分」を抜粋・要約
+- 60秒以内（8〜12セリフ、各セリフ20〜30文字）
+- 最初から控室モード、挨拶不要
 - テンポ良く、掛け合いで
 - 最後にオチまたは衝撃の事実
 - 「え、マジで？」「それヤバくない？」的なリアクションを入れる
-- 視聴者が「続きが気になる！」と思う終わり方
 
-【キャラクター】
-- カツミ（50代女性）: 元・年金事務所勤務。控室では毒舌＆本音ダダ漏れ
-- ヒロシ（40代男性）: 素朴なサラリーマン。鋭いツッコミ
+【テーマ】以下から1つ選んで話す:
+- 年金事務所が教えてくれない裏技
+- 知らないと〇万円損する年金の話
+- 繰り下げ受給の意外な落とし穴
+- 年金だけで暮らせない現実
+- 厚生年金と国民年金の格差
+- 年金の噂の真相
+- 得する年金のもらい方
 
 【出力形式】JSONのみ
 ```json
 {{
-  "title": "攻めたタイトル（15文字以内）",
+  "title": "攻めたタイトル（15文字以内、例：年金の闇を暴露）",
   "dialogue": [
     {{"speaker": "カツミ", "text": "セリフ"}},
     {{"speaker": "ヒロシ", "text": "セリフ"}}
@@ -240,7 +137,7 @@ def generate_short_script(green_room_content: list, key_manager: GeminiKeyManage
 
     response = model.generate_content(
         prompt,
-        generation_config={"temperature": 0.8}
+        generation_config={"temperature": 0.9}
     )
 
     text = response.text
@@ -676,38 +573,27 @@ def main():
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
 
-        # 1. 本編の控室トークを取得
-        print("\n[1/5] 本編の控室トーク取得中...")
-        green_room_content, original_title = fetch_latest_green_room()
-
-        if not green_room_content:
-            print("  ⚠ 本編の控室トークが見つかりません")
-            print("  → 本編が先に実行されている必要があります")
-            return
-
-        print(f"  ✓ 本編タイトル: {original_title}")
-
-        # 2. 台本生成（本編の控室トークを要約）
-        print("\n[2/5] ショート用台本生成中...")
-        script = generate_short_script(green_room_content, key_manager)
+        # 1. 台本を独自生成
+        print("\n[1/4] 控室トーク台本生成中...")
+        script = generate_green_room_script(key_manager)
         print(f"  ✓ タイトル: {script['title']}")
         print(f"  ✓ セリフ数: {len(script['dialogue'])}")
 
-        # 3. TTS生成
-        print("\n[3/5] 音声生成中...")
+        # 2. TTS生成
+        print("\n[2/4] 音声生成中...")
         audio_path = str(temp_path / "audio.wav")
         duration = generate_tts_audio(script['dialogue'], audio_path, key_manager)
 
         if duration > MAX_DURATION:
             print(f"  ⚠ 音声が{MAX_DURATION}秒を超えています: {duration:.1f}秒")
 
-        # 4. サムネイル生成
-        print("\n[4/5] サムネイル生成中...")
+        # 3. サムネイル生成
+        print("\n[3/4] サムネイル生成中...")
         thumbnail_path = str(temp_path / "thumbnail.jpg")
         generate_thumbnail(script['title'], thumbnail_path)
 
-        # 5. 動画生成
-        print("\n[5/5] 動画生成中...")
+        # 4. 動画生成
+        print("\n[4/4] 動画生成中...")
         video_path = str(temp_path / "short.mp4")
         generate_video(audio_path, thumbnail_path, script['dialogue'], video_path)
 
@@ -716,9 +602,7 @@ def main():
         title = f"{script['title']} #{today} #Shorts"
 
         # 説明文
-        description = f"""🎙️ 本編の控室トークをギュッと凝縮！
-
-今朝の本編「{original_title}」より
+        description = f"""🎙️ 年金の本音トーク！控室からお届け
 
 毎日お昼に更新！
 本編は毎朝7時配信。チャンネル登録よろしくお願いします。
@@ -732,7 +616,7 @@ def main():
             print("\n[テストモード] YouTubeアップロードをスキップ")
             video_url = "https://youtube.com/test"
         else:
-            print("\n[6/5] YouTubeアップロード中...")
+            print("\n[5] YouTubeアップロード中...")
             video_url = upload_to_youtube(video_path, title, description, tags)
 
         # 処理時間
