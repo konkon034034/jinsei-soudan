@@ -2730,8 +2730,25 @@ KINSOKU_HEAD = set(
 KINSOKU_TAIL = set("'（〔［｛〈《「『【")
 
 
-def wrap_text(text: str, max_chars: int = 30) -> str:
-    """長いテキストを自動折り返し（ASS用、禁則処理対応）"""
+def truncate_subtitle(text: str, max_chars: int = 32) -> str:
+    """字幕テキストを制限内に収める（はみ出し防止）"""
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars - 3] + "..."
+
+
+def wrap_text(text: str, max_chars: int = 16, max_lines: int = 2) -> str:
+    """長いテキストを自動折り返し（ASS用、禁則処理対応）
+
+    Args:
+        text: 折り返すテキスト
+        max_chars: 1行あたりの最大文字数（デフォルト16）
+        max_lines: 最大行数（デフォルト2、はみ出し防止）
+    """
+    # まず全体の文字数を制限（max_chars * max_lines）
+    total_max = max_chars * max_lines
+    text = truncate_subtitle(text, total_max)
+
     if len(text) <= max_chars:
         return text
 
@@ -2767,9 +2784,9 @@ def wrap_text(text: str, max_chars: int = 30) -> str:
     if current:
         lines.append(current)
 
-    # 最大3行まで
-    if len(lines) > 3:
-        lines = lines[:3]
+    # 最大行数制限（はみ出し防止）
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
         lines[-1] = lines[-1][:max_chars - 3] + "..."
 
     return "\\N".join(lines)
@@ -3014,11 +3031,14 @@ def generate_ass_subtitles(segments: list, output_path: str, section_markers: li
     - セリフ字幕: 画面下部（控室セクションはゴールド色）
     - 出典字幕: 透かしバーのすぐ上、左寄せ
     """
-    # セリフ字幕設定（画面下部）
-    font_size = int(VIDEO_WIDTH * 0.075)  # 画面幅の7.5% ≈ 144px
-    margin_bottom = int(VIDEO_HEIGHT * 0.05)  # 下から5%
+    # セリフ字幕設定（画面下部、はみ出し防止）
+    font_size = int(VIDEO_WIDTH * 0.065)  # 画面幅の6.5% ≈ 125px（少し小さく）
+    margin_bottom = int(VIDEO_HEIGHT * 0.08)  # 下から8%（余裕を持たせる）
     margin_left = int(VIDEO_WIDTH * 0.15)
     margin_right = int(VIDEO_WIDTH * 0.15)
+    # 字幕が画面下半分から出ないようにclipを設定
+    clip_top = int(VIDEO_HEIGHT * 0.5)  # 540px（画面中央）
+    clip_setting = f"{{\\clip(0,{clip_top},{VIDEO_WIDTH},{VIDEO_HEIGHT})}}"
 
     # ASS色形式: &HAABBGGRR& （末尾に&を追加）
     primary_color = "&H00FFFFFF&"  # 白文字
@@ -3132,16 +3152,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
         start = f"0:{int(seg['start']//60):02d}:{int(seg['start']%60):02d}.{int((seg['start']%1)*100):02d}"
         end = f"0:{int(seg['end']//60):02d}:{int(seg['end']%60):02d}.{int((seg['end']%1)*100):02d}"
-        # 長いセリフは40文字で省略（トピックは60文字）
-        dialogue_text = seg['text']
-        if len(dialogue_text) > 40:
-            dialogue_text = dialogue_text[:37] + "..."
         # セリフのみ表示（話者名なし）、折り返し
-        wrapped_text = wrap_text(dialogue_text, max_chars=16)  # 1行16文字で折り返し（3行対応）
+        # 1行20文字×2行=最大40文字、はみ出し防止
+        dialogue_text = seg['text']
+        wrapped_text = wrap_text(dialogue_text, max_chars=20, max_lines=2)
         # 控室セクションは黄色(Backroom)、それ以外は白(Default)
         is_backroom = seg.get("section") == "控え室"
         style = "Backroom" if is_backroom else "Default"
-        lines.append(f"Dialogue: 0,{start},{end},{style},,0,0,0,,{wrapped_text}")
+        # clipで画面下半分に制限（はみ出し防止）
+        lines.append(f"Dialogue: 0,{start},{end},{style},,0,0,0,,{clip_setting}{wrapped_text}")
 
         # 控室セクションの開始・終了を記録
         if is_backroom:
