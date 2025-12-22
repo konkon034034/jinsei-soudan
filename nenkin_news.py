@@ -3064,15 +3064,16 @@ def generate_ass_subtitles(segments: list, output_path: str, section_markers: li
     orange_color = "&H00356BFF&"   # #FF6B35 → BGR: 356BFF（オレンジ）
     gold_color = "&H0000D7FF&"     # #FFD700 → BGR: 00D7FF（ゴールド）
 
-    # 出典設定（黒、右上）
-    info_font_size = 48
+    # 出典設定（黒、右上）- フォントサイズ1.5倍
+    info_font_size = 72  # 48 * 1.5 = 72
     info_color = "&H00000000&"  # 黒
     info_margin_r = 30
     info_margin_v = 30
 
-    # トピック設定（白、大きめ）
-    topic_font_size = info_font_size * 2  # 96px
+    # トピック設定（白、黒縁取り）
+    topic_font_size = 96  # 大きめ
     topic_color = "&H00FFFFFF&"  # 白
+    topic_outline_color = "&H00000000&"  # 黒縁取り
 
     # 控室タイトル設定（右上、温かみのあるオレンジイエロー）
     backroom_title_size = 180
@@ -3094,7 +3095,7 @@ Style: Default,Noto Sans CJK JP,{font_size},{primary_color},&H000000FF&,{primary
 Style: Backroom,Noto Sans CJK JP Medium,{font_size},{backroom_text_color},&H000000FF&,&H80000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,1,0,1,{margin_left},{margin_right},{margin_bottom},1
 Style: Source,Noto Sans CJK JP,{info_font_size},{info_color},&H000000FF&,&H00000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,0,0,9,0,{info_margin_r},{info_margin_v},1
 Style: BackroomTitle,IPAPGothic,{backroom_title_size},{backroom_title_color},&H000000FF&,{backroom_title_color},&H00000000&,-1,0,0,0,100,100,0,0,1,2,0,9,0,50,50,1
-Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_color},&H000000FF&,&H00000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,0,0,7,30,0,30,1
+Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_color},&H000000FF&,{topic_outline_color},&H00000000&,-1,0,0,0,100,100,0,0,1,2,0,7,30,0,30,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
