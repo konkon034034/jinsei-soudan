@@ -166,39 +166,51 @@ def mark_comment_processed(sheets, comment_id: str, author: str, liked: bool, no
         print(f"  ⚠ 処理済み記録エラー: {e}")
 
 
+def get_channel_videos(youtube, channel_id: str) -> list:
+    """チャンネルのアップロードプレイリストから動画を取得"""
+    # 1. チャンネル情報からアップロードプレイリストIDを取得
+    channel_response = youtube.channels().list(
+        part="contentDetails",
+        id=channel_id
+    ).execute()
+
+    if not channel_response.get("items"):
+        print(f"  [デバッグ] チャンネルが見つかりません: {channel_id}")
+        return []
+
+    uploads_playlist_id = channel_response["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
+    print(f"  [デバッグ] アップロードプレイリストID: {uploads_playlist_id}")
+
+    # 2. プレイリストから最新10動画を取得
+    playlist_response = youtube.playlistItems().list(
+        part="snippet",
+        playlistId=uploads_playlist_id,
+        maxResults=10
+    ).execute()
+
+    videos = []
+    print(f"  [デバッグ] 検出された動画数: {len(playlist_response.get('items', []))}")
+    print("  [デバッグ] 監視対象動画一覧:")
+
+    for item in playlist_response.get("items", []):
+        video_id = item["snippet"]["resourceId"]["videoId"]
+        title = item["snippet"]["title"][:40]
+        print(f"    - {video_id}: {title}...")
+        videos.append({"id": video_id, "title": title})
+
+    if not videos:
+        print("  [デバッグ] 動画が見つかりません")
+
+    return videos
+
+
 def get_all_comments(youtube, channel_id: str) -> list:
     """チャンネルの全動画からコメントを取得"""
     comments = []
 
-    # チャンネルの動画を取得
-    videos_response = youtube.search().list(
-        part="id",
-        channelId=channel_id,
-        type="video",
-        order="date",
-        maxResults=10  # 最新10動画
-    ).execute()
-
-    video_ids = [item["id"]["videoId"] for item in videos_response.get("items", [])]
-
-    # デバッグ: 検出された動画一覧
-    print(f"\n  [デバッグ] 検出された動画数: {len(video_ids)}")
-
-    if video_ids:
-        # 動画の詳細情報を取得
-        videos_detail = youtube.videos().list(
-            part="snippet,statistics",
-            id=",".join(video_ids)
-        ).execute()
-
-        print("  [デバッグ] 監視対象動画一覧:")
-        for video in videos_detail.get("items", []):
-            video_id = video["id"]
-            title = video["snippet"]["title"][:40]
-            comment_count = video["statistics"].get("commentCount", "無効")
-            print(f"    - {video_id}: {title}... (コメント数: {comment_count})")
-    else:
-        print("  [デバッグ] 動画が見つかりません")
+    # アップロードプレイリストから動画を取得
+    videos = get_channel_videos(youtube, channel_id)
+    video_ids = [v["id"] for v in videos]
 
     for video_id in video_ids:
         try:
