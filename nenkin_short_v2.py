@@ -2,8 +2,8 @@
 """
 年金ニュース ショート動画システム v2
 - 本編とは完全に独立
-- 控室トーク（60秒のショート動画）
-- カツミ（女性）とヒロシ（男性）の掛け合い
+- 「知ってた？年金Q&A」形式（60秒のショート動画）
+- ヒロシ（質問担当）とカツミ（回答担当）のQ&A形式
 """
 
 import os
@@ -52,7 +52,7 @@ class GeminiKeyManager:
         base_key = os.environ.get("GEMINI_API_KEY")
         if base_key:
             self.keys.append(base_key)
-        for i in range(1, 29):
+        for i in range(1, 43):  # GEMINI_API_KEY_1 〜 GEMINI_API_KEY_42
             key = os.environ.get(f"GEMINI_API_KEY_{i}")
             if key:
                 self.keys.append(key)
@@ -87,8 +87,8 @@ def fetch_todays_news(key_manager: GeminiKeyManager) -> str:
 年金制度の変更、受給額の改定、繰り下げ受給、iDeCo、確定拠出年金など、
 視聴者が関心を持ちそうな話題を選んでください。"""
 
-    # リトライ処理
-    max_retries = 5
+    # リトライ処理（全キーを試す）
+    max_retries = max(len(key_manager.keys), 10)  # 全キー数または最低10回
     for attempt in range(max_retries):
         try:
             client = genai.Client(api_key=key_manager.get_key())
@@ -97,7 +97,7 @@ def fetch_todays_news(key_manager: GeminiKeyManager) -> str:
                 contents=prompt
             )
             news = response.text.strip()
-            print(f"  ✓ ニュース取得完了")
+            print(f"  ✓ ニュース取得完了（キー{key_manager.current_index + 1}番目）")
             print(f"  {news[:100]}...")
             return news
         except Exception as e:
@@ -105,7 +105,7 @@ def fetch_todays_news(key_manager: GeminiKeyManager) -> str:
             print(f"  ⚠ 試行{attempt + 1}/{max_retries} 失敗: {error_str[:50]}...")
             if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
                 key_manager.next_key()
-                time.sleep(5)
+                time.sleep(2)  # 待機時間を短縮
             else:
                 time.sleep(3)
             if attempt == max_retries - 1:
@@ -118,32 +118,43 @@ def generate_script(key_manager: GeminiKeyManager, news: str) -> list:
 
     today = datetime.now().strftime("%Y年%m月%d日")
 
-    prompt = f"""あなたは年金ニュースラジオの控室にいる2人のパーソナリティです。
+    prompt = f"""あなたは「知ってた？年金Q&A」という年金クイズショートのパーソナリティです。
 今日は{today}です。
 
+【番組コンセプト】
+視聴者が「知らなかった！」と思うような年金の豆知識をQ&A形式で紹介する
+
 【キャラクター】
-- カツミ（50代女性）: 元・年金事務所勤務の専門家。ツッコミ担当。毒舌で本音をズバッと言う。
-- ヒロシ（40代男性）: ボケ担当。素朴な疑問を投げかける。「え、マジで？」「それヤバくない？」が口癖。
+- ヒロシ（40代前半男性）: 質問担当。「知ってた？」で話を切り出す。親世代のために勉強中。驚きのリアクションが得意。
+- カツミ（60代前半女性）: 回答担当。年金の専門家。わかりやすく解説する。時々毒舌。年金受給が近い世代として視聴者に寄り添う。
 
 【今日のニュース】
 {news}
 
+【台本の流れ】
+1. ヒロシ「知ってた？〇〇って△△らしいよ」（問いかけ）
+2. カツミが答えを解説
+3. ヒロシが驚く・追加質問する
+4. カツミがさらに詳しく説明
+5. 最後に視聴者への一言
+
 【ルール】
 - 60秒以内で話す（10〜14セリフ、各セリフ15〜25文字）
-- ヒロシから始める
-- ヒロシがボケて、カツミがツッコむ流れ
-- 最後にオチをつける
+- ヒロシの「知ってた？」から始める（必須！）
+- Q&A形式でテンポよく
+- ヒロシは視聴者目線で質問・驚く
+- カツミは専門家として回答
 - 挨拶なし、いきなり本題に入る
 
 【出力形式】以下の形式で出力してください。他の文章は不要です。
-ヒロシ: セリフ1
-カツミ: セリフ2
-ヒロシ: セリフ3
-カツミ: セリフ4
+ヒロシ: 知ってた？〇〇って...
+カツミ: そうなのよ、実は...
+ヒロシ: マジで！？じゃあ...
+カツミ: それはね...
 ..."""
 
-    # リトライ処理
-    max_retries = 5
+    # リトライ処理（全キーを試す）
+    max_retries = max(len(key_manager.keys), 10)
     response_text = None
     for attempt in range(max_retries):
         try:
@@ -154,13 +165,14 @@ def generate_script(key_manager: GeminiKeyManager, news: str) -> list:
                 config=types.GenerateContentConfig(temperature=0.9)
             )
             response_text = response.text.strip()
+            print(f"  ✓ 台本生成成功（キー{key_manager.current_index + 1}番目）")
             break
         except Exception as e:
             error_str = str(e)
             print(f"  ⚠ 試行{attempt + 1}/{max_retries} 失敗: {error_str[:50]}...")
             if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
                 key_manager.next_key()
-                time.sleep(5)
+                time.sleep(2)
             else:
                 time.sleep(3)
             if attempt == max_retries - 1:
@@ -360,21 +372,146 @@ def generate_thumbnail(title: str, output_path: str, temp_dir: str):
     img.save(output_path, quality=95)
 
 
-def generate_subtitles(script: list, audio_duration: float, output_path: str):
-    """ASS字幕を生成"""
-    # 各セリフの時間を均等に分割
+def generate_topic_from_news(news: str, key_manager: 'GeminiKeyManager') -> str:
+    """ニュースからトピックを生成（「知ってた？〇〇の話」形式、15文字以内）"""
+    print("  トピックを生成中...")
+
+    prompt = f"""以下の年金ニュースから、Q&A動画のトピック（見出し）を作ってください。
+
+【ニュース】
+{news[:500]}
+
+【ルール】
+- 15文字以内（絶対厳守）
+- 「知ってた？〇〇の話」形式
+- 〇〇は年金の具体的なキーワード（4〜8文字）
+- 絵文字なし
+
+【例】
+- 知ってた？繰り下げの話
+- 知ってた？在職老齢年金
+- 知ってた？加給年金の話
+- 知ってた？遺族年金って
+
+トピックのみを出力（説明不要）:"""
+
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            client = genai.Client(api_key=key_manager.get_key())
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.7)
+            )
+            topic = response.text.strip().strip('「」\'\"')
+            if len(topic) > 15:
+                topic = topic[:15]
+            print(f"  ✓ トピック: {topic}")
+            return topic
+        except Exception as e:
+            error_str = str(e)
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                key_manager.next_key()
+                time.sleep(3)
+            else:
+                time.sleep(2)
+            if attempt == max_retries - 1:
+                print(f"  ⚠ トピック生成失敗、デフォルト使用")
+                return "知ってた？年金の話"
+
+    return "知ってた？年金の話"
+
+
+def generate_hook_phrase(script: list, key_manager: 'GeminiKeyManager') -> str:
+    """煽りフレーズを生成（15文字以内）"""
+    print("  煽りフレーズを生成中...")
+
+    script_text = "\n".join([f"{line['speaker']}: {line['text']}" for line in script])
+
+    prompt = f"""以下のQ&A形式の年金会話から、視聴者の興味を引く「煽りフレーズ」を作ってください。
+
+【会話内容】
+{script_text}
+
+【ルール】
+- 15文字以内（絶対厳守）
+- Q&Aの答えに対する驚きや発見を表現
+- 「知らなかった！」「意外すぎる」「これは重要」的なニュアンス
+- 1行で完結
+- 絵文字なし
+
+【例】
+- 知らない人多すぎ問題
+- これ知らないと損する
+- 意外と知られてない事実
+- 正解率たった3割…
+- マジで知らなかった
+
+フレーズのみを出力（説明不要）:"""
+
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            client = genai.Client(api_key=key_manager.get_key())
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.8)
+            )
+            phrase = response.text.strip().strip('「」\'\"')
+            # 15文字に制限
+            if len(phrase) > 15:
+                phrase = phrase[:15]
+            print(f"  ✓ 煽りフレーズ: {phrase}")
+            return phrase
+        except Exception as e:
+            error_str = str(e)
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                key_manager.next_key()
+                time.sleep(3)
+            else:
+                time.sleep(2)
+            if attempt == max_retries - 1:
+                print(f"  ⚠ 煽りフレーズ生成失敗、デフォルト使用")
+                return "知らない人多すぎ問題"
+
+    return "知らない人多すぎ問題"
+
+
+def generate_subtitles(script: list, audio_duration: float, output_path: str,
+                       topic: str = "", hook_phrase: str = ""):
+    """ASS字幕を生成（新デザイン：上部トピック + 中央会話2倍 + 下部煽り）"""
     time_per_line = audio_duration / len(script)
 
+    # === レイアウト設定 ===
+    # 画面: 1080x1920、正方形エリア: 1080x1080、上下黒帯: 各420px
+    TOP_BAR = 420
+    BOTTOM_BAR = 420
+
+    # サイズ
+    topic_size = 80      # トピック
+    dialogue_size = 160  # 会話（2倍）
+    hook_size = 70       # 煽りフレーズ
+
+    # 位置（MarginV = 画面下端からの距離）
+    topic_margin_v = VIDEO_HEIGHT - (TOP_BAR // 2) - 50  # 上部黒帯中央やや下
+    dialogue_margin_v = BOTTOM_BAR + 100                  # 正方形エリア下部
+    hook_margin_v = BOTTOM_BAR // 2                       # 下部黒帯中央
+
     header = f"""[Script Info]
-Title: Nenkin Short
+Title: Nenkin Short v2
 ScriptType: v4.00+
 PlayResX: {VIDEO_WIDTH}
 PlayResY: {VIDEO_HEIGHT}
+WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Hiroshi,Noto Sans CJK JP,100,&H0000FFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,4,2,2,50,50,400,1
-Style: Katsumi,Noto Sans CJK JP,100,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,4,2,2,50,50,400,1
+Style: Topic,Noto Sans CJK JP,{topic_size},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,6,2,8,80,80,{topic_margin_v},1
+Style: Katsumi,Noto Sans CJK JP,{dialogue_size},&H0000FFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,8,3,5,50,50,{dialogue_margin_v},1
+Style: Hiroshi,Noto Sans CJK JP,{dialogue_size},&H005050FF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,8,3,5,50,50,{dialogue_margin_v},1
+Style: Hook,Noto Sans CJK JP,{hook_size},&H0080FFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,5,2,2,50,50,{hook_margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -382,6 +519,20 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     lines = [header]
 
+    # トピック（常時表示、奥から飛び出す）
+    if topic:
+        # 15文字超えたら2行に分割
+        if len(topic) > 15:
+            topic = topic[:15] + "\\N" + topic[15:]
+        topic_anim = "{\\fscx20\\fscy20\\t(0,300,\\fscx105\\fscy105)\\t(300,500,\\fscx100\\fscy100)}"
+        lines.append(f"Dialogue: 0,0:00:00.00,0:00:{audio_duration:05.2f},Topic,,0,0,0,,{topic_anim}{topic}")
+
+    # 煽りフレーズ（少し遅れてフェードイン）
+    if hook_phrase:
+        hook_anim = "{\\alpha&HFF&\\t(500,800,\\alpha&H00&)}"
+        lines.append(f"Dialogue: 0,0:00:00.50,0:00:{audio_duration:05.2f},Hook,,0,0,0,,{hook_anim}{hook_phrase}")
+
+    # 会話（ポップアップ）
     for i, line in enumerate(script):
         start_time = i * time_per_line
         end_time = (i + 1) * time_per_line
@@ -392,21 +543,37 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         style = "Hiroshi" if line["speaker"] == "ヒロシ" else "Katsumi"
         text = line["text"].replace('\n', '\\N')
 
-        lines.append(f"Dialogue: 0,{start_str},{end_str},{style},,0,0,0,,{text}")
+        popup = "{\\fscx50\\fscy50\\t(0,150,\\fscx110\\fscy110)\\t(150,300,\\fscx100\\fscy100)}"
+        lines.append(f"Dialogue: 0,{start_str},{end_str},{style},,0,0,0,,{popup}{text}")
 
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines))
 
 
 def generate_video(audio_path: str, thumbnail_path: str, subtitle_path: str, output_path: str):
-    """動画を生成"""
+    """動画を生成（上下黒帯 + 中央正方形レイアウト）"""
     print("\n[4/6] 動画を生成中...")
+
+    # レイアウト: 1080x1920、中央に1080x1080の正方形、上下に420pxの黒帯
+    SQUARE_SIZE = 1080
+    TOP_BAR = (VIDEO_HEIGHT - SQUARE_SIZE) // 2  # 420px
+
+    # フィルター: 黒背景に正方形画像を中央配置 + 字幕
+    filter_complex = (
+        f"color=c=black:s={VIDEO_WIDTH}x{VIDEO_HEIGHT}[bg];"
+        f"[1:v]scale={SQUARE_SIZE}:{SQUARE_SIZE}:force_original_aspect_ratio=increase,"
+        f"crop={SQUARE_SIZE}:{SQUARE_SIZE}[img];"
+        f"[bg][img]overlay=0:{TOP_BAR}[composed];"
+        f"[composed]ass={subtitle_path}[out]"
+    )
 
     cmd = [
         'ffmpeg', '-y',
+        '-f', 'lavfi', '-i', f'color=c=black:s={VIDEO_WIDTH}x{VIDEO_HEIGHT}:d=1',
         '-loop', '1', '-i', thumbnail_path,
         '-i', audio_path,
-        '-vf', f'scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},ass={subtitle_path}',
+        '-filter_complex', filter_complex,
+        '-map', '[out]', '-map', '2:a',
         '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
         '-c:a', 'aac', '-b:a', '192k',
         '-shortest',
@@ -489,14 +656,21 @@ def generate_first_comment(script: list, key_manager: GeminiKeyManager) -> str:
     # 台本をテキスト化
     script_text = "\n".join([f"{line['speaker']}: {line['text']}" for line in script])
 
-    prompt = f"""あなたはカツミ（60代女性、年金ニュースラジオのパーソナリティ）です。
-今回のショート動画の内容について、視聴者へのコメントを書いてください。
+    prompt = f"""あなたはカツミ（60代前半女性、「知ってた？年金Q&A」のパーソナリティ）です。
+今回のQ&A動画の内容について、視聴者へのコメントを書いてください。
+
+【カツミの設定】
+- 60代前半（60〜62歳くらいを想像させる）
+- 具体的な年齢は絶対に言わない（「あと何年で年金」「私は〇歳だから」などNG）
+- 年金受給が近い世代として視聴者に寄り添う雰囲気
+- Q&Aの回答者として親しみやすい
 
 【今回の動画の内容】
 {script_text}
 
 【ルール】
-- カツミとして、今回の動画の話題に触れる一言（2〜3文）
+- カツミとして、今回のQ&Aの答えに触れる一言（2〜3文）
+- 「知ってた？」に対する補足や視聴者への問いかけ
 - 高齢女性に親しみやすい丁寧な口調
 - 最後に「お得な情報を逃さないように」という損得メリットでLINE登録を自然に誘導
 - 押し売り感NG、さりげなく
@@ -648,9 +822,16 @@ def main():
             print("  ❌ 台本が空です")
             return
 
-        # タイトル生成
+        # タイトル生成（トピックから動的に生成）
         today = datetime.now().strftime("%m/%d")
-        title = f"年金の裏話 #{today} #Shorts"
+
+        # トピック生成（ニュースから短いフレーズを抽出）
+        topic = generate_topic_from_news(news, key_manager)
+
+        # タイトル生成（トピックから）
+        # トピックから「知ってた？」部分を抽出してタイトル化
+        topic_keyword = topic.replace("知ってた？", "").replace("の話", "").strip()
+        title = f"知ってた？{topic_keyword} #年金 #年金Q&A #Shorts"
 
         # 3. TTS生成
         audio_path = str(temp_path / "audio.wav")
@@ -659,22 +840,27 @@ def main():
         if duration > MAX_DURATION:
             print(f"  ⚠ 動画が{MAX_DURATION}秒を超えています: {duration:.1f}秒")
 
+        # 煽りフレーズ生成
+        hook_phrase = generate_hook_phrase(script, key_manager)
+
         # 4. サムネイル・字幕・動画生成
         thumbnail_path = str(temp_path / "thumbnail.jpg")
         subtitle_path = str(temp_path / "subtitles.ass")
         video_path = str(temp_path / "short.mp4")
 
         generate_thumbnail(title, thumbnail_path, temp_dir)
-        generate_subtitles(script, duration, subtitle_path)
+        generate_subtitles(script, duration, subtitle_path, topic=topic, hook_phrase=hook_phrase)
         generate_video(audio_path, thumbnail_path, subtitle_path, video_path)
 
         # 説明文
-        description = f"""🎙️ 年金の本音トーク！控室からお届け
+        description = f"""❓ 知ってた？年金Q&A
 
-毎日お昼に更新！
+年金の気になる疑問をQ&A形式でサクッと解説！
+毎日お昼に更新中。
+
 本編は毎朝7時配信。チャンネル登録よろしくお願いします。
 
-#年金 #ニュース #Shorts"""
+#年金 #年金Q&A #年金クイズ #Shorts"""
 
         # 5. YouTubeアップロード
         comment_posted = False
