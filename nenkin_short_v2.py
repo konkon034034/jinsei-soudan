@@ -103,8 +103,11 @@ def fetch_todays_news(key_manager: GeminiKeyManager) -> str:
         except Exception as e:
             error_str = str(e)
             key_idx = key_manager.current_index + 1
-            # 最初の3回と最後の3回は詳細エラーを表示
-            if attempt < 3 or attempt >= max_retries - 3:
+            # 最初の1回は全文表示、それ以降は短縮
+            if attempt == 0:
+                print(f"  ⚠ 試行{attempt + 1}/{max_retries} (キー{key_idx}番目) 失敗:")
+                print(f"    エラー全文: {error_str}")
+            elif attempt < 3 or attempt >= max_retries - 3:
                 print(f"  ⚠ 試行{attempt + 1}/{max_retries} (キー{key_idx}番目) 失敗:")
                 print(f"    エラー: {error_str[:200]}")
             else:
