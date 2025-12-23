@@ -482,9 +482,118 @@ def upload_to_youtube(video_path: str, title: str, description: str) -> str:
     return url
 
 
-def send_discord_notification(title: str, url: str, duration: float):
+def generate_first_comment(script: list, key_manager: GeminiKeyManager) -> str:
+    """台本内容からカツミとしてのコメントを生成"""
+    print("\n[6/7] コメントを生成中...")
+
+    # 台本をテキスト化
+    script_text = "\n".join([f"{line['speaker']}: {line['text']}" for line in script])
+
+    prompt = f"""あなたはカツミ（60代女性、年金ニュースラジオのパーソナリティ）です。
+今回のショート動画の内容について、視聴者へのコメントを書いてください。
+
+【今回の動画の内容】
+{script_text}
+
+【ルール】
+- カツミとして、今回の動画の話題に触れる一言（2〜3文）
+- 高齢女性に親しみやすい丁寧な口調
+- 最後に「お得な情報を逃さないように」という損得メリットでLINE登録を自然に誘導
+- 押し売り感NG、さりげなく
+- 絵文字は控えめに（1〜2個まで）
+
+【最後に必ず入れる】
+LINEのURL: https://line.me/R/ti/p/@424lkquq
+
+コメント本文のみを出力してください。"""
+
+    # リトライ処理
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            client = genai.Client(api_key=key_manager.get_key())
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.7)
+            )
+            comment = response.text.strip()
+            print(f"  ✓ コメント生成完了")
+            print(f"  {comment[:50]}...")
+            return comment
+        except Exception as e:
+            error_str = str(e)
+            print(f"  ⚠ 試行{attempt + 1}/{max_retries} 失敗: {error_str[:50]}...")
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                key_manager.next_key()
+                time.sleep(5)
+            else:
+                time.sleep(3)
+            if attempt == max_retries - 1:
+                print(f"  ⚠ コメント生成失敗、スキップします")
+                return None
+
+
+def post_first_comment(video_id: str, comment_text: str) -> bool:
+    """YouTubeに最初のコメントを投稿"""
+    print("\n[7/7] コメントを投稿中...")
+
+    client_id = os.environ.get("YOUTUBE_CLIENT_ID")
+    client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
+    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_23")
+
+    if not all([client_id, client_secret, refresh_token]):
+        print("  ⚠ YouTube認証情報が不足")
+        return False
+
+    try:
+        # アクセストークン取得
+        response = requests.post("https://oauth2.googleapis.com/token", data={
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "refresh_token": refresh_token,
+            "grant_type": "refresh_token"
+        })
+        access_token = response.json()["access_token"]
+
+        from google.oauth2.credentials import Credentials
+        creds = Credentials(
+            token=access_token,
+            refresh_token=refresh_token,
+            client_id=client_id,
+            client_secret=client_secret,
+            token_uri="https://oauth2.googleapis.com/token"
+        )
+        youtube = build("youtube", "v3", credentials=creds)
+
+        # コメント投稿
+        body = {
+            "snippet": {
+                "videoId": video_id,
+                "topLevelComment": {
+                    "snippet": {
+                        "textOriginal": comment_text
+                    }
+                }
+            }
+        }
+
+        youtube.commentThreads().insert(
+            part="snippet",
+            body=body
+        ).execute()
+
+        print(f"  ✓ コメント投稿完了")
+        return True
+
+    except Exception as e:
+        print(f"  ⚠ コメント投稿エラー: {e}")
+        return False
+
+
+def send_discord_notification(title: str, url: str, duration: float, comment_posted: bool = False):
     """Discord通知"""
-    print("\n[6/6] Discord通知...")
+    print("\n[8/8] Discord通知...")
 
     webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
     if not webhook_url:
@@ -492,12 +601,14 @@ def send_discord_notification(title: str, url: str, duration: float):
         return
 
     prefix = "【テスト】" if TEST_MODE else ""
+    comment_status = "✅" if comment_posted else "❌"
 
     message = f"""{prefix}🎬 **年金ショート投稿完了！**
 ━━━━━━━━━━━━━━━━━━
 📺 タイトル: {title}
 🔗 URL: {url}
 ⏱️ 動画長: {int(duration)}秒
+💬 自動コメント: {comment_status}
 ━━━━━━━━━━━━━━━━━━"""
 
     try:
@@ -566,6 +677,9 @@ def main():
 #年金 #ニュース #Shorts"""
 
         # 5. YouTubeアップロード
+        comment_posted = False
+        video_id = None
+
         if TEST_MODE:
             print("\n[テストモード] YouTubeアップロードをスキップ")
             # テストモード時は動画を保存
@@ -576,9 +690,17 @@ def main():
             video_url = f"file://{output_video}"
         else:
             video_url = upload_to_youtube(video_path, title, description)
+            # URLからvideo_idを抽出
+            video_id = video_url.split("v=")[-1] if "v=" in video_url else None
 
-        # 6. Discord通知
-        send_discord_notification(title, video_url, duration)
+            # 6. コメント生成・投稿
+            if video_id:
+                comment_text = generate_first_comment(script, key_manager)
+                if comment_text:
+                    comment_posted = post_first_comment(video_id, comment_text)
+
+        # 7. Discord通知
+        send_discord_notification(title, video_url, duration, comment_posted)
 
         # 完了
         elapsed = time.time() - start_time
