@@ -92,6 +92,7 @@ jobs:
           YOUTUBE_REFRESH_TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
+          USE_MODAL_GPU: 'false'
         run: |
           python nenkin_news_short.py
 

@@ -1,0 +1,86 @@
+name: 年金ニュース A/Bテスト
+
+on:
+  schedule:
+    # 3日ごとに実行（毎日0:00 JSTにチェック）
+    - cron: '0 15 * * *'  # UTC 15:00 = JST 0:00
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: '実行モード'
+        required: false
+        default: 'cycle'
+        type: choice
+        options:
+          - 'cycle'
+          - 'register'
+      video_id:
+        description: '動画ID（registerモード時）'
+        required: false
+        type: string
+      title_a:
+        description: 'タイトルA（registerモード時）'
+        required: false
+        type: string
+      title_b:
+        description: 'タイトルB（registerモード時）'
+        required: false
+        type: string
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  ab-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Python環境をセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Python依存関係をインストール
+        run: |
+          pip install --upgrade pip
+          pip install google-auth google-api-python-client requests
+
+      - name: A/Bテストサイクルを実行
+        if: ${{ github.event.inputs.mode != 'register' }}
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          python nenkin_ab_test.py
+
+      - name: 新規テストを登録
+        if: ${{ github.event.inputs.mode == 'register' }}
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          python nenkin_ab_test.py register "${{ github.event.inputs.video_id }}" "${{ github.event.inputs.title_a }}" "${{ github.event.inputs.title_b }}"
+
+      - name: エラー時にDiscord通知
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"content\": \"❌ **A/Bテストに失敗しました**\\n\\n🔗 ワークフロー: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+              }"
+          fi

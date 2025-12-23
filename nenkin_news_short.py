@@ -252,8 +252,8 @@ def generate_tts_audio(dialogue: list, output_path: str, key_manager: GeminiKeyM
             key_manager.mark_failed(key_name)
 
             if attempt < max_retries - 1:
-                # 429エラーは5秒、その他は3秒待機
-                wait_time = 5 if is_429 else 3
+                # 429エラーは15秒、その他は10秒待機（gTTSフォールバック回避）
+                wait_time = 15 if is_429 else 10
                 print(f"  → {wait_time}秒待機後リトライ...")
                 time.sleep(wait_time)
 
@@ -641,7 +641,10 @@ def main():
 
         # タイトル作成（攻めた感じ + #Shorts）
         today = datetime.now().strftime("%m/%d")
-        title = f"{script['title']} #{today} #Shorts"
+        script_title = script['title'].replace("\n", " ").replace("\r", "").strip()
+        if len(script_title) > 50:
+            script_title = script_title[:47] + "..."
+        title = f"{script_title} #{today} #Shorts"
 
         # 説明文
         description = f"""🎙️ 年金の本音トーク！控室からお届け
