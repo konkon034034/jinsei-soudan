@@ -33,6 +33,20 @@ MAX_DURATION = 60
 # テストモード
 TEST_MODE = os.environ.get("TEST_MODE", "").lower() == "true"
 
+# APIスキップモード（Gemini APIを使わずにダミーデータで動画生成をテスト）
+SKIP_API = os.environ.get("SKIP_API", "").lower() == "true"
+
+# ダミー台本（SKIP_API時に使用）
+DUMMY_SCRIPT = [
+    {"speaker": "ヒロシ", "text": "知ってた？年金って繰り下げると増えるんだって！"},
+    {"speaker": "カツミ", "text": "そうなのよ、最大で42%も増えるの。"},
+    {"speaker": "ヒロシ", "text": "マジで！？でも何歳まで待てばいいの？"},
+    {"speaker": "カツミ", "text": "75歳まで繰り下げると最大よ。"},
+    {"speaker": "ヒロシ", "text": "へー！でも長生きしないと損じゃない？"},
+    {"speaker": "カツミ", "text": "損益分岐点は約12年後。考えて決めてね。"},
+]
+DUMMY_TOPIC = "年金繰り下げの話"
+
 # 背景画像（Google Drive ID）
 BACKGROUND_IMAGE_ID = os.environ.get(
     "SHORT_BACKGROUND_IMAGE_ID",
@@ -367,6 +381,27 @@ def generate_tts_audio(script: list, output_path: str, key_manager: GeminiKeyMan
     print(f"  ✓ 音声生成完了: {duration:.1f}秒")
 
     return duration
+
+
+def generate_silent_audio(script: list, output_path: str) -> float:
+    """SKIP_APIモード用：無音音声を生成（セリフ数に基づく長さ）"""
+    print("\n[3/6] 無音音声を生成中... (SKIP_APIモード)")
+
+    # 1セリフあたり約3秒 + 間隔0.2秒
+    duration_per_line = 3.0
+    gap = 0.2
+    total_duration = len(script) * (duration_per_line + gap)
+
+    # 最低30秒、最大55秒に調整
+    total_duration = max(30.0, min(55.0, total_duration))
+    total_ms = int(total_duration * 1000)
+
+    # 無音音声を生成
+    silent = AudioSegment.silent(duration=total_ms)
+    silent.export(output_path, format="wav")
+
+    print(f"  ✓ 無音音声生成完了: {total_duration:.1f}秒")
+    return total_duration
 
 
 def download_background(output_path: str) -> bool:
@@ -867,45 +902,69 @@ def main():
     print("年金ニュース ショート動画システム v2")
     print("=" * 50)
     print(f"テストモード: {TEST_MODE}")
+    print(f"APIスキップ: {SKIP_API}")
     print("=" * 50)
 
-    # テストモードでは全キーを診断
-    # テストモード時は GEMINI_API_KEY のみを使用（有料枠テスト）
-    key_manager = GeminiKeyManager(diagnose=False, use_only_base_key=TEST_MODE)
+    # SKIP_APIモードの場合はAPIを使わずにダミーデータで動画生成をテスト
+    if SKIP_API:
+        print("\n🧪 SKIP_APIモード: Gemini APIを使用せずダミーデータでテスト")
+        key_manager = None
+    else:
+        # テストモード時は GEMINI_API_KEY のみを使用（有料枠テスト）
+        key_manager = GeminiKeyManager(diagnose=False, use_only_base_key=TEST_MODE)
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
 
-        # 1. ニュース取得
-        news = fetch_todays_news(key_manager)
+        if SKIP_API:
+            # SKIP_APIモード: ダミーデータを使用
+            print("\n[1/6] ダミーニュース使用 (SKIP_APIモード)")
+            print("  ✓ ダミーニュースを使用")
+            news = "ダミーニュース：年金繰り下げに関する情報"
 
-        # 2. 台本生成
-        script = generate_script(key_manager, news)
+            print("\n[2/6] ダミー台本使用 (SKIP_APIモード)")
+            script = DUMMY_SCRIPT
+            print(f"  ✓ ダミー台本: {len(script)}セリフ")
 
-        if not script:
-            print("  ❌ 台本が空です")
-            return
+            topic = DUMMY_TOPIC
+            print(f"  ✓ トピック: {topic}")
+
+            hook_phrase = "知らないと損！"
+        else:
+            # 通常モード: APIを使用
+            # 1. ニュース取得
+            news = fetch_todays_news(key_manager)
+
+            # 2. 台本生成
+            script = generate_script(key_manager, news)
+
+            if not script:
+                print("  ❌ 台本が空です")
+                return
+
+            # トピック生成（ニュースから短いフレーズを抽出）
+            topic = generate_topic_from_news(news, key_manager)
+
+            # 煽りフレーズ生成
+            hook_phrase = generate_hook_phrase(script, key_manager)
 
         # タイトル生成（トピックから動的に生成）
         today = datetime.now().strftime("%m/%d")
-
-        # トピック生成（ニュースから短いフレーズを抽出）
-        topic = generate_topic_from_news(news, key_manager)
 
         # タイトル生成（トピックから）
         # トピックから「知ってた？」部分を抽出してタイトル化
         topic_keyword = topic.replace("知ってた？", "").replace("の話", "").strip()
         title = f"知ってた？{topic_keyword} #年金 #年金Q&A #Shorts"
 
-        # 3. TTS生成
+        # 3. TTS生成または無音音声生成
         audio_path = str(temp_path / "audio.wav")
-        duration = generate_tts_audio(script, audio_path, key_manager)
+        if SKIP_API:
+            duration = generate_silent_audio(script, audio_path)
+        else:
+            duration = generate_tts_audio(script, audio_path, key_manager)
 
         if duration > MAX_DURATION:
             print(f"  ⚠ 動画が{MAX_DURATION}秒を超えています: {duration:.1f}秒")
-
-        # 煽りフレーズ生成
-        hook_phrase = generate_hook_phrase(script, key_manager)
 
         # 4. サムネイル・字幕・動画生成
         thumbnail_path = str(temp_path / "thumbnail.jpg")
