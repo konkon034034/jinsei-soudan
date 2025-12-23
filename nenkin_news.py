@@ -73,7 +73,7 @@ DEFAULT_TTS_INSTRUCTION = """あなたはプロフェッショナルな年金ニ
 - 自然で聞き取りやすい日本語で話してください
 
 【カツミの声の特徴（{voice_female}音声を使用）】
-- 50代女性の落ち着いた声
+- 60代前半女性の落ち着いた声
 - トーン: 低め、温かみがある、信頼感がある
 - スピード: ゆっくり目（1.0倍速）
 - 感情: 穏やか、優しい、説明的
@@ -95,16 +95,16 @@ DEFAULT_TTS_INSTRUCTION = """あなたはプロフェッショナルな年金ニ
 TTS_INSTRUCTION = os.environ.get("TTS_INSTRUCTION", DEFAULT_TTS_INSTRUCTION)
 
 # ===== キャラクター設定 =====
-# カツミ（女性）: 年金に詳しい説明役。落ち着いた優しい口調。
+# カツミ（60代前半女性）: 年金に詳しい解説役。年金受給が近い世代として視聴者に寄り添う。落ち着いた優しい口調。
 GEMINI_VOICE_KATSUMI = TTS_VOICE_FEMALE
 
-# ヒロシ（男性）: 年金に詳しくない聞き役。ちょっとお馬鹿で素朴な疑問を聞く。
+# ヒロシ（40代前半男性）: 親世代のために勉強中の聞き役。ちょっとお馬鹿で素朴な疑問を聞く。
 GEMINI_VOICE_HIROSHI = TTS_VOICE_MALE
 
 # ===== Google Cloud TTS設定 =====
-# カツミ（女性）: ja-JP-Wavenet-A
+# カツミ（60代前半女性）: ja-JP-Wavenet-A
 GCLOUD_VOICE_KATSUMI = "ja-JP-Wavenet-A"
-# ヒロシ（男性）: ja-JP-Wavenet-D
+# ヒロシ（40代前半男性）: ja-JP-Wavenet-D
 GCLOUD_VOICE_HIROSHI = "ja-JP-Wavenet-D"
 
 CHARACTERS = {
@@ -261,7 +261,7 @@ class GeminiKeyManager:
         base_key = os.environ.get("GEMINI_API_KEY")
         if base_key:
             self.keys.append(base_key)
-        for i in range(1, 10):
+        for i in range(1, 43):  # GEMINI_API_KEY_1 〜 GEMINI_API_KEY_42
             key = os.environ.get(f"GEMINI_API_KEY_{i}")
             if key:
                 self.keys.append(key)
@@ -465,8 +465,14 @@ def save_green_room_content(green_room: list, title: str = ""):
 
 # 信頼度の高いソース（confirmed情報として扱う）
 TRUSTED_SOURCES = [
+    # 最優先: 政府機関
     "厚生労働省", "mhlw.go.jp",
     "日本年金機構", "nenkin.go.jp",
+    "財務省", "mof.go.jp",
+    # 次点: 年金業界団体
+    "GPIF", "gpif.go.jp", "年金積立金管理運用独立行政法人",
+    "企業年金連合会",
+    # 大手メディア
     "NHK", "nhk.or.jp",
     "日本経済新聞", "nikkei.com",
     "読売新聞", "yomiuri.co.jp",
@@ -523,14 +529,35 @@ def search_pension_news(key_manager: GeminiKeyManager) -> dict:
 - 年金機構 発表 今週
 - 年金 速報 {today.year}
 
-【優先する情報源】（信頼度高い順）
-1. 厚生労働省 (mhlw.go.jp)
-2. 日本年金機構 (nenkin.go.jp)
-3. NHK (nhk.or.jp)
-4. 日本経済新聞 (nikkei.com)
-5. 読売新聞 (yomiuri.co.jp)
-6. 朝日新聞 (asahi.com)
-7. Yahoo!ニュース（参考程度）
+【情報源の優先順位】（信頼度高い順、上から順に重視）
+★★★ 最優先（必ず確認）
+1. 政府機関公式サイト
+   - 厚生労働省 (mhlw.go.jp)
+   - 日本年金機構 (nenkin.go.jp)
+   - 財務省 (mof.go.jp)
+2. 政府機関のレポート・白書・統計資料
+   - 年金財政検証、社会保障審議会資料など
+
+★★ 次点（積極的に取得）
+3. 年金業界団体の調査資料
+   - 年金積立金管理運用独立行政法人（GPIF）
+   - 企業年金連合会など
+4. 最新年金ニュース記事（大手メディア）
+   - NHK (nhk.or.jp)
+   - 日本経済新聞 (nikkei.com)
+   - 読売新聞 (yomiuri.co.jp)
+   - 朝日新聞 (asahi.com)
+   - Yahoo!ニュース（参考程度）
+
+★ 補助情報（参考として取得）
+5. 年金専門家のブログ・解説記事
+   - 社会保険労務士、ファイナンシャルプランナーの解説
+6. 年金の学術論文・研究
+   - 大学研究機関、シンクタンクの分析
+
+☆ うわさ・体験談（reliability=low）
+7. 年金の体験談
+8. 年金生活者の口コミ・声
 
 【出力形式】
 ```json
@@ -649,25 +676,25 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager, test_mode: b
 
 【登場人物の設定】
 
-カツミ（50代女性）
+カツミ（60代前半女性）
 - 年金の専門家、解説役
-- まだ年金受給者ではない（受給前）
-- 「私たちもあと10年ちょっとで受給だから、他人事じゃないのよ」
-- 将来の年金について真剣に考えている立場
+- 年金受給が近い世代として視聴者に寄り添う
+- 具体的な年齢は絶対に言わない（「あと何年で年金」「私は〇歳だから」などNG）
+- 年金について詳しく、わかりやすく解説してくれる
 - 落ち着いていて優しく丁寧、控室では本音が出る
 
 ヒロシ（40代前半男性）
 - 視聴者代弁、素朴な疑問を聞く
-- まだ年金受給者ではない（受給まで20年以上）
-- 「俺なんかまだ先の話だと思ってたけど...」
+- まだ年金は先だけど、親世代のために勉強中という立場
+- 「親にも教えてあげたいな」「うちの親もこういうの気にしてるんだよね」
 - 年金について勉強中の立場
 - ちょっとお馬鹿でのんびり
 
 【会話での活かし方】
-- 「私たちはまだもらってないけど」
-- 「受給者の方々は〜」と第三者視点で語る
-- 「今から準備しておかないと」という将来への備え視点
-- 視聴者（受給者）に寄り添いつつ、自分たちは予備軍という立場
+- カツミ: 受給世代に寄り添いつつ専門的に解説
+- ヒロシ: 「親にも伝えたい」という代理学習者の立場
+- 「受給されている方は〜」と視聴者に語りかける
+- 視聴者（受給者・受給予定者）に寄り添う姿勢
 
 【ニュース情報】
 {news_text}
@@ -794,7 +821,7 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager, test_mode: b
 - 出典を明記（厚生労働省、日本年金機構、NHK、日経新聞等）
 - 具体的な金額・日付・%を入れる
 - 確定情報メイン、噂は「〜らしいですよ」と軽く
-- ヒロシは視聴者が思いそうな疑問を代弁（ちょっとお馬鹿な感じで）
+- ヒロシは親世代のために勉強中。視聴者が思いそうな疑問を代弁（ちょっとお馬鹿な感じで）
 - 【重要】本編エンディングは丁寧モード、控え室は素のタメ口モード。ギャップが大事！
 - 【重要】控え室は視聴者が最も楽しみにするパート。素のカツミが本音・噂話・毒舌全開で語る
 - deep_dive, chat_summaryはテストモードでは省略可（空配列[]）
@@ -3834,7 +3861,7 @@ def generate_grandma_comment(script: dict, key_manager: GeminiKeyManager) -> str
 
 
 def generate_first_comment(script: dict, news_data: dict, key_manager: GeminiKeyManager) -> str:
-    """最初のコメントを生成（70代老夫婦の視点）
+    """最初のコメントを生成（カツミとしてのコメント）
 
     Args:
         script: 台本データ
@@ -3842,7 +3869,7 @@ def generate_first_comment(script: dict, news_data: dict, key_manager: GeminiKey
         key_manager: APIキーマネージャー
 
     Returns:
-        str: 老夫婦のコメント（50〜100文字）
+        str: カツミのコメント（LINE URLを含む）
     """
     api_key, key_name = key_manager.get_working_key()
     if not api_key:
@@ -3852,56 +3879,74 @@ def generate_first_comment(script: dict, news_data: dict, key_manager: GeminiKey
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-2.0-flash")
 
-    # ニュース要約を取得
-    news_summary_lines = []
-    confirmed_news = news_data.get("confirmed", [])
-    rumor_news = news_data.get("rumor", [])
+    # 台本からテキストを抽出
+    script_lines = []
+    for section in script.get("news_sections", []):
+        for line in section.get("lines", []):
+            script_lines.append(f"{line.get('speaker', '')}: {line.get('text', '')}")
 
-    for news in confirmed_news[:3]:
-        news_summary_lines.append(f"・{news.get('title', '')}")
-    for news in rumor_news[:1]:
-        news_summary_lines.append(f"・{news.get('title', '')}（参考情報）")
+    # 最大20行に制限（長すぎるとAPIエラーになる可能性）
+    script_text = "\n".join(script_lines[:20])
 
-    news_summary = "\n".join(news_summary_lines) if news_summary_lines else "今日の年金ニュース"
+    # ニュースタイトルも取得
+    news_titles = []
+    for news in news_data.get("confirmed", [])[:3]:
+        news_titles.append(f"・{news.get('title', '')}")
+    news_summary = "\n".join(news_titles) if news_titles else ""
 
-    prompt = f"""あなたは70代の老夫婦です。年金ニュースラジオを聞いた感想をコメントしてください。
+    prompt = f"""あなたはカツミ（60代前半女性、年金ニュースラジオのパーソナリティ）です。
+今回の動画の内容について、視聴者へのコメントを書いてください。
 
-【今日のニュース内容】
+【カツミの設定】
+- 60代前半（60〜62歳くらいを想像させる）
+- 具体的な年齢は絶対に言わない（「あと何年で年金」「私は〇歳だから」などNG）
+- 年金受給が近い世代として視聴者に寄り添う雰囲気
+
+【今回の動画のニュース】
 {news_summary}
 
-【パーソナリティ】
-- カツミ（女性）: 年金に詳しく、わかりやすく解説してくれる
-- ヒロシ（男性）: ちょっとお馬鹿だけど、視聴者目線で素朴な質問をしてくれる
+【台本の一部】
+{script_text}
 
-【コメントの条件】
-- 70代老夫婦が一緒にラジオを聴いた温かみのある感想
-- 50〜100文字程度
-- 絵文字を1〜2個使用
-- ニュースの内容やカツミ・ヒロシへの感想を自然に入れる
-- 「私たち夫婦」「うちのおじいさん/おばあさん」などの表現OK
+【ルール】
+- カツミとして、視聴者に語りかけるコメントを書く
+- 台本の中から具体的な話題（数字、制度名、ニュース内容など）を1〜2個ピックアップ
+- その話題について「〇〇の話、驚きましたよね」「△△円って意外と大きいですよね」など具体的に触れる
+- 高齢女性に親しみやすい丁寧な口調
+- 最後に「お得な情報を逃さないように」という損得メリットでLINE登録を自然に誘導
+- 押し売り感NG、さりげなく
+- 絵文字は控えめに（1〜2個まで）
 
-【コメント例】
-「今日も勉強になりました😊 ヒロシさんの質問、うちのおじいさんも同じこと言ってました笑」
-「年金の話、難しいけどカツミさんの説明でよくわかりました✨ 夫婦で毎日聴いてます」
-「ヒロシさん面白い🤣 カツミさんの丁寧な解説に感謝です」
+【最後に必ず入れる】
+LINEのURL: https://line.me/R/ti/p/@424lkquq
 
-【出力】
-老夫婦のコメントのみを出力してください。他の説明は不要です。
-"""
+コメント本文のみを出力してください。"""
 
-    try:
-        response = model.generate_content(prompt)
-        comment = response.text.strip()
-        # 余分な引用符を削除
-        comment = comment.strip('"\'「」『』')
-        # 100文字に制限
-        if len(comment) > 100:
-            comment = comment[:97] + "..."
-        print(f"  [コメント生成] 老夫婦: {comment}")
-        return comment
-    except Exception as e:
-        print(f"  ⚠ コメント生成エラー: {e}")
-        return ""
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = model.generate_content(prompt)
+            comment = response.text.strip()
+            # 余分な引用符を削除
+            comment = comment.strip('"\'「」『』')
+            print(f"  [コメント生成] カツミ: {comment[:80]}...")
+            return comment
+        except Exception as e:
+            error_str = str(e)
+            print(f"  ⚠ コメント生成 試行{attempt + 1}/{max_retries} 失敗: {error_str[:50]}...")
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                # 別のAPIキーを試す
+                api_key, key_name = key_manager.get_working_key()
+                if api_key:
+                    genai.configure(api_key=api_key)
+                time.sleep(5)
+            else:
+                time.sleep(3)
+            if attempt == max_retries - 1:
+                print(f"  ⚠ コメント生成失敗、スキップします")
+                return ""
+
+    return ""
 
 
 # ===== サムネイル設定 =====
@@ -4312,6 +4357,154 @@ def send_discord_notification(title: str, url: str, video_duration: float, proce
         print(f"  ⚠ Discord通知エラー: {type(e).__name__}: {e}")
 
 
+def generate_community_post(news_data: dict, key_manager: GeminiKeyManager) -> dict:
+    """YouTubeコミュニティ投稿案を生成
+
+    Args:
+        news_data: ニュースデータ
+        key_manager: APIキーマネージャー
+
+    Returns:
+        dict: {"question": "質問文", "options": ["選択肢1", "選択肢2", ...]}
+    """
+    print("\n[コミュニティ投稿案] 生成中...")
+
+    api_key, key_name = key_manager.get_working_key()
+    if not api_key:
+        print("  ⚠ APIキーがないためスキップ")
+        return None
+
+    # ニュース要約を取得
+    news_titles = []
+    for news in news_data.get("confirmed", [])[:3]:
+        news_titles.append(f"・{news.get('title', '')}")
+    news_summary = "\n".join(news_titles) if news_titles else "今日の年金ニュース"
+
+    prompt = f"""あなたは年金ニュースチャンネルの運営者です。
+今日の年金ニュースに関連した、視聴者参加型のアンケート投稿を作ってください。
+
+【今日のニュース】
+{news_summary}
+
+【ルール】
+- 損得・賛否・経験を聞く形式
+- 高齢者が答えやすいシンプルな質問
+- 選択肢は2〜4個
+- 「正直に聞きます」「皆さんに質問です」など親しみやすい書き出し
+- 絵文字は控えめ（1〜2個）
+
+【出力形式】必ずこの形式で出力してください：
+質問文:
+〇〇〇〇？
+
+選択肢:
+1. △△△
+2. □□□
+3. ▲▲▲"""
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-2.0-flash")
+
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = model.generate_content(prompt)
+            text = response.text.strip()
+
+            # パース
+            question = ""
+            options = []
+
+            lines = text.split("\n")
+            in_options = False
+
+            for line in lines:
+                line = line.strip()
+                if line.startswith("質問文:") or line.startswith("質問文："):
+                    continue
+                elif line.startswith("選択肢:") or line.startswith("選択肢："):
+                    in_options = True
+                    continue
+                elif in_options:
+                    # 選択肢をパース（1. 2. 3. 形式）
+                    if line and (line[0].isdigit() or line.startswith("・")):
+                        option = line.lstrip("0123456789.・ ")
+                        if option:
+                            options.append(option)
+                elif not in_options and line and "?" in line or "？" in line:
+                    question = line
+                elif not in_options and line and not question:
+                    question = line
+
+            if question and len(options) >= 2:
+                print(f"  ✓ 質問: {question[:40]}...")
+                print(f"  ✓ 選択肢: {len(options)}個")
+                return {"question": question, "options": options}
+
+        except Exception as e:
+            error_str = str(e)
+            print(f"  ⚠ 試行{attempt + 1}/{max_retries} 失敗: {error_str[:50]}...")
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                api_key, key_name = key_manager.get_working_key()
+                if api_key:
+                    genai.configure(api_key=api_key)
+                time.sleep(5)
+            else:
+                time.sleep(3)
+
+    print("  ⚠ コミュニティ投稿案の生成に失敗")
+    return None
+
+
+def send_community_post_to_discord(post_data: dict):
+    """コミュニティ投稿案をDiscordに送信
+
+    Args:
+        post_data: {"question": "質問文", "options": ["選択肢1", "選択肢2", ...]}
+    """
+    if not post_data:
+        return
+
+    webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
+    if not webhook_url:
+        print("  ⚠ DISCORD_WEBHOOK_URL未設定のためスキップ")
+        return
+
+    question = post_data.get("question", "")
+    options = post_data.get("options", [])
+
+    # 選択肢を整形
+    options_text = "\n".join([f"{i+1}. {opt}" for i, opt in enumerate(options)])
+
+    message = f"""━━━━━━━━━━━━━━━━━━
+📊 **今日のコミュニティ投稿案**
+━━━━━━━━━━━━━━━━━━
+
+【質問文】コピペ用👇
+{question}
+
+【選択肢】
+{options_text}
+
+▶️ 投稿はこちら
+https://studio.youtube.com/channel/UCcjf76-saCvRAkETlieeokw/community
+━━━━━━━━━━━━━━━━━━"""
+
+    try:
+        response = requests.post(
+            webhook_url,
+            json={"content": message},
+            headers={"Content-Type": "application/json"},
+            timeout=30
+        )
+        if response.status_code in [200, 204]:
+            print("  ✓ コミュニティ投稿案をDiscordに送信完了")
+        else:
+            print(f"  ⚠ Discord送信失敗: {response.status_code}")
+    except Exception as e:
+        print(f"  ⚠ Discord送信エラー: {e}")
+
+
 def main():
     """メイン処理"""
     start_time = time.time()  # 処理開始時刻
@@ -4518,6 +4711,12 @@ def main():
             # コメント内容を表示
             if first_comment:
                 print(f"\n📝 最初のコメント: {first_comment}")
+
+            # コミュニティ投稿案を生成・送信（テストモード以外）
+            if not TEST_MODE and video_id:
+                community_post = generate_community_post(news_data, key_manager)
+                if community_post:
+                    send_community_post_to_discord(community_post)
 
         except Exception as e:
             print(f"❌ YouTube投稿エラー: {e}")

@@ -125,6 +125,20 @@ jobs:
           GEMINI_API_KEY_26: ${{ secrets.GEMINI_API_KEY_26 }}
           GEMINI_API_KEY_27: ${{ secrets.GEMINI_API_KEY_27 }}
           GEMINI_API_KEY_28: ${{ secrets.GEMINI_API_KEY_28 }}
+          GEMINI_API_KEY_29: ${{ secrets.GEMINI_API_KEY_29 }}
+          GEMINI_API_KEY_30: ${{ secrets.GEMINI_API_KEY_30 }}
+          GEMINI_API_KEY_31: ${{ secrets.GEMINI_API_KEY_31 }}
+          GEMINI_API_KEY_32: ${{ secrets.GEMINI_API_KEY_32 }}
+          GEMINI_API_KEY_33: ${{ secrets.GEMINI_API_KEY_33 }}
+          GEMINI_API_KEY_34: ${{ secrets.GEMINI_API_KEY_34 }}
+          GEMINI_API_KEY_35: ${{ secrets.GEMINI_API_KEY_35 }}
+          GEMINI_API_KEY_36: ${{ secrets.GEMINI_API_KEY_36 }}
+          GEMINI_API_KEY_37: ${{ secrets.GEMINI_API_KEY_37 }}
+          GEMINI_API_KEY_38: ${{ secrets.GEMINI_API_KEY_38 }}
+          GEMINI_API_KEY_39: ${{ secrets.GEMINI_API_KEY_39 }}
+          GEMINI_API_KEY_40: ${{ secrets.GEMINI_API_KEY_40 }}
+          GEMINI_API_KEY_41: ${{ secrets.GEMINI_API_KEY_41 }}
+          GEMINI_API_KEY_42: ${{ secrets.GEMINI_API_KEY_42 }}
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
