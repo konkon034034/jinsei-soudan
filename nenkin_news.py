@@ -3219,8 +3219,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 lines.append(f"Dialogue: 3,{start},{end},Topic,,0,0,0,,{display_title}")
 
     # セリフ字幕を追加（控室セクションは黄色、無音セグメントはスキップ）
-    # 字幕タイミング調整: 音声より少し遅らせて表示（先走り防止）
-    SUBTITLE_DELAY_SEC = 0.3  # 300ミリ秒遅らせる
     backroom_start = None
     backroom_end = None
     for seg in segments:
@@ -3228,14 +3226,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         if seg.get("is_silence"):
             continue
 
-        # 字幕開始を遅らせる（音声より先に表示されるのを防ぐ）
-        subtitle_start = seg['start'] + SUBTITLE_DELAY_SEC
-        subtitle_end = seg['end']
-        # デバッグ: タイミング確認（最初の5セリフのみ）
-        if len([l for l in lines if l.startswith("Dialogue: 0")]) < 5:
-            print(f"    [字幕] {seg['text'][:15]}... 音声:{seg['start']:.2f}s → 字幕:{subtitle_start:.2f}s")
-        start = f"0:{int(subtitle_start//60):02d}:{int(subtitle_start%60):02d}.{int((subtitle_start%1)*100):02d}"
-        end = f"0:{int(subtitle_end//60):02d}:{int(subtitle_end%60):02d}.{int((subtitle_end%1)*100):02d}"
+        start = f"0:{int(seg['start']//60):02d}:{int(seg['start']%60):02d}.{int((seg['start']%1)*100):02d}"
+        end = f"0:{int(seg['end']//60):02d}:{int(seg['end']%60):02d}.{int((seg['end']%1)*100):02d}"
         # セリフのみ表示（話者名なし）、折り返し
         # 1行20文字×3行=最大60文字
         dialogue_text = seg['text']
@@ -3246,11 +3238,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         # clipで画面下半分に制限（はみ出し防止）
         lines.append(f"Dialogue: 0,{start},{end},{style},,0,0,0,,{clip_setting}{wrapped_text}")
 
-        # 控室セクションの開始・終了を記録（遅延適用済み）
+        # 控室セクションの開始・終了を記録
         if is_backroom:
             if backroom_start is None:
-                backroom_start = subtitle_start
-            backroom_end = subtitle_end
+                backroom_start = seg['start']
+            backroom_end = seg['end']
 
     # デバッグ: 控室字幕数をカウント
     backroom_count = sum(1 for seg in segments if seg.get("section") == "控え室" and not seg.get("is_silence"))
