@@ -102,14 +102,20 @@ def fetch_todays_news(key_manager: GeminiKeyManager) -> str:
             return news
         except Exception as e:
             error_str = str(e)
-            print(f"  ⚠ 試行{attempt + 1}/{max_retries} 失敗: {error_str[:50]}...")
+            key_idx = key_manager.current_index + 1
+            # 最初の3回と最後の3回は詳細エラーを表示
+            if attempt < 3 or attempt >= max_retries - 3:
+                print(f"  ⚠ 試行{attempt + 1}/{max_retries} (キー{key_idx}番目) 失敗:")
+                print(f"    エラー: {error_str[:200]}")
+            else:
+                print(f"  ⚠ 試行{attempt + 1}/{max_retries} (キー{key_idx}番目) 失敗: {error_str[:50]}...")
             if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
                 key_manager.next_key()
-                time.sleep(2)  # 待機時間を短縮
+                time.sleep(2)
             else:
                 time.sleep(3)
             if attempt == max_retries - 1:
-                raise RuntimeError(f"ニュース取得失敗: {error_str[:100]}")
+                raise RuntimeError(f"ニュース取得失敗: {error_str[:200]}")
 
 
 def generate_script(key_manager: GeminiKeyManager, news: str) -> list:
