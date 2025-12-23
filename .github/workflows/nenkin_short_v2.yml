@@ -46,6 +46,8 @@ jobs:
       - name: ショート動画を生成
         env:
           TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
+          # Gemini API Key (BakenamiGemini - 有料枠)
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           # Gemini API Keys (1-28)
           GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
           GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}

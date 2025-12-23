@@ -47,18 +47,24 @@ VOICE_HIROSHI = "Puck"   # ヒロシ（男性）
 
 class GeminiKeyManager:
     """Gemini APIキー管理"""
-    def __init__(self, diagnose=False):
+    def __init__(self, diagnose=False, use_only_base_key=False):
         self.keys = []
         self.key_names = []  # キー名を保持
         base_key = os.environ.get("GEMINI_API_KEY")
         if base_key:
             self.keys.append(base_key)
             self.key_names.append("GEMINI_API_KEY")
-        for i in range(1, 43):  # GEMINI_API_KEY_1 〜 GEMINI_API_KEY_42
-            key = os.environ.get(f"GEMINI_API_KEY_{i}")
-            if key:
-                self.keys.append(key)
-                self.key_names.append(f"GEMINI_API_KEY_{i}")
+
+        # use_only_base_key=True の場合は GEMINI_API_KEY のみを使用
+        if not use_only_base_key:
+            for i in range(1, 43):  # GEMINI_API_KEY_1 〜 GEMINI_API_KEY_42
+                key = os.environ.get(f"GEMINI_API_KEY_{i}")
+                if key:
+                    self.keys.append(key)
+                    self.key_names.append(f"GEMINI_API_KEY_{i}")
+        else:
+            print("  ⚠ GEMINI_API_KEY のみ使用モード（有料枠テスト）")
+
         self.current_index = 0
         print(f"  利用可能なAPIキー: {len(self.keys)}個")
 
@@ -864,7 +870,8 @@ def main():
     print("=" * 50)
 
     # テストモードでは全キーを診断
-    key_manager = GeminiKeyManager(diagnose=TEST_MODE)
+    # テストモード時は GEMINI_API_KEY のみを使用（有料枠テスト）
+    key_manager = GeminiKeyManager(diagnose=False, use_only_base_key=TEST_MODE)
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
