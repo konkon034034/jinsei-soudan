@@ -15,6 +15,7 @@ import tempfile
 import requests
 import subprocess
 import io
+import wave
 from datetime import datetime
 from pathlib import Path
 
@@ -367,8 +368,14 @@ def generate_tts_audio(script: list, output_path: str, key_manager: GeminiKeyMan
             send_tts_failure_notification(speaker, text, last_error or "不明なエラー")
             raise RuntimeError(error_msg)
 
-        # 音声を結合
-        audio_segment = AudioSegment.from_file(io.BytesIO(audio_data), format="wav")
+        # 音声を結合（Gemini TTSは生のPCMデータを返す: 24000Hz, 16bit, mono）
+        # 参考: https://ai.google.dev/gemini-api/docs/speech-generation
+        audio_segment = AudioSegment.from_raw(
+            io.BytesIO(audio_data),
+            sample_width=2,  # 16-bit
+            frame_rate=24000,
+            channels=1  # mono
+        )
         combined += audio_segment
 
         # セリフ間に短い間を追加（200ms）
