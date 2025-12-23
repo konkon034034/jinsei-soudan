@@ -71,10 +71,8 @@ class GeminiKeyManager:
 
 
 def fetch_todays_news(key_manager: GeminiKeyManager) -> str:
-    """今日の年金ニュースを取得"""
+    """今日の年金ニュースを取得（リトライ付き）"""
     print("\n[1/6] 今日のニュースを取得中...")
-
-    client = genai.Client(api_key=key_manager.get_key())
 
     today = datetime.now().strftime("%Y年%m月%d日")
 
@@ -89,22 +87,34 @@ def fetch_todays_news(key_manager: GeminiKeyManager) -> str:
 年金制度の変更、受給額の改定、繰り下げ受給、iDeCo、確定拠出年金など、
 視聴者が関心を持ちそうな話題を選んでください。"""
 
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=prompt
-    )
-
-    news = response.text.strip()
-    print(f"  ✓ ニュース取得完了")
-    print(f"  {news[:100]}...")
-    return news
+    # リトライ処理
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            client = genai.Client(api_key=key_manager.get_key())
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt
+            )
+            news = response.text.strip()
+            print(f"  ✓ ニュース取得完了")
+            print(f"  {news[:100]}...")
+            return news
+        except Exception as e:
+            error_str = str(e)
+            print(f"  ⚠ 試行{attempt + 1}/{max_retries} 失敗: {error_str[:50]}...")
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                key_manager.next_key()
+                time.sleep(5)
+            else:
+                time.sleep(3)
+            if attempt == max_retries - 1:
+                raise RuntimeError(f"ニュース取得失敗: {error_str[:100]}")
 
 
 def generate_script(key_manager: GeminiKeyManager, news: str) -> list:
-    """控室トーク台本を生成"""
+    """控室トーク台本を生成（リトライ付き）"""
     print("\n[2/6] 台本を生成中...")
-
-    client = genai.Client(api_key=key_manager.get_key())
 
     today = datetime.now().strftime("%Y年%m月%d日")
 
@@ -132,15 +142,33 @@ def generate_script(key_manager: GeminiKeyManager, news: str) -> list:
 カツミ: セリフ4
 ..."""
 
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=prompt,
-        config=types.GenerateContentConfig(temperature=0.9)
-    )
+    # リトライ処理
+    max_retries = 5
+    response_text = None
+    for attempt in range(max_retries):
+        try:
+            client = genai.Client(api_key=key_manager.get_key())
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.9)
+            )
+            response_text = response.text.strip()
+            break
+        except Exception as e:
+            error_str = str(e)
+            print(f"  ⚠ 試行{attempt + 1}/{max_retries} 失敗: {error_str[:50]}...")
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                key_manager.next_key()
+                time.sleep(5)
+            else:
+                time.sleep(3)
+            if attempt == max_retries - 1:
+                raise RuntimeError(f"台本生成失敗: {error_str[:100]}")
 
     # 台本をパース
     lines = []
-    for line in response.text.strip().split("\n"):
+    for line in response_text.split("\n"):
         line = line.strip()
         if not line:
             continue
