@@ -93,7 +93,7 @@ def fetch_todays_news(key_manager: GeminiKeyManager) -> str:
         try:
             client = genai.Client(api_key=key_manager.get_key())
             response = client.models.generate_content(
-                model="gemini-2.0-flash-exp",
+                model="gemini-2.0-flash",
                 contents=prompt
             )
             news = response.text.strip()
@@ -166,7 +166,7 @@ def generate_script(key_manager: GeminiKeyManager, news: str) -> list:
         try:
             client = genai.Client(api_key=key_manager.get_key())
             response = client.models.generate_content(
-                model="gemini-2.0-flash-exp",
+                model="gemini-2.0-flash",
                 contents=prompt,
                 config=types.GenerateContentConfig(temperature=0.9)
             )
@@ -406,7 +406,7 @@ def generate_topic_from_news(news: str, key_manager: 'GeminiKeyManager') -> str:
         try:
             client = genai.Client(api_key=key_manager.get_key())
             response = client.models.generate_content(
-                model="gemini-2.0-flash-exp",
+                model="gemini-2.0-flash",
                 contents=prompt,
                 config=types.GenerateContentConfig(temperature=0.7)
             )
@@ -461,7 +461,7 @@ def generate_hook_phrase(script: list, key_manager: 'GeminiKeyManager') -> str:
         try:
             client = genai.Client(api_key=key_manager.get_key())
             response = client.models.generate_content(
-                model="gemini-2.0-flash-exp",
+                model="gemini-2.0-flash",
                 contents=prompt,
                 config=types.GenerateContentConfig(temperature=0.8)
             )
@@ -693,7 +693,7 @@ LINEのURL: https://line.me/R/ti/p/@424lkquq
         try:
             client = genai.Client(api_key=key_manager.get_key())
             response = client.models.generate_content(
-                model="gemini-2.0-flash-exp",
+                model="gemini-2.0-flash",
                 contents=prompt,
                 config=types.GenerateContentConfig(temperature=0.7)
             )
