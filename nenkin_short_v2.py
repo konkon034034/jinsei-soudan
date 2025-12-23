@@ -164,8 +164,33 @@ def generate_script(key_manager: GeminiKeyManager, news: str) -> list:
     return lines
 
 
+def send_tts_failure_notification(speaker: str, text: str, error: str):
+    """TTS失敗時のDiscord通知"""
+    webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
+    if not webhook_url:
+        return
+
+    message = f"""❌ **ショート動画: TTS生成失敗**
+━━━━━━━━━━━━━━━━━━
+話者: {speaker}
+テキスト: {text[:50]}...
+エラー: {error[:100]}
+━━━━━━━━━━━━━━━━━━
+3回リトライしましたが失敗しました。"""
+
+    try:
+        requests.post(
+            webhook_url,
+            json={"content": message},
+            headers={"Content-Type": "application/json"},
+            timeout=30
+        )
+    except:
+        pass
+
+
 def generate_tts_audio(script: list, output_path: str, key_manager: GeminiKeyManager) -> float:
-    """話者ごとにTTS生成して結合"""
+    """話者ごとにTTS生成して結合（Gemini TTSのみ、gTTSなし）"""
     print("\n[3/6] 音声を生成中...")
 
     combined = AudioSegment.empty()
@@ -177,12 +202,18 @@ def generate_tts_audio(script: list, output_path: str, key_manager: GeminiKeyMan
 
         print(f"  [{i+1}/{len(script)}] {speaker} ({voice}): {text[:20]}...")
 
-        # TTS生成（リトライ付き）
+        # TTS生成（3回リトライ、失敗時はエラー終了）
         audio_data = None
-        max_retries = 10
+        max_retries = 3
+        wait_times = [30, 60, 0]  # 1回目失敗→30秒、2回目失敗→60秒、3回目失敗→終了
+        last_error = None
 
         for attempt in range(max_retries):
             try:
+                # 429エラー対策：まずキーを切り替えてから試行
+                if attempt > 0:
+                    key_manager.next_key()
+
                 client = genai.Client(api_key=key_manager.get_key())
 
                 response = client.models.generate_content(
@@ -201,23 +232,24 @@ def generate_tts_audio(script: list, output_path: str, key_manager: GeminiKeyMan
                 )
 
                 audio_data = response.candidates[0].content.parts[0].inline_data.data
+                print(f"    ✓ TTS生成成功")
                 break
 
             except Exception as e:
-                error_str = str(e)
-                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
-                    print(f"    ⚠ レート制限、キー切り替え...")
-                    key_manager.next_key()
-                    time.sleep(5)
-                elif "500" in error_str or "INTERNAL" in error_str:
-                    print(f"    ⚠ サーバーエラー、リトライ...")
-                    time.sleep(3)
-                else:
-                    print(f"    ⚠ エラー: {e}")
-                    time.sleep(2)
+                last_error = str(e)
+                print(f"    ⚠ 試行{attempt + 1}/3 失敗: {last_error[:50]}...")
 
-                if attempt == max_retries - 1:
-                    raise ValueError(f"TTS生成失敗: {speaker} - {text[:20]}...")
+                if attempt < max_retries - 1:
+                    wait_sec = wait_times[attempt]
+                    print(f"    → {wait_sec}秒待機してリトライ...")
+                    time.sleep(wait_sec)
+
+        # 3回失敗したらエラー終了
+        if audio_data is None:
+            error_msg = f"TTS生成失敗（3回リトライ後）: {speaker} - {text[:30]}"
+            print(f"  ❌ {error_msg}")
+            send_tts_failure_notification(speaker, text, last_error or "不明なエラー")
+            raise RuntimeError(error_msg)
 
         # 音声を結合
         audio_segment = AudioSegment.from_file(io.BytesIO(audio_data), format="wav")
