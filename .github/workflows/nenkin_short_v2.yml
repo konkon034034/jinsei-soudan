@@ -1,13 +1,13 @@
-name: 年金ショート動画自動生成
+name: 年金ニュース ショート動画 v2
 
 on:
   schedule:
-    # 毎日13:00 JST = UTC 4:00
-    - cron: '0 4 * * *'
+    # 毎日 JST 7:00 に実行 (UTC 22:00 前日)
+    - cron: '0 22 * * *'
   workflow_dispatch:
     inputs:
       test_mode:
-        description: 'テストモード（YouTubeアップロードスキップ）'
+        description: 'テストモード（YouTubeアップロードをスキップ）'
         required: false
         default: 'true'
         type: choice
@@ -36,29 +36,17 @@ jobs:
       - name: システム依存関係をインストール
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            ffmpeg \
-            fonts-noto-cjk \
-            fonts-noto-cjk-extra \
-            fonts-ipafont \
-            fonts-ipaexfont
+          sudo apt-get install -y ffmpeg fonts-noto-cjk
 
       - name: Python依存関係をインストール
         run: |
           pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install google-genai pydub pillow google-auth google-api-python-client requests
 
-      - name: 環境変数チェック
+      - name: ショート動画を生成
         env:
-          YOUTUBE_REFRESH_TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
-        run: |
-          echo "=== 環境変数チェック ==="
-          echo "YOUTUBE_REFRESH_TOKEN_23: $([ -n \"$YOUTUBE_REFRESH_TOKEN_23\" ] && echo '設定済み' || echo '未設定')"
-
-      - name: ショート動画を生成・投稿
-        env:
-          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
+          # Gemini API Keys (1-28)
           GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
           GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
           GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
@@ -87,24 +75,40 @@ jobs:
           GEMINI_API_KEY_26: ${{ secrets.GEMINI_API_KEY_26 }}
           GEMINI_API_KEY_27: ${{ secrets.GEMINI_API_KEY_27 }}
           GEMINI_API_KEY_28: ${{ secrets.GEMINI_API_KEY_28 }}
+          # YouTube認証
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
+          # 通知
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
-          USE_MODAL_GPU: 'false'
         run: |
-          python nenkin_news_short.py
+          python nenkin_short_v2.py
 
-      - name: 成果物をアップロード
-        if: always()
+      - name: テスト用アーティファクトをアップロード
+        if: ${{ github.event.inputs.test_mode == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: nenkin-short-${{ github.run_id }}
+          name: short-video-test-${{ github.run_id }}
           path: |
             *.mp4
+            *.mp3
+            *.ass
           retention-days: 3
-          if-no-files-found: ignore
+
+      - name: 成功時にDiscord通知
+        if: success()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            if [ "${{ github.event.inputs.test_mode }}" = "true" ]; then
+              curl -X POST "$DISCORD_WEBHOOK_URL" \
+                -H "Content-Type: application/json" \
+                -d "{
+                  \"content\": \"🧪 **ショート動画テスト完了**\\n\\n📦 アーティファクト: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+                }"
+            fi
+          fi
 
       - name: エラー時にDiscord通知
         if: failure()
@@ -115,6 +119,6 @@ jobs:
             curl -X POST "$DISCORD_WEBHOOK_URL" \
               -H "Content-Type: application/json" \
               -d "{
-                \"content\": \"❌ **年金ショート動画生成に失敗しました**\n━━━━━━━━━━━━━━━━━━\n\n🔗 ワークフロー: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\n━━━━━━━━━━━━━━━━━━\"
+                \"content\": \"❌ **ショート動画生成に失敗しました**\\n\\n🔗 ワークフロー: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
               }"
           fi
