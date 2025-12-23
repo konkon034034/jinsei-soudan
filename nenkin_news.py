@@ -4415,6 +4415,10 @@ def main():
         # 5. YouTube投稿
         print("\n[5/7] YouTubeに投稿中...")
         title = generate_video_title(script, key_manager)
+        # タイトルの改行削除・100文字制限
+        title = title.replace("\n", " ").replace("\r", "").strip()
+        if len(title) > 100:
+            title = title[:97] + "..."
 
         # 概要欄（海外メディア超多読ラジオ風フォーマット）
         date_str = datetime.now().strftime('%Y年%m月%d日')
