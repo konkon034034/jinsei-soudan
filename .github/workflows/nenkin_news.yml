@@ -7,13 +7,13 @@ on:
   workflow_dispatch:
     inputs:
       test_mode:
-        description: 'テストモード（短縮版: 10〜15セリフ）'
+        description: 'テストモード（短縮版）※スケジュール実行は常に本番'
         required: false
-        default: 'true'
+        default: 'false'
         type: choice
         options:
-          - 'true'
           - 'false'
+          - 'true'
       tts_mode:
         description: 'TTSエンジン'
         required: false
