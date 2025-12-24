@@ -173,31 +173,44 @@ class GeminiKeyManager:
 
 
 def download_from_drive(file_id: str, output_path: str) -> bool:
-    """Google Driveからファイルをダウンロード（リダイレクト対応）"""
+    """Google Driveからファイルをダウンロード（gdown使用）"""
     try:
-        # 直接ダウンロードURLを使用
-        url = f"https://drive.google.com/uc?export=download&id={file_id}"
-        session = requests.Session()
-        response = session.get(url, timeout=30, allow_redirects=True)
-
-        # ウイルススキャン警告ページの場合、確認トークンを取得して再試行
-        if 'confirm=' not in response.url and 'download_warning' in response.text:
-            # 確認トークンを探す
-            for key, value in response.cookies.items():
-                if key.startswith('download_warning'):
-                    url = f"https://drive.google.com/uc?export=download&confirm={value}&id={file_id}"
-                    response = session.get(url, timeout=30, allow_redirects=True)
-                    break
-
-        if response.status_code == 200 and len(response.content) > 1000:
-            with open(output_path, 'wb') as f:
-                f.write(response.content)
-            print(f"    ダウンロード成功: {len(response.content)} bytes")
+        import gdown
+        url = f"https://drive.google.com/uc?id={file_id}"
+        gdown.download(url, output_path, quiet=False)
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
+            print(f"    ダウンロード成功: {os.path.getsize(output_path)} bytes")
             return True
         else:
-            print(f"    ⚠ ダウンロード失敗: status={response.status_code}, size={len(response.content)}")
+            print(f"    ⚠ ダウンロード失敗: ファイルが小さすぎる")
     except Exception as e:
         print(f"    ⚠ ダウンロードエラー: {e}")
+    return False
+
+
+def download_background_image(file_id: str, output_path: str) -> bool:
+    """背景画像をダウンロードして1080x1920にリサイズ"""
+    try:
+        import gdown
+        from PIL import Image
+
+        # 一時ファイルにダウンロード
+        temp_path = output_path + ".tmp"
+        url = f"https://drive.google.com/uc?id={file_id}"
+        gdown.download(url, temp_path, quiet=False)
+
+        if os.path.exists(temp_path) and os.path.getsize(temp_path) > 1000:
+            # 1080x1920にリサイズ
+            img = Image.open(temp_path)
+            img = img.resize((VIDEO_WIDTH, VIDEO_HEIGHT), Image.Resampling.LANCZOS)
+            img.save(output_path)
+            os.remove(temp_path)
+            print(f"    背景画像ダウンロード・リサイズ成功: {VIDEO_WIDTH}x{VIDEO_HEIGHT}")
+            return True
+        else:
+            print(f"    ⚠ 背景画像ダウンロード失敗")
+    except Exception as e:
+        print(f"    ⚠ 背景画像エラー: {e}")
     return False
 
 
@@ -650,8 +663,8 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Katsumi,Noto Sans CJK JP,{font_size},&H009D6BFF,&H000000FF,&H00FFFFFF,&H00000000,1,0,0,0,100,100,0,0,1,3,2,2,30,30,{margin_v},1
-Style: Hiroshi,Noto Sans CJK JP,{font_size},&H00D9904A,&H000000FF,&H00FFFFFF,&H00000000,1,0,0,0,100,100,0,0,1,3,2,2,30,30,{margin_v},1
+Style: Katsumi,Noto Sans CJK JP,{font_size},&H009D6BFF,&H000000FF,&H00000000,&H00FFFFFF,1,0,0,0,100,100,0,0,1,3,2,2,30,30,{margin_v},1
+Style: Hiroshi,Noto Sans CJK JP,{font_size},&H00D9904A,&H000000FF,&H00000000,&H00FFFFFF,1,0,0,0,100,100,0,0,1,3,2,2,30,30,{margin_v},1
 Style: VideoTitle,Noto Sans CJK JP,{title_font_size},&H0000FFFF,&H000000FF,&H00000000,&H80004080,1,0,0,0,100,100,0,0,3,0,0,2,30,30,{title_margin_v},1
 
 [Events]
@@ -775,20 +788,25 @@ def generate_video(table_image_path: str, bg_image_path: str, audio_path: str, s
     - 字幕、動画タイトル
 
     スクロールタイミング（上から降りてくる）:
-    - 0秒: 表が画面外（上）にある（y=-500）
-    - 0〜50秒: 表が上から降りてくる（y: -500→0）
-    - 50〜60秒: 表全体が見える状態で固定（y=0）
+    - 動画の半分の時点でスクロール完了
+    - 例: 60秒動画 → 30秒でスクロール完了、残り30秒は固定
     """
     print("\n[5/6] 動画を生成中（背景固定 + 表スクロール）...")
+
+    # スクロールタイミング計算
+    # 動画の半分の時点でスクロール完了
+    scroll_distance = 500  # 表の移動距離（ピクセル）
+    scroll_end_time = duration / 2  # 動画の半分でスクロール完了
+    scroll_speed = scroll_distance / scroll_end_time  # ピクセル/秒
 
     # filter_complex:
     # [0] 背景画像を1080x1920にスケール
     # [1] 表画像をそのまま使用（1080x2420）
     # overlay: 表を背景の上に重ねる、y座標をアニメーション
-    # 式: if(lt(t,50), -500+10*t, 0) → 0秒で-500、50秒で0
+    # 式: if(lt(t,scroll_end_time), -500+speed*t, 0)
     filter_complex = (
         f"[0:v]scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},setsar=1[bg];"
-        f"[bg][1:v]overlay=0:'if(lt(t,50),-500+10*t,0)'[video];"
+        f"[bg][1:v]overlay=0:'if(lt(t,{scroll_end_time}),-{scroll_distance}+{scroll_speed}*t,0)'[video];"
         f"[video]ass={subtitle_path}[out]"
     )
 
@@ -808,7 +826,7 @@ def generate_video(table_image_path: str, bg_image_path: str, audio_path: str, s
     ]
 
     print(f"  レイヤー: 背景(固定) + 表(上から下) + 字幕")
-    print(f"  スクロール: y=-500→0 (50秒), 固定 (10秒)")
+    print(f"  スクロール: y=-{scroll_distance}→0 ({scroll_end_time:.1f}秒), 固定 ({duration - scroll_end_time:.1f}秒)")
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if os.path.exists(output_path):
@@ -934,11 +952,11 @@ def main():
         subtitle_path = str(temp_path / "subtitles.ass")
         generate_subtitles(script, duration, subtitle_path, timings, jingle_duration, video_title)
 
-        # STEP5.8: 背景画像をダウンロード
+        # STEP5.8: 背景画像をダウンロード（gdown + 1080x1920リサイズ）
         bg_image_path = str(temp_path / "background.png")
         print(f"\n  背景画像をダウンロード中...")
-        if download_from_drive(BACKGROUND_IMAGE_ID, bg_image_path):
-            print(f"  ✓ 背景画像ダウンロード完了")
+        if download_background_image(BACKGROUND_IMAGE_ID, bg_image_path):
+            print(f"  ✓ 背景画像準備完了")
         else:
             # フォールバック：黒背景を生成
             print(f"  ⚠ 背景画像ダウンロード失敗、黒背景を使用")
@@ -948,7 +966,7 @@ def main():
 
         # STEP6: 動画生成（背景固定 + 表スクロール）
         video_path = str(temp_path / "short.mp4")
-        generate_video(image_path, bg_image_path, final_audio_path, subtitle_path, video_path)
+        generate_video(image_path, bg_image_path, final_audio_path, subtitle_path, video_path, duration)
 
         # タイトルと説明文
         title = f"{table_data.get('title', '')} {video_title} #Shorts"
