@@ -18,6 +18,7 @@ import io
 import wave
 from datetime import datetime
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from google import genai
 from google.genai import types
@@ -306,80 +307,164 @@ def send_tts_failure_notification(speaker: str, text: str, error: str):
         pass
 
 
-def generate_tts_audio(script: list, output_path: str, key_manager: GeminiKeyManager) -> float:
-    """話者ごとにTTS生成して結合（Gemini TTSのみ、gTTSなし）"""
-    print("\n[3/6] 音声を生成中...")
+def _generate_single_tts(args: tuple) -> dict:
+    """単一セリフのTTS生成（並列処理用ワーカー）"""
+    index, line, api_key, key_name = args
+    speaker = line["speaker"]
+    text = line["text"]
+    voice = VOICE_HIROSHI if speaker == "ヒロシ" else VOICE_KATSUMI
 
-    combined = AudioSegment.empty()
+    max_retries = 3
 
-    for i, line in enumerate(script):
-        speaker = line["speaker"]
-        text = line["text"]
-        voice = VOICE_HIROSHI if speaker == "ヒロシ" else VOICE_KATSUMI
+    for attempt in range(max_retries):
+        try:
+            client = genai.Client(api_key=api_key)
 
-        print(f"  [{i+1}/{len(script)}] {speaker} ({voice}): {text[:20]}...")
-
-        # TTS生成（3回リトライ、失敗時はエラー終了）
-        audio_data = None
-        max_retries = 3
-        wait_times = [30, 60, 0]  # 1回目失敗→30秒、2回目失敗→60秒、3回目失敗→終了
-        last_error = None
-
-        for attempt in range(max_retries):
-            try:
-                # 429エラー対策：まずキーを切り替えてから試行
-                if attempt > 0:
-                    key_manager.next_key()
-
-                client = genai.Client(api_key=key_manager.get_key())
-
-                response = client.models.generate_content(
-                    model=TTS_MODEL,
-                    contents=text,
-                    config=types.GenerateContentConfig(
-                        response_modalities=["AUDIO"],
-                        speech_config=types.SpeechConfig(
-                            voice_config=types.VoiceConfig(
-                                prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                    voice_name=voice
-                                )
+            response = client.models.generate_content(
+                model=TTS_MODEL,
+                contents=text,
+                config=types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=types.SpeechConfig(
+                        voice_config=types.VoiceConfig(
+                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                voice_name=voice
                             )
                         )
                     )
                 )
+            )
 
-                audio_data = response.candidates[0].content.parts[0].inline_data.data
-                print(f"    ✓ TTS生成成功")
-                break
+            audio_data = response.candidates[0].content.parts[0].inline_data.data
+            return {
+                "index": index,
+                "success": True,
+                "audio_data": audio_data,
+                "speaker": speaker,
+                "text": text,
+                "key_name": key_name
+            }
 
-            except Exception as e:
-                last_error = str(e)
-                print(f"    ⚠ 試行{attempt + 1}/3 失敗: {last_error[:50]}...")
+        except Exception as e:
+            error_str = str(e)
+            is_429 = "429" in error_str or "RESOURCE_EXHAUSTED" in error_str
 
-                if attempt < max_retries - 1:
-                    wait_sec = wait_times[attempt]
-                    print(f"    → {wait_sec}秒待機してリトライ...")
-                    time.sleep(wait_sec)
+            if attempt < max_retries - 1:
+                wait_time = 10 if is_429 else 3
+                time.sleep(wait_time)
 
-        # 3回失敗したらエラー終了
-        if audio_data is None:
-            error_msg = f"TTS生成失敗（3回リトライ後）: {speaker} - {text[:30]}"
-            print(f"  ❌ {error_msg}")
-            send_tts_failure_notification(speaker, text, last_error or "不明なエラー")
-            raise RuntimeError(error_msg)
+    return {
+        "index": index,
+        "success": False,
+        "audio_data": None,
+        "speaker": speaker,
+        "text": text,
+        "key_name": key_name,
+        "error": str(e) if 'e' in dir() else "Unknown error"
+    }
 
-        # 音声を結合（Gemini TTSは生のPCMデータを返す: 24000Hz, 16bit, mono）
-        # 参考: https://ai.google.dev/gemini-api/docs/speech-generation
+
+def generate_tts_audio(script: list, output_path: str, key_manager: GeminiKeyManager) -> tuple:
+    """話者ごとにTTS並列生成して結合（Gemini TTSのみ）
+
+    - 複数APIキーをラウンドロビンで使用
+    - 並列処理で高速化
+    - 429エラー時は別キーでリトライ
+
+    Returns:
+        tuple: (duration, timings) - 総音声長と各セリフのタイミング情報
+               timings = [{"start": float, "end": float}, ...]
+    """
+    print("\n[3/6] 音声を並列生成中...")
+
+    all_keys = key_manager.keys
+    all_key_names = key_manager.key_names
+    num_keys = len(all_keys)
+
+    print(f"  使用APIキー数: {num_keys}個")
+
+    # 並列処理用タスクを準備（ラウンドロビンでキー割り当て）
+    tasks = []
+    for i, line in enumerate(script):
+        key_idx = i % num_keys  # ラウンドロビン
+        api_key = all_keys[key_idx]
+        key_name = all_key_names[key_idx]
+        tasks.append((i, line, api_key, key_name))
+
+    # 並列処理実行
+    max_workers = min(len(script), num_keys, 10)  # 最大10並列
+    print(f"  並列数: {max_workers}")
+
+    results = [None] * len(script)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_generate_single_tts, task): task[0] for task in tasks}
+
+        for future in as_completed(futures):
+            result = future.result()
+            idx = result["index"]
+            results[idx] = result
+
+            if result["success"]:
+                print(f"  ✓ [{idx+1}/{len(script)}] {result['speaker']} ({result['key_name']})")
+            else:
+                print(f"  ✗ [{idx+1}/{len(script)}] {result['speaker']} 失敗")
+
+    # 失敗したセリフをリトライ（別のキーで）
+    failed_indices = [i for i, r in enumerate(results) if not r["success"]]
+    if failed_indices:
+        print(f"  ⚠ {len(failed_indices)}件失敗、別キーでリトライ...")
+
+        for idx in failed_indices:
+            line = script[idx]
+            # 別のキーで試行
+            for retry_key_idx in range(num_keys):
+                api_key = all_keys[retry_key_idx]
+                key_name = all_key_names[retry_key_idx]
+                retry_task = (idx, line, api_key, key_name)
+                result = _generate_single_tts(retry_task)
+
+                if result["success"]:
+                    results[idx] = result
+                    print(f"  ✓ [{idx+1}] リトライ成功 ({key_name})")
+                    break
+            else:
+                # 全キー失敗
+                error_msg = f"TTS生成失敗: {line['speaker']} - {line['text'][:30]}"
+                print(f"  ❌ {error_msg}")
+                send_tts_failure_notification(line['speaker'], line['text'], "全キーで失敗")
+                raise RuntimeError(error_msg)
+
+    # 音声を順番に結合
+    combined = AudioSegment.empty()
+    timings = []
+    current_time = 0.0
+    gap_duration = 200  # セリフ間の間隔（ms）
+
+    for i, result in enumerate(results):
+        audio_data = result["audio_data"]
+
+        # 音声セグメント作成
         audio_segment = AudioSegment.from_raw(
             io.BytesIO(audio_data),
             sample_width=2,  # 16-bit
             frame_rate=24000,
             channels=1  # mono
         )
+
+        # タイミング情報を記録
+        segment_duration = len(audio_segment) / 1000.0  # ms → 秒
+        timings.append({
+            "start": current_time,
+            "end": current_time + segment_duration
+        })
+        current_time += segment_duration
+
         combined += audio_segment
 
         # セリフ間に短い間を追加（200ms）
-        combined += AudioSegment.silent(duration=200)
+        combined += AudioSegment.silent(duration=gap_duration)
+        current_time += gap_duration / 1000.0
 
     # 出力
     combined.export(output_path, format="wav")
@@ -387,18 +472,36 @@ def generate_tts_audio(script: list, output_path: str, key_manager: GeminiKeyMan
     duration = len(combined) / 1000.0
     print(f"  ✓ 音声生成完了: {duration:.1f}秒")
 
-    return duration
+    # タイミングデバッグ出力
+    for i, t in enumerate(timings):
+        print(f"    セリフ{i+1}: {t['start']:.2f}秒 〜 {t['end']:.2f}秒")
+
+    return duration, timings
 
 
-def generate_silent_audio(script: list, output_path: str) -> float:
-    """SKIP_APIモード用：無音音声を生成（セリフ数に基づく長さ）"""
+def generate_silent_audio(script: list, output_path: str) -> tuple:
+    """SKIP_APIモード用：無音音声を生成（セリフ数に基づく長さ）
+
+    Returns:
+        tuple: (duration, timings) - 総音声長と各セリフのタイミング情報
+    """
     print("\n[3/6] 無音音声を生成中... (SKIP_APIモード)")
 
     # 1セリフあたり約3秒 + 間隔0.2秒
     duration_per_line = 3.0
     gap = 0.2
-    total_duration = len(script) * (duration_per_line + gap)
 
+    timings = []
+    current_time = 0.0
+
+    for i in range(len(script)):
+        timings.append({
+            "start": current_time,
+            "end": current_time + duration_per_line
+        })
+        current_time += duration_per_line + gap
+
+    total_duration = current_time
     # 最低30秒、最大55秒に調整
     total_duration = max(30.0, min(55.0, total_duration))
     total_ms = int(total_duration * 1000)
@@ -408,7 +511,7 @@ def generate_silent_audio(script: list, output_path: str) -> float:
     silent.export(output_path, format="wav")
 
     print(f"  ✓ 無音音声生成完了: {total_duration:.1f}秒")
-    return total_duration
+    return total_duration, timings
 
 
 def download_background(output_path: str) -> bool:
@@ -584,10 +687,17 @@ def generate_hook_phrase(script: list, key_manager: 'GeminiKeyManager') -> str:
 
 
 def generate_subtitles(script: list, audio_duration: float, output_path: str,
-                       topic: str = "", hook_phrase: str = ""):
-    """ASS字幕を生成（新デザイン：上部トピック + 中央会話2倍 + 下部煽り）"""
-    time_per_line = audio_duration / len(script)
+                       topic: str = "", hook_phrase: str = "", timings: list = None):
+    """ASS字幕を生成（新デザイン：上部トピック + 中央会話2倍 + 下部煽り）
 
+    Args:
+        script: 台本リスト
+        audio_duration: 総音声長（秒）
+        output_path: 出力パス
+        topic: トピック（タイトル）
+        hook_phrase: 煽りフレーズ
+        timings: 各セリフのタイミング情報 [{"start": float, "end": float}, ...]
+    """
     # === レイアウト設定 ===
     # 画面: 1080x1920、正方形エリア: 1080x1080、上下黒帯: 各420px
     TOP_BAR = 420
@@ -623,23 +733,31 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     lines = [header]
 
-    # トピック（常時表示、奥から飛び出す）
+    # トピック（常時表示、奥から手前に飛んでくる → ピタッと止まる）
     if topic:
         # 15文字超えたら2行に分割
         if len(topic) > 15:
             topic = topic[:15] + "\\N" + topic[15:]
-        topic_anim = "{\\fscx20\\fscy20\\t(0,300,\\fscx105\\fscy105)\\t(300,500,\\fscx100\\fscy100)}"
-        lines.append(f"Dialogue: 0,0:00:00.00,0:00:{audio_duration:05.2f},Topic,,0,0,0,,{topic_anim}{topic}")
+        # 奥から飛んでくるアニメーション: スケール20% + 透明 → 105% → 100%で安定
+        # 0〜500ms: 奥から手前に飛んでくる（小さい＋透明 → 大きい＋不透明）
+        topic_anim = "{\\fscx20\\fscy20\\alpha&HFF&\\t(0,400,\\fscx110\\fscy110\\alpha&H00&)\\t(400,500,\\fscx100\\fscy100)}"
+        lines.append(f"Dialogue: 1,0:00:00.00,0:00:{audio_duration:05.2f},Topic,,0,0,0,,{topic_anim}{topic}")
 
     # 煽りフレーズ（少し遅れてフェードイン）
     if hook_phrase:
         hook_anim = "{\\alpha&HFF&\\t(500,800,\\alpha&H00&)}"
         lines.append(f"Dialogue: 0,0:00:00.50,0:00:{audio_duration:05.2f},Hook,,0,0,0,,{hook_anim}{hook_phrase}")
 
-    # 会話（ポップアップ）
+    # 会話（実際のタイミングに基づく）
     for i, line in enumerate(script):
-        start_time = i * time_per_line
-        end_time = (i + 1) * time_per_line
+        # timingsがあれば使用、なければ等分割
+        if timings and i < len(timings):
+            start_time = timings[i]["start"]
+            end_time = timings[i]["end"]
+        else:
+            time_per_line = audio_duration / len(script)
+            start_time = i * time_per_line
+            end_time = (i + 1) * time_per_line
 
         start_str = f"0:{int(start_time // 60):02d}:{start_time % 60:05.2f}"
         end_str = f"0:{int(end_time // 60):02d}:{end_time % 60:05.2f}"
@@ -970,9 +1088,9 @@ def main():
         # 3. TTS生成または無音音声生成
         audio_path = str(temp_path / "audio.wav")
         if SKIP_API:
-            duration = generate_silent_audio(script, audio_path)
+            duration, timings = generate_silent_audio(script, audio_path)
         else:
-            duration = generate_tts_audio(script, audio_path, key_manager)
+            duration, timings = generate_tts_audio(script, audio_path, key_manager)
 
         if duration > MAX_DURATION:
             print(f"  ⚠ 動画が{MAX_DURATION}秒を超えています: {duration:.1f}秒")
@@ -983,7 +1101,7 @@ def main():
         video_path = str(temp_path / "short.mp4")
 
         generate_thumbnail(title, thumbnail_path, temp_dir)
-        generate_subtitles(script, duration, subtitle_path, topic=topic, hook_phrase=hook_phrase)
+        generate_subtitles(script, duration, subtitle_path, topic=topic, hook_phrase=hook_phrase, timings=timings)
         generate_video(audio_path, thumbnail_path, subtitle_path, video_path)
 
         # 説明文
