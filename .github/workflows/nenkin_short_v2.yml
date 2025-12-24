@@ -7,13 +7,13 @@ on:
   workflow_dispatch:
     inputs:
       test_mode:
-        description: 'テストモード（YouTubeアップロードをスキップ）'
+        description: 'テストモード（YTスキップ）※スケジュール実行は常に本番'
         required: false
-        default: 'true'
+        default: 'false'
         type: choice
         options:
-          - 'true'
           - 'false'
+          - 'true'
       skip_api:
         description: 'APIスキップ（ダミーデータで動画生成テスト）'
         required: false

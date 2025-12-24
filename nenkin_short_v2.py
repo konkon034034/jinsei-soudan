@@ -908,8 +908,12 @@ def main():
     print("=" * 50)
     print("年金ニュース ショート動画システム v2")
     print("=" * 50)
-    print(f"テストモード: {TEST_MODE}")
-    print(f"APIスキップ: {SKIP_API}")
+    if TEST_MODE:
+        print("🟡 テストモード（YouTubeアップロードをスキップ）")
+    else:
+        print("🔴 本番モード（YouTubeにアップロード）")
+    if SKIP_API:
+        print("⚙️  APIスキップ: 有効（ダミーデータでテスト）")
     print("=" * 50)
 
     # SKIP_APIモードの場合はAPIを使わずにダミーデータで動画生成をテスト
