@@ -330,19 +330,33 @@ def generate_table_image(table_data: dict, output_path: str):
         cell_font = title_font
         footer_font = title_font
 
-    # タイトル（上部、黄色、影付き）
+    # タイトル（上部、黄色、太い黒縁取り+白影）
     title = table_data.get("title", "知らないと損！")
     title_y = 80
 
-    # 影
-    draw.text((width//2 + 3, title_y + 3), title, fill='#333333', font=title_font, anchor="mm")
+    # 太い縁取り（黒、4px - 8方向に描画）
+    outline_color = '#000000'
+    outline_width = 4
+    for dx in range(-outline_width, outline_width + 1):
+        for dy in range(-outline_width, outline_width + 1):
+            if dx != 0 or dy != 0:
+                draw.text((width//2 + dx, title_y + dy), title, fill=outline_color, font=title_font, anchor="mm")
+    # 影（白、右下）
+    draw.text((width//2 + 3, title_y + 3), title, fill='#FFFFFF', font=title_font, anchor="mm")
     # 本体（黄色）
     draw.text((width//2, title_y), title, fill='#FFD700', font=title_font, anchor="mm")
 
-    # サブタイトル
+    # サブタイトル（太い黒縁取り+白影）
     subtitle = table_data.get("subtitle", "")
     subtitle_y = 150
-    draw.text((width//2 + 2, subtitle_y + 2), subtitle, fill='#333333', font=subtitle_font, anchor="mm")
+    # 太い縁取り（黒、3px）
+    for dx in range(-3, 4):
+        for dy in range(-3, 4):
+            if dx != 0 or dy != 0:
+                draw.text((width//2 + dx, subtitle_y + dy), subtitle, fill='#000000', font=subtitle_font, anchor="mm")
+    # 影（白）
+    draw.text((width//2 + 2, subtitle_y + 2), subtitle, fill='#FFFFFF', font=subtitle_font, anchor="mm")
+    # 本体（白）
     draw.text((width//2, subtitle_y), subtitle, fill='#FFFFFF', font=subtitle_font, anchor="mm")
 
     # 表の描画
@@ -636,18 +650,17 @@ def generate_subtitles(script: list, audio_duration: float, output_path: str, ti
     """ASS字幕を生成（表の下、60-70%位置に配置、大きめフォント）"""
     print("  字幕を生成中...")
 
-    # 字幕位置: 画面の65%位置（下から35%）
-    # 1920px * 0.35 = 672px
-    margin_v = 672  # 下から672px = 上から約65%
+    # 字幕位置: 画面の72.5%位置（下から27.5%）
+    # 1920px * 0.275 = 528px
+    margin_v = 528  # 下から528px = 上から約72.5%
 
     # フォントサイズ: 120px
     font_size = 120
 
-    # タイトル用設定: 画面の72%位置（字幕の下、YouTube UIの上）
-    # 1920px * 0.28 = 538px
-    # 75%以下には何も置かない（YouTube UIエリア）
+    # タイトル用設定: 画面の82.5%位置（字幕の下、YouTube UIに少し被ってもOK）
+    # 1920px * 0.175 = 336px
     title_font_size = 120
-    title_margin_v = 538   # 下から538px = 上から約72%位置
+    title_margin_v = 336   # 下から336px = 上から約82.5%位置
 
     # BorderStyle=1 で縁取り+影、高齢者に見やすい配色
     # カツミ: 濃い紫(#800080)、白縁取り4px、黒影2px
