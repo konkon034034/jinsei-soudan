@@ -38,7 +38,7 @@ VOICE_KATSUMI = "Kore"  # 女性
 VOICE_HIROSHI = "Puck"  # 男性
 
 # Google Drive背景画像ID
-BACKGROUND_IMAGE_ID = "1ywnGZHMZWavnus1-fPD1MVI3fWxSrAIp"
+BACKGROUND_IMAGE_ID = "1mP9u9WhUurmn2vBXB_BzzUnzPyo8ybVO"
 
 # ===== ランキングテーマ（30種類） =====
 RANKING_THEMES = [
