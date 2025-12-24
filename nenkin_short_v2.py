@@ -330,32 +330,32 @@ def generate_table_image(table_data: dict, output_path: str):
         cell_font = title_font
         footer_font = title_font
 
-    # タイトル（上部、黄色、太い白縁取り+黒影）
+    # タイトル（上部、黄色、太い黒縁取り+白影）
     title = table_data.get("title", "知らないと損！")
     title_y = 80
 
-    # 太い縁取り（白、5px - 背景と被らないように）
-    outline_color = '#FFFFFF'
+    # 太い縁取り（黒、5px）
+    outline_color = '#000000'
     outline_width = 5
     for dx in range(-outline_width, outline_width + 1):
         for dy in range(-outline_width, outline_width + 1):
             if dx != 0 or dy != 0:
                 draw.text((width//2 + dx, title_y + dy), title, fill=outline_color, font=title_font, anchor="mm")
-    # 影（黒、右下）
-    draw.text((width//2 + 4, title_y + 4), title, fill='#000000', font=title_font, anchor="mm")
+    # 影（白、右下）
+    draw.text((width//2 + 4, title_y + 4), title, fill='#FFFFFF', font=title_font, anchor="mm")
     # 本体（黄色）
     draw.text((width//2, title_y), title, fill='#FFD700', font=title_font, anchor="mm")
 
-    # サブタイトル（太い白縁取り+黒影）
+    # サブタイトル（太い黒縁取り+白影）
     subtitle = table_data.get("subtitle", "")
     subtitle_y = 150
-    # 太い縁取り（白、4px）
+    # 太い縁取り（黒、4px）
     for dx in range(-4, 5):
         for dy in range(-4, 5):
             if dx != 0 or dy != 0:
-                draw.text((width//2 + dx, subtitle_y + dy), subtitle, fill='#FFFFFF', font=subtitle_font, anchor="mm")
-    # 影（黒）
-    draw.text((width//2 + 3, subtitle_y + 3), subtitle, fill='#000000', font=subtitle_font, anchor="mm")
+                draw.text((width//2 + dx, subtitle_y + dy), subtitle, fill='#000000', font=subtitle_font, anchor="mm")
+    # 影（白）
+    draw.text((width//2 + 3, subtitle_y + 3), subtitle, fill='#FFFFFF', font=subtitle_font, anchor="mm")
     # 本体（黄色）
     draw.text((width//2, subtitle_y), subtitle, fill='#FFFF00', font=subtitle_font, anchor="mm")
 
