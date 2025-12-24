@@ -601,7 +601,7 @@ def wrap_subtitle_text(text: str, max_chars: int = 13) -> str:
     return "\\N".join(lines)
 
 
-def generate_subtitles(script: list, audio_duration: float, output_path: str, timings: list = None, jingle_duration: float = 0):
+def generate_subtitles(script: list, audio_duration: float, output_path: str, timings: list = None, jingle_duration: float = 0, video_title: str = ""):
     """ASS字幕を生成（表の下、60-70%位置に配置、大きめフォント）"""
     print("  字幕を生成中...")
 
@@ -612,9 +612,14 @@ def generate_subtitles(script: list, audio_duration: float, output_path: str, ti
     # フォントサイズ: 120px（2倍）
     font_size = 120
 
+    # タイトル用設定（画面最下部、派手な黄色）
+    title_font_size = 40
+    title_margin_v = 30  # 画面の一番下
+
     # BorderStyle=1 で縁取り+影、高齢者に見やすい配色
     # カツミ: 濃いピンク(#FF6B9D)、白縁取り3px、黒影2px
     # ヒロシ: 濃い青(#4A90D9)、白縁取り3px、黒影2px
+    # VideoTitle: 派手な黄色(#FFFF00)、白縁取り3px、黒影2px、最下部固定
     header = f"""[Script Info]
 Title: Nenkin Table Short
 ScriptType: v4.00+
@@ -626,12 +631,18 @@ WrapStyle: 0
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Katsumi,Noto Sans CJK JP,{font_size},&H009D6BFF,&H000000FF,&H00FFFFFF,&H00000000,1,0,0,0,100,100,0,0,1,3,2,2,30,30,{margin_v},1
 Style: Hiroshi,Noto Sans CJK JP,{font_size},&H00D9904A,&H000000FF,&H00FFFFFF,&H00000000,1,0,0,0,100,100,0,0,1,3,2,2,30,30,{margin_v},1
+Style: VideoTitle,Noto Sans CJK JP,{title_font_size},&H0000FFFF,&H000000FF,&H00FFFFFF,&H00000000,1,0,0,0,100,100,0,0,1,3,2,2,30,30,{title_margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
     lines = [header]
+
+    # 動画タイトルを最初から最後まで固定表示
+    if video_title:
+        end_time_str = f"0:{int(audio_duration // 60):02d}:{audio_duration % 60:05.2f}"
+        lines.append(f"Dialogue: 1,0:00:00.00,{end_time_str},VideoTitle,,0,0,0,,{video_title}")
 
     for i, line in enumerate(script):
         if timings and i < len(timings):
@@ -887,16 +898,19 @@ def main():
         duration = len(final_audio) / 1000.0
         print(f"  最終音声長: {duration:.1f}秒 (ジングル: {jingle_duration:.1f}秒)")
 
-        # 字幕生成（ジングル分だけタイミングをオフセット）
+        # 動画タイトル（字幕用）
+        video_title = table_data.get('subtitle', '')
+
+        # 字幕生成（ジングル分だけタイミングをオフセット、タイトル固定表示）
         subtitle_path = str(temp_path / "subtitles.ass")
-        generate_subtitles(script, duration, subtitle_path, timings, jingle_duration)
+        generate_subtitles(script, duration, subtitle_path, timings, jingle_duration, video_title)
 
         # STEP6: 動画生成
         video_path = str(temp_path / "short.mp4")
         generate_video(image_path, final_audio_path, subtitle_path, video_path)
 
         # タイトルと説明文
-        title = f"{table_data.get('title', '')} {table_data.get('subtitle', '')} #Shorts"
+        title = f"{table_data.get('title', '')} {video_title} #Shorts"
         description = f"""📊 {table_data.get('subtitle', '')}
 
 年金の気になる情報を分かりやすい表でお届け！
