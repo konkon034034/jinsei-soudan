@@ -893,11 +893,59 @@ def upload_to_youtube(video_path: str, title: str, description: str) -> str:
         video_id = response["id"]
         video_url = f"https://youtube.com/shorts/{video_id}"
         print(f"  ✓ アップロード完了: {video_url}")
+
+        # 初コメントを自動投稿
+        post_first_comment(youtube, video_id)
+
         return video_url
 
     except Exception as e:
         print(f"  ❌ アップロード失敗: {e}")
         return ""
+
+
+def post_first_comment(youtube, video_id: str):
+    """動画に初コメントを自動投稿（LINE誘導）"""
+    print("  初コメントを投稿中...")
+
+    comment_text = """カツミです💕
+
+ねぇ、これ保存した？
+まだの人、絶対しといて！！
+
+あとね、ここだけの話…
+LINEだともっと詳しい情報
+毎朝届けてるの👀✨
+
+知らないと損するけど、
+知らないと損するからね？笑
+
+↓今すぐ友だち追加↓
+https://lin.ee/424lkquq
+
+届いた人から得してるよ〜📱💨"""
+
+    try:
+        comment_body = {
+            "snippet": {
+                "videoId": video_id,
+                "topLevelComment": {
+                    "snippet": {
+                        "textOriginal": comment_text
+                    }
+                }
+            }
+        }
+
+        youtube.commentThreads().insert(
+            part="snippet",
+            body=comment_body
+        ).execute()
+
+        print("  ✓ 初コメント投稿完了")
+
+    except Exception as e:
+        print(f"  ⚠ 初コメント投稿失敗（スキップ）: {e}")
 
 
 def send_discord_notification(message: str):
