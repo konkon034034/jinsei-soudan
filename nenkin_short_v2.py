@@ -647,13 +647,12 @@ def generate_subtitles(script: list, audio_duration: float, output_path: str, ti
     # タイトル用設定（画面65-75%セーフゾーン）
     # YouTube Shortsは下25%にUIが被るため、75%より上に配置
     title_font_size = 120  # 大きめ（3倍）
-    title_margin_v = 576   # 下から576px = 上から約70%位置（65-75%範囲内）
+    title_margin_v = 480   # 下から480px = 上から約75%位置（YouTube UIギリギリ上）
 
     # BorderStyle=1 で縁取り+影、高齢者に見やすい配色
-    # カツミ: 濃いピンク(#FF6B9D)、白縁取り3px、黒影2px
-    # ヒロシ: 濃い青(#4A90D9)、白縁取り3px、黒影2px
-    # VideoTitle: 黄色文字、半透明オレンジ背景（BorderStyle=3）、Outline=0
-    # ※ BorderStyle=3でOutline>0だとOutlineColourが背景になるのでOutline=0必須
+    # カツミ: 濃い紫(#800080)、白縁取り4px、黒影2px
+    # ヒロシ: 濃い緑(#008000)、白縁取り4px、黒影2px
+    # タイトル: 赤(#FF0000)、黄縁取り4px、黒影2px
     header = f"""[Script Info]
 Title: Nenkin Table Short
 ScriptType: v4.00+
@@ -663,9 +662,9 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Katsumi,Noto Sans CJK JP,{font_size},&H009D6BFF,&H000000FF,&H00000000,&H00FFFFFF,1,0,0,0,100,100,0,0,1,3,2,2,30,30,{margin_v},1
-Style: Hiroshi,Noto Sans CJK JP,{font_size},&H00D9904A,&H000000FF,&H00000000,&H00FFFFFF,1,0,0,0,100,100,0,0,1,3,2,2,30,30,{margin_v},1
-Style: VideoTitle,Noto Sans CJK JP,{title_font_size},&H0000FFFF,&H000000FF,&H00000000,&H80004080,1,0,0,0,100,100,0,0,3,0,0,2,30,30,{title_margin_v},1
+Style: Katsumi,Noto Sans CJK JP,{font_size},&H00800080,&H000000FF,&H00FFFFFF,&H00000000,1,0,0,0,100,100,0,0,1,4,2,2,30,30,{margin_v},1
+Style: Hiroshi,Noto Sans CJK JP,{font_size},&H00008000,&H000000FF,&H00FFFFFF,&H00000000,1,0,0,0,100,100,0,0,1,4,2,2,30,30,{margin_v},1
+Style: VideoTitle,Noto Sans CJK JP,{title_font_size},&H000000FF,&H000000FF,&H0000FFFF,&H00000000,1,0,0,0,100,100,0,0,1,4,2,2,30,30,{title_margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
