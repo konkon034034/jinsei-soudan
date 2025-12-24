@@ -275,16 +275,17 @@ def generate_table_image(table_data: dict, output_path: str):
     # スクロール用に縦長画像 (1920 + 500 = 2420)
     height = VIDEO_HEIGHT + 500
 
-    # 背景（青空グラデーション風）
-    img = Image.new('RGB', (width, height), '#87CEEB')
+    # 背景（ベージュ〜クリーム系グラデーション、高齢者に優しい色合い）
+    img = Image.new('RGB', (width, height), '#FDF5E6')
     draw = ImageDraw.Draw(img)
 
-    # グラデーション効果（上が薄い青、下が濃い青）
+    # グラデーション効果（上が明るいクリーム、下が落ち着いたベージュ）
     for y in range(height):
         ratio = y / height
-        r = int(135 - 50 * ratio)
-        g = int(206 - 80 * ratio)
-        b = int(235 - 50 * ratio)
+        # 上: #FDF5E6 (253,245,230) → 下: #E8DCC8 (232,220,200)
+        r = int(253 - 21 * ratio)
+        g = int(245 - 25 * ratio)
+        b = int(230 - 30 * ratio)
         draw.line([(0, y), (width, y)], fill=(r, g, b))
 
     # フォント設定
@@ -398,13 +399,9 @@ def generate_table_image(table_data: dict, output_path: str):
     footer = table_data.get("footer", "")
     if footer:
         footer_y = table_y + table_height + 30
-        draw.text((width//2, footer_y), footer, fill='#FFFFFF', font=footer_font, anchor="mm")
+        draw.text((width//2, footer_y), footer, fill='#666666', font=footer_font, anchor="mm")
 
-    # 「保存してね」メッセージ
-    save_msg = "この画像を保存しよう！"
-    save_y = height - 100
-    draw.text((width//2 + 2, save_y + 2), save_msg, fill='#333333', font=subtitle_font, anchor="mm")
-    draw.text((width//2, save_y), save_msg, fill='#FFD700', font=subtitle_font, anchor="mm")
+    # 「保存してね」メッセージは削除（セリフで言わせる）
 
     img.save(output_path, "PNG")
     print(f"  ✓ 表画像生成完了: {output_path}")
@@ -440,10 +437,12 @@ def generate_script(table_data: dict, key_manager: GeminiKeyManager) -> list:
 - 表のポイントを2〜3個解説
 - 「え、マジで？」「それヤバくない？」的なリアクション多め
 - 具体的な数字を引用する
-- 【最重要】最後のセリフは必ず以下のどれか：
-  「損しないようにこの画像保存しとこっと」
-  「これ保存しといた方がいいね」
-  「スクショ必須だね、これ」
+- 【最重要】会話の最後の方で、カツミまたはヒロシが自然に保存を促すセリフを入れる。
+  宣伝っぽくなく、自然な会話の流れで。例：
+  「この動画保存しとかないと損しちゃうね」
+  「これスクショしといた方がいいわよ」
+  「保存しとかないと忘れちゃうからね」
+  「損しないようにこの動画保存しとこっと」
 
 出力形式（JSONのみ、説明不要）：
 [
@@ -622,8 +621,9 @@ def generate_subtitles(script: list, audio_duration: float, output_path: str, ti
     # フォントサイズ: 120px（2倍）
     font_size = 120
 
-    # BorderStyle=3 で背景ボックス、BackColourで半透明黒
-    # BackColour: &H80000000& = 50%透明の黒
+    # BorderStyle=1 で縁取り+影、高齢者に見やすい配色
+    # カツミ: 濃いピンク(#FF6B9D)、白縁取り3px、黒影2px
+    # ヒロシ: 濃い青(#4A90D9)、白縁取り3px、黒影2px
     header = f"""[Script Info]
 Title: Nenkin Table Short
 ScriptType: v4.00+
@@ -633,8 +633,8 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Katsumi,Noto Sans CJK JP,{font_size},&H00FF69B4,&H000000FF,&H00000000,&HB0000000,1,0,0,0,100,100,0,0,3,0,0,2,30,30,{margin_v},1
-Style: Hiroshi,Noto Sans CJK JP,{font_size},&H00FFB347,&H000000FF,&H00000000,&HB0000000,1,0,0,0,100,100,0,0,3,0,0,2,30,30,{margin_v},1
+Style: Katsumi,Noto Sans CJK JP,{font_size},&H009D6BFF,&H000000FF,&H00FFFFFF,&H00000000,1,0,0,0,100,100,0,0,1,3,2,2,30,30,{margin_v},1
+Style: Hiroshi,Noto Sans CJK JP,{font_size},&H00D9904A,&H000000FF,&H00FFFFFF,&H00000000,1,0,0,0,100,100,0,0,1,3,2,2,30,30,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
