@@ -46,6 +46,9 @@ JINGLE_FILE_ID = "1TdXxBkuGHWBwGcLxyGJCkuggDxomHqfD"
 BGM_FILE_ID = "14X_YrRkGvq5rKofXsOL9X42zmYnaXjF1"
 BGM_VOLUME_REDUCTION = 18  # dB減（トークの邪魔にならないように）
 
+# 背景画像（Google Drive ID）
+BACKGROUND_IMAGE_ID = "1ywnGZHMZWavnus1-fPD1MVI3fWxSrAIp"
+
 # ===== テーマリスト =====
 THEMES = [
     {
@@ -747,33 +750,40 @@ def process_audio_with_jingle_bgm(talk_audio_path: str, output_path: str, temp_d
     return jingle_duration
 
 
-def generate_video(image_path: str, audio_path: str, subtitle_path: str, output_path: str, duration: float = 60):
-    """動画を生成（スクロールアニメーション付き）
+def generate_video(table_image_path: str, bg_image_path: str, audio_path: str, subtitle_path: str, output_path: str, duration: float = 60):
+    """動画を生成（背景固定 + 表スクロールアニメーション）
 
-    スクロールタイミング:
-    - 0秒: y=500（下半分だけ見える）
-    - 0〜50秒: yが500→0に徐々に変化
-    - 50〜60秒: y=0で固定（全部見える）
+    レイヤー構成（下から上）:
+    - 背景画像（固定）
+    - 表画像（上から下にスクロール）
+    - 字幕、動画タイトル
+
+    スクロールタイミング（上から降りてくる）:
+    - 0秒: 表が画面外（上）にある（y=-500）
+    - 0〜50秒: 表が上から降りてくる（y: -500→0）
+    - 50〜60秒: 表全体が見える状態で固定（y=0）
     """
-    print("\n[5/6] 動画を生成中（スクロールアニメーション）...")
+    print("\n[5/6] 動画を生成中（背景固定 + 表スクロール）...")
 
-    # スクロールアニメーション用のフィルター
-    # crop: 1080x1920の範囲を画像から切り出す
-    # y座標: 最初500、50秒かけて0に、その後0固定
-    # 式: if(lt(t,50), 500-10*t, 0)
-    scroll_filter = (
-        f"crop={VIDEO_WIDTH}:{VIDEO_HEIGHT}:0:"
-        f"'if(lt(t,50),500-10*t,0)'"
+    # filter_complex:
+    # [0] 背景画像を1080x1920にスケール
+    # [1] 表画像をそのまま使用（1080x2420）
+    # overlay: 表を背景の上に重ねる、y座標をアニメーション
+    # 式: if(lt(t,50), -500+10*t, 0) → 0秒で-500、50秒で0
+    filter_complex = (
+        f"[0:v]scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},setsar=1[bg];"
+        f"[bg][1:v]overlay=0:'if(lt(t,50),-500+10*t,0)'[video];"
+        f"[video]ass={subtitle_path}[out]"
     )
-
-    # 字幕を追加
-    vf_filter = f"{scroll_filter},ass={subtitle_path}"
 
     cmd = [
         'ffmpeg', '-y',
-        '-loop', '1', '-i', image_path,
-        '-i', audio_path,
-        '-vf', vf_filter,
+        '-loop', '1', '-i', bg_image_path,   # 背景画像
+        '-loop', '1', '-i', table_image_path, # 表画像
+        '-i', audio_path,                     # 音声
+        '-filter_complex', filter_complex,
+        '-map', '[out]',
+        '-map', '2:a',
         '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
         '-c:a', 'aac', '-b:a', '192k',
         '-shortest', '-pix_fmt', 'yuv420p',
@@ -781,7 +791,8 @@ def generate_video(image_path: str, audio_path: str, subtitle_path: str, output_
         output_path
     ]
 
-    print(f"  スクロール: y=500→0 (50秒), 固定 (10秒)")
+    print(f"  レイヤー: 背景(固定) + 表(上から下) + 字幕")
+    print(f"  スクロール: y=-500→0 (50秒), 固定 (10秒)")
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if os.path.exists(output_path):
@@ -907,9 +918,21 @@ def main():
         subtitle_path = str(temp_path / "subtitles.ass")
         generate_subtitles(script, duration, subtitle_path, timings, jingle_duration, video_title)
 
-        # STEP6: 動画生成
+        # STEP5.8: 背景画像をダウンロード
+        bg_image_path = str(temp_path / "background.png")
+        print(f"\n  背景画像をダウンロード中...")
+        if download_from_drive(BACKGROUND_IMAGE_ID, bg_image_path):
+            print(f"  ✓ 背景画像ダウンロード完了")
+        else:
+            # フォールバック：黒背景を生成
+            print(f"  ⚠ 背景画像ダウンロード失敗、黒背景を使用")
+            from PIL import Image
+            bg = Image.new('RGB', (VIDEO_WIDTH, VIDEO_HEIGHT), '#000000')
+            bg.save(bg_image_path)
+
+        # STEP6: 動画生成（背景固定 + 表スクロール）
         video_path = str(temp_path / "short.mp4")
-        generate_video(image_path, final_audio_path, subtitle_path, video_path)
+        generate_video(image_path, bg_image_path, final_audio_path, subtitle_path, video_path)
 
         # タイトルと説明文
         title = f"{table_data.get('title', '')} {video_title} #Shorts"
