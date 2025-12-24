@@ -306,8 +306,8 @@ def generate_table_image(table_data: dict, output_path: str):
     # スクロール用に縦長画像 (1920 + 500 = 2420)
     height = VIDEO_HEIGHT + 500
 
-    # 背景（真っ黒、表と字幕が映える）
-    img = Image.new('RGB', (width, height), '#000000')
+    # 背景（透明 - 背景画像が見えるように）
+    img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
     # フォント設定
