@@ -275,18 +275,9 @@ def generate_table_image(table_data: dict, output_path: str):
     # スクロール用に縦長画像 (1920 + 500 = 2420)
     height = VIDEO_HEIGHT + 500
 
-    # 背景（ベージュ〜クリーム系グラデーション、高齢者に優しい色合い）
-    img = Image.new('RGB', (width, height), '#FDF5E6')
+    # 背景（真っ黒、表と字幕が映える）
+    img = Image.new('RGB', (width, height), '#000000')
     draw = ImageDraw.Draw(img)
-
-    # グラデーション効果（上が明るいクリーム、下が落ち着いたベージュ）
-    for y in range(height):
-        ratio = y / height
-        # 上: #FDF5E6 (253,245,230) → 下: #E8DCC8 (232,220,200)
-        r = int(253 - 21 * ratio)
-        g = int(245 - 25 * ratio)
-        b = int(230 - 30 * ratio)
-        draw.line([(0, y), (width, y)], fill=(r, g, b))
 
     # フォント設定
     try:
