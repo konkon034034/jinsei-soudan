@@ -636,18 +636,18 @@ def generate_subtitles(script: list, audio_duration: float, output_path: str, ti
     """ASS字幕を生成（表の下、60-70%位置に配置、大きめフォント）"""
     print("  字幕を生成中...")
 
-    # 字幕位置（画面の60-70%あたり = 画面下端から600-700px）
-    # 1920px * 0.35 = 672px (下から35%の位置 = 上から65%の位置)
-    # 字幕位置: 画面の60%位置（55-65%セーフゾーン内）
-    margin_v = 768  # 下から768px = 上から約60%
+    # 字幕位置: 画面の65%位置（下から35%）
+    # 1920px * 0.35 = 672px
+    margin_v = 672  # 下から672px = 上から約65%
 
-    # フォントサイズ: 120px（2倍）
+    # フォントサイズ: 120px
     font_size = 120
 
-    # タイトル用設定（画面65-75%セーフゾーン）
-    # YouTube Shortsは下25%にUIが被るため、75%より上に配置
-    title_font_size = 120  # 大きめ（3倍）
-    title_margin_v = 480   # 下から480px = 上から約75%位置（YouTube UIギリギリ上）
+    # タイトル用設定: 画面の72%位置（字幕の下、YouTube UIの上）
+    # 1920px * 0.28 = 538px
+    # 75%以下には何も置かない（YouTube UIエリア）
+    title_font_size = 120
+    title_margin_v = 538   # 下から538px = 上から約72%位置
 
     # BorderStyle=1 で縁取り+影、高齢者に見やすい配色
     # カツミ: 濃い紫(#800080)、白縁取り4px、黒影2px
