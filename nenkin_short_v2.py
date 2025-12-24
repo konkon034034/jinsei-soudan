@@ -607,21 +607,21 @@ def generate_subtitles(script: list, audio_duration: float, output_path: str, ti
 
     # 字幕位置（画面の60-70%あたり = 画面下端から600-700px）
     # 1920px * 0.35 = 672px (下から35%の位置 = 上から65%の位置)
-    margin_v = 650
+    # 字幕位置: 画面の60%位置（55-65%セーフゾーン内）
+    margin_v = 768  # 下から768px = 上から約60%
 
     # フォントサイズ: 120px（2倍）
     font_size = 120
 
-    # タイトル用設定（画面60-75%位置、YouTube UI避け）
-    # YouTube Shortsは下20-25%にUIが被るため、75%より上に配置
+    # タイトル用設定（画面65-75%セーフゾーン）
+    # YouTube Shortsは下25%にUIが被るため、75%より上に配置
     title_font_size = 120  # 大きめ（3倍）
-    title_margin_v = 500   # 画面下から500px = 約74%位置（字幕650より下、YouTube UI域より上）
+    title_margin_v = 576   # 下から576px = 上から約70%位置（65-75%範囲内）
 
     # BorderStyle=1 で縁取り+影、高齢者に見やすい配色
     # カツミ: 濃いピンク(#FF6B9D)、白縁取り3px、黒影2px
     # ヒロシ: 濃い青(#4A90D9)、白縁取り3px、黒影2px
-    # VideoTitle: 白文字、半透明オレンジ背景（BorderStyle=3）
-    # BackColour: &HB0004080 = 70%透明のオレンジ（BGR: 0,64,128 = 暗いオレンジ）
+    # VideoTitle: 白文字、半透明オレンジ背景（BorderStyle=3）、Outline=15でパディング効果
     header = f"""[Script Info]
 Title: Nenkin Table Short
 ScriptType: v4.00+
@@ -633,7 +633,7 @@ WrapStyle: 0
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Katsumi,Noto Sans CJK JP,{font_size},&H009D6BFF,&H000000FF,&H00FFFFFF,&H00000000,1,0,0,0,100,100,0,0,1,3,2,2,30,30,{margin_v},1
 Style: Hiroshi,Noto Sans CJK JP,{font_size},&H00D9904A,&H000000FF,&H00FFFFFF,&H00000000,1,0,0,0,100,100,0,0,1,3,2,2,30,30,{margin_v},1
-Style: VideoTitle,Noto Sans CJK JP,{title_font_size},&H00FFFFFF,&H000000FF,&H00FFFFFF,&H800000CC,1,0,0,0,100,100,0,0,3,0,0,2,30,30,{title_margin_v},1
+Style: VideoTitle,Noto Sans CJK JP,{title_font_size},&H00FFFFFF,&H000000FF,&H00FFFFFF,&H800000CC,1,0,0,0,100,100,0,0,3,15,0,2,30,30,{title_margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
