@@ -2886,6 +2886,29 @@ def generate_qr_background(output_path: str):
         # QRコードを貼り付け
         img.paste(qr_img, (qr_x, qr_y))
         print(f"    [QR背景] QRコード配置完了 ({qr_size}x{qr_size}px)")
+
+        # QRコードの下にテキストを追加（35px）
+        sub_font_size = 35
+        sub_font = None
+        for fp in font_paths:
+            if os.path.exists(fp):
+                try:
+                    sub_font = ImageFont.truetype(fp, sub_font_size)
+                    break
+                except Exception:
+                    continue
+        if sub_font is None:
+            sub_font = ImageFont.load_default()
+
+        sub_text = "スマホの方は概要欄からどうぞ！"
+        sub_text_bbox = draw.textbbox((0, 0), sub_text, font=sub_font)
+        sub_text_width = sub_text_bbox[2] - sub_text_bbox[0]
+        sub_text_x = (VIDEO_WIDTH - sub_text_width) // 2
+        sub_text_y = qr_y + qr_size + 30  # QRコードの下30px
+
+        # テキスト描画（白、影付き）
+        draw.text((sub_text_x + shadow_offset, sub_text_y + shadow_offset), sub_text, font=sub_font, fill=(50, 50, 50))
+        draw.text((sub_text_x, sub_text_y), sub_text, font=sub_font, fill=(255, 255, 255))
     else:
         print(f"    [QR背景] ⚠ QRコード画像が見つかりません: {qr_path}")
         # QRコードがない場合はテキストだけ表示
