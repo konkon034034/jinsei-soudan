@@ -805,9 +805,26 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager, test_mode: b
     {{"speaker": "カツミ", "text": "でもまあ、早めに年金事務所行くのがいいよ。意外と親切に教えてくれるから"}},
     {{"speaker": "ヒロシ", "text": "お、意外とまともなアドバイスじゃん"}},
     {{"speaker": "カツミ", "text": "うるさいな。まあなんとかなるっしょ。じゃあまたね〜"}}
-  ]
+  ],
+  "first_comment": "カツミの初コメント（150〜200文字）"
 }}
 ```
+
+【初コメント生成ルール】
+この動画の内容に合わせて、カツミが投稿する初コメントも作成してください。
+
+- カツミの本音キャラで、その日の動画内容に触れる
+- 視聴者への感謝や共感を入れる
+- 最後にさりげなくLINE登録へ誘導
+- 毎回違う内容になるように（固定文NG）
+- 150〜200文字程度
+- 絵文字は2〜3個まで
+
+【LINE誘導の例】
+「LINEだともっと詳しく届くよ」
+「毎朝届くLINE、届いてる？」
+「LINEの方が早く届くからね〜」
+※URLは後から追加するので不要
 
 {"【テストモード：短縮版】" if test_mode else "【重要：30分のラジオ番組を作成】"}
 {'''- 合計18〜25セリフで簡潔に
@@ -4013,34 +4030,31 @@ def generate_grandma_comment(script: dict, key_manager: GeminiKeyManager) -> str
 
 
 def generate_first_comment(script: dict, news_data: dict, key_manager: GeminiKeyManager) -> str:
-    """最初のコメントを生成（カツミとしての固定コメント）
+    """台本から初コメントを取得（LINE URLを追加）
 
     Args:
-        script: 台本データ（未使用、互換性のため保持）
+        script: 台本データ（first_commentフィールドを含む）
         news_data: ニュースデータ（未使用、互換性のため保持）
         key_manager: APIキーマネージャー（未使用、互換性のため保持）
 
     Returns:
-        str: カツミのコメント（LINE誘導強め）
+        str: カツミのコメント（LINE URL付き）
     """
-    comment = """カツミです💕
+    LINE_URL = "https://lin.ee/424lkquq"
+
+    # 台本からfirst_commentを取得
+    comment = script.get("first_comment", "")
+
+    if not comment:
+        # フォールバック: 固定コメント
+        print("  ⚠ first_commentが台本にないためフォールバック使用")
+        comment = """カツミです💕
 今日も見てくれてありがとう！
+年金の話って難しいけど、知らないと損しちゃうからね。
+毎朝7時にLINEで届くから、届いてない人は登録してね〜"""
 
-ねぇ、知ってる？
-LINEだと毎朝7時に
-最新の年金ニュースが届くの✨
-
-「あ、今日も届いてる」って
-朝の習慣になってる人、増えてるよ👀
-
-届いてない人、関係なくなってるかも…？
-
-↓ 30秒で登録できるよ ↓
-https://lin.ee/424lkquq
-
-届いた人から関係なくなってるからね〜📱💨
-
-チャンネル登録も忘れずに🔔"""
+    # LINE URLを追加
+    comment = f"{comment}\n\n↓ LINE登録はこちら ↓\n{LINE_URL}"
 
     print(f"  [コメント生成] カツミ: {comment[:50]}...")
     return comment
