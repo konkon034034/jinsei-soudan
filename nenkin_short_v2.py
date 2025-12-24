@@ -330,34 +330,34 @@ def generate_table_image(table_data: dict, output_path: str):
         cell_font = title_font
         footer_font = title_font
 
-    # タイトル（上部、黄色、太い黒縁取り+白影）
+    # タイトル（上部、黄色、太い白縁取り+黒影）
     title = table_data.get("title", "知らないと損！")
     title_y = 80
 
-    # 太い縁取り（黒、4px - 8方向に描画）
-    outline_color = '#000000'
-    outline_width = 4
+    # 太い縁取り（白、5px - 背景と被らないように）
+    outline_color = '#FFFFFF'
+    outline_width = 5
     for dx in range(-outline_width, outline_width + 1):
         for dy in range(-outline_width, outline_width + 1):
             if dx != 0 or dy != 0:
                 draw.text((width//2 + dx, title_y + dy), title, fill=outline_color, font=title_font, anchor="mm")
-    # 影（白、右下）
-    draw.text((width//2 + 3, title_y + 3), title, fill='#FFFFFF', font=title_font, anchor="mm")
+    # 影（黒、右下）
+    draw.text((width//2 + 4, title_y + 4), title, fill='#000000', font=title_font, anchor="mm")
     # 本体（黄色）
     draw.text((width//2, title_y), title, fill='#FFD700', font=title_font, anchor="mm")
 
-    # サブタイトル（太い黒縁取り+白影）
+    # サブタイトル（太い白縁取り+黒影）
     subtitle = table_data.get("subtitle", "")
     subtitle_y = 150
-    # 太い縁取り（黒、3px）
-    for dx in range(-3, 4):
-        for dy in range(-3, 4):
+    # 太い縁取り（白、4px）
+    for dx in range(-4, 5):
+        for dy in range(-4, 5):
             if dx != 0 or dy != 0:
-                draw.text((width//2 + dx, subtitle_y + dy), subtitle, fill='#000000', font=subtitle_font, anchor="mm")
-    # 影（白）
-    draw.text((width//2 + 2, subtitle_y + 2), subtitle, fill='#FFFFFF', font=subtitle_font, anchor="mm")
-    # 本体（白）
-    draw.text((width//2, subtitle_y), subtitle, fill='#FFFFFF', font=subtitle_font, anchor="mm")
+                draw.text((width//2 + dx, subtitle_y + dy), subtitle, fill='#FFFFFF', font=subtitle_font, anchor="mm")
+    # 影（黒）
+    draw.text((width//2 + 3, subtitle_y + 3), subtitle, fill='#000000', font=subtitle_font, anchor="mm")
+    # 本体（黄色）
+    draw.text((width//2, subtitle_y), subtitle, fill='#FFFF00', font=subtitle_font, anchor="mm")
 
     # 表の描画
     headers = table_data.get("headers", [])
@@ -628,8 +628,8 @@ def generate_tts_audio(script: list, output_path: str, key_manager: GeminiKeyMan
     return duration, timings
 
 
-def wrap_subtitle_text(text: str, max_chars: int = 13) -> str:
-    """字幕テキストを折り返し（最大13文字/行）"""
+def wrap_subtitle_text(text: str, max_chars: int = 8) -> str:
+    """字幕テキストを折り返し（最大8文字/行、読みやすく）"""
     if len(text) <= max_chars:
         return text
 
@@ -650,17 +650,17 @@ def generate_subtitles(script: list, audio_duration: float, output_path: str, ti
     """ASS字幕を生成（表の下、60-70%位置に配置、大きめフォント）"""
     print("  字幕を生成中...")
 
-    # 字幕位置: 画面の72.5%位置（下から27.5%）
-    # 1920px * 0.275 = 528px
-    margin_v = 528  # 下から528px = 上から約72.5%
+    # 字幕位置: 画面の78.5%位置（下から21.5%）
+    # 1920px * 0.215 = 413px
+    margin_v = 413  # 下から413px = 上から約78.5%
 
     # フォントサイズ: 120px
     font_size = 120
 
-    # タイトル用設定: 画面の82.5%位置（字幕の下、YouTube UIに少し被ってもOK）
-    # 1920px * 0.175 = 336px
+    # タイトル用設定: 画面の86.5%位置（YouTube UIに被ってもOK）
+    # 1920px * 0.135 = 259px
     title_font_size = 120
-    title_margin_v = 336   # 下から336px = 上から約82.5%位置
+    title_margin_v = 259   # 下から259px = 上から約86.5%位置
 
     # BorderStyle=1 で縁取り+影、高齢者に見やすい配色
     # カツミ: 濃い紫(#800080)、白縁取り4px、黒影2px
@@ -705,8 +705,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
         style = "Hiroshi" if line["speaker"] == "ヒロシ" else "Katsumi"
 
-        # 13文字で折り返し
-        wrapped_text = wrap_subtitle_text(line["text"], max_chars=13)
+        # 8文字で折り返し（読みやすく）
+        wrapped_text = wrap_subtitle_text(line["text"], max_chars=8)
 
         # ポップアップアニメーション
         popup = "{\\fscx80\\fscy80\\t(0,100,\\fscx100\\fscy100)}"
