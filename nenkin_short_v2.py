@@ -173,14 +173,29 @@ class GeminiKeyManager:
 
 
 def download_from_drive(file_id: str, output_path: str) -> bool:
-    """Google Driveからファイルをダウンロード"""
+    """Google Driveからファイルをダウンロード（リダイレクト対応）"""
     try:
+        # 直接ダウンロードURLを使用
         url = f"https://drive.google.com/uc?export=download&id={file_id}"
-        response = requests.get(url, timeout=30)
+        session = requests.Session()
+        response = session.get(url, timeout=30, allow_redirects=True)
+
+        # ウイルススキャン警告ページの場合、確認トークンを取得して再試行
+        if 'confirm=' not in response.url and 'download_warning' in response.text:
+            # 確認トークンを探す
+            for key, value in response.cookies.items():
+                if key.startswith('download_warning'):
+                    url = f"https://drive.google.com/uc?export=download&confirm={value}&id={file_id}"
+                    response = session.get(url, timeout=30, allow_redirects=True)
+                    break
+
         if response.status_code == 200 and len(response.content) > 1000:
             with open(output_path, 'wb') as f:
                 f.write(response.content)
+            print(f"    ダウンロード成功: {len(response.content)} bytes")
             return True
+        else:
+            print(f"    ⚠ ダウンロード失敗: status={response.status_code}, size={len(response.content)}")
     except Exception as e:
         print(f"    ⚠ ダウンロードエラー: {e}")
     return False
@@ -624,7 +639,8 @@ def generate_subtitles(script: list, audio_duration: float, output_path: str, ti
     # BorderStyle=1 で縁取り+影、高齢者に見やすい配色
     # カツミ: 濃いピンク(#FF6B9D)、白縁取り3px、黒影2px
     # ヒロシ: 濃い青(#4A90D9)、白縁取り3px、黒影2px
-    # VideoTitle: 白文字、半透明オレンジ背景（BorderStyle=3）、Outline=15でパディング効果
+    # VideoTitle: 黄色文字、半透明オレンジ背景（BorderStyle=3）、Outline=0
+    # ※ BorderStyle=3でOutline>0だとOutlineColourが背景になるのでOutline=0必須
     header = f"""[Script Info]
 Title: Nenkin Table Short
 ScriptType: v4.00+
@@ -636,7 +652,7 @@ WrapStyle: 0
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Katsumi,Noto Sans CJK JP,{font_size},&H009D6BFF,&H000000FF,&H00FFFFFF,&H00000000,1,0,0,0,100,100,0,0,1,3,2,2,30,30,{margin_v},1
 Style: Hiroshi,Noto Sans CJK JP,{font_size},&H00D9904A,&H000000FF,&H00FFFFFF,&H00000000,1,0,0,0,100,100,0,0,1,3,2,2,30,30,{margin_v},1
-Style: VideoTitle,Noto Sans CJK JP,{title_font_size},&H00FFFFFF,&H000000FF,&H00FFFFFF,&H800000CC,1,0,0,0,100,100,0,0,3,15,0,2,30,30,{title_margin_v},1
+Style: VideoTitle,Noto Sans CJK JP,{title_font_size},&H0000FFFF,&H000000FF,&H00000000,&H80004080,1,0,0,0,100,100,0,0,3,0,0,2,30,30,{title_margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
