@@ -124,14 +124,17 @@ DUMMY_TABLE_DATA = {
     "footer": "※2024年度の年金制度に基づく目安です"
 }
 
-DUMMY_SCRIPT = [
-    {"speaker": "ヒロシ", "text": "うわ、この表見て！60歳から受給すると76%しかもらえないんだ"},
-    {"speaker": "カツミ", "text": "そうなのよ。でもね、82歳まで生きないと損なの"},
-    {"speaker": "ヒロシ", "text": "え、マジで？じゃあ長生きする自信あれば繰り下げた方がいいの？"},
-    {"speaker": "カツミ", "text": "70歳まで待てば142%よ。でも82歳以上生きないとトントンね"},
-    {"speaker": "ヒロシ", "text": "うーん、悩むなぁ"},
-    {"speaker": "カツミ", "text": "まあ健康状態と相談ね。損しないようにこの画像保存しとこっと"},
-]
+DUMMY_SCRIPT = {
+    "script": [
+        {"speaker": "ヒロシ", "text": "うわ、この表見て！60歳から受給すると76%しかもらえないんだ"},
+        {"speaker": "カツミ", "text": "そうなのよ。でもね、82歳まで生きないと損なの"},
+        {"speaker": "ヒロシ", "text": "え、マジで？じゃあ長生きする自信あれば繰り下げた方がいいの？"},
+        {"speaker": "カツミ", "text": "70歳まで待てば142%よ。でも82歳以上生きないとトントンね"},
+        {"speaker": "ヒロシ", "text": "うーん、悩むなぁ"},
+        {"speaker": "カツミ", "text": "まあ健康状態と相談ね。損しないようにこの画像保存しとこっと"},
+    ],
+    "first_comment": "カツミです💕 今日の年金の話、けっこう大事でしょ？70歳まで待つと142%ってすごいけど、82歳まで生きなきゃ元取れないのよね。健康第一ってこういうことかも。LINEだともっと詳しい情報届くよ〜"
+}
 
 
 class GeminiKeyManager:
@@ -443,8 +446,12 @@ def generate_table_image(table_data: dict, output_path: str):
     print(f"  ✓ 表画像生成完了: {output_path}")
 
 
-def generate_script(table_data: dict, key_manager: GeminiKeyManager) -> list:
-    """台本を生成"""
+def generate_script(table_data: dict, key_manager: GeminiKeyManager) -> dict:
+    """台本を生成（first_comment含む）
+
+    Returns:
+        dict: {"script": [...], "first_comment": "..."}
+    """
     print("\n[3/6] 台本を生成中...")
 
     if SKIP_API:
@@ -481,11 +488,30 @@ def generate_script(table_data: dict, key_manager: GeminiKeyManager) -> list:
   「損しないようにこの動画保存しとこっと」
 
 出力形式（JSONのみ、説明不要）：
-[
-  {{"speaker": "ヒロシ", "text": "セリフ"}},
-  {{"speaker": "カツミ", "text": "セリフ"}},
-  ...
-]"""
+{{
+  "script": [
+    {{"speaker": "ヒロシ", "text": "セリフ"}},
+    {{"speaker": "カツミ", "text": "セリフ"}},
+    ...
+  ],
+  "first_comment": "カツミの初コメント（150〜200文字）"
+}}
+
+【初コメント生成ルール】
+この動画の内容に合わせて、カツミが投稿する初コメントも作成してください。
+
+- カツミの本音キャラで、その日の動画内容に触れる
+- 視聴者への感謝や共感を入れる
+- 最後にさりげなくLINE登録へ誘導
+- 毎回違う内容になるように（固定文NG）
+- 150〜200文字程度
+- 絵文字は2〜3個まで
+
+【LINE誘導の例】
+「LINEだともっと詳しく届くよ👀」
+「毎朝届くLINE、届いてる？」
+「LINEの方が早く届くからね〜」
+※URLは後から追加するので不要"""
 
     max_retries = 3
     for attempt in range(max_retries):
@@ -507,9 +533,21 @@ def generate_script(table_data: dict, key_manager: GeminiKeyManager) -> list:
             elif "```" in result_text:
                 result_text = result_text.split("```")[1].split("```")[0]
 
-            script = json.loads(result_text)
-            print(f"  ✓ 台本生成完了: {len(script)}セリフ")
-            return script
+            result = json.loads(result_text)
+
+            # 新フォーマット（dict）と旧フォーマット（list）の両方に対応
+            if isinstance(result, list):
+                # 旧フォーマット: listの場合はdictに変換
+                script_data = {"script": result, "first_comment": ""}
+            else:
+                script_data = result
+
+            script_lines = script_data.get("script", [])
+            first_comment = script_data.get("first_comment", "")
+            print(f"  ✓ 台本生成完了: {len(script_lines)}セリフ")
+            if first_comment:
+                print(f"  ✓ 初コメント生成完了: {first_comment[:30]}...")
+            return script_data
 
         except Exception as e:
             print(f"  ⚠ 試行{attempt + 1}/{max_retries} 失敗: {str(e)[:50]}...")
@@ -848,8 +886,15 @@ def generate_video(table_image_path: str, bg_image_path: str, audio_path: str, s
         raise RuntimeError("動画生成に失敗しました")
 
 
-def upload_to_youtube(video_path: str, title: str, description: str) -> str:
-    """YouTubeにアップロード"""
+def upload_to_youtube(video_path: str, title: str, description: str, first_comment: str = "") -> str:
+    """YouTubeにアップロード
+
+    Args:
+        video_path: 動画ファイルパス
+        title: 動画タイトル
+        description: 動画説明文
+        first_comment: 初コメント（台本生成時に作成）
+    """
     print("\n[6/6] YouTubeにアップロード中...")
 
     try:
@@ -895,7 +940,7 @@ def upload_to_youtube(video_path: str, title: str, description: str) -> str:
         print(f"  ✓ アップロード完了: {video_url}")
 
         # 初コメントを自動投稿
-        post_first_comment(youtube, video_id)
+        post_first_comment(youtube, video_id, first_comment)
 
         return video_url
 
@@ -904,11 +949,24 @@ def upload_to_youtube(video_path: str, title: str, description: str) -> str:
         return ""
 
 
-def post_first_comment(youtube, video_id: str):
-    """動画に初コメントを自動投稿（LINE誘導）"""
+def post_first_comment(youtube, video_id: str, first_comment: str = ""):
+    """動画に初コメントを自動投稿（LINE誘導）
+
+    Args:
+        youtube: YouTube APIクライアント
+        video_id: 動画ID
+        first_comment: 台本生成時に作成されたコメント（空の場合はフォールバック使用）
+    """
     print("  初コメントを投稿中...")
 
-    comment_text = """カツミです💕
+    LINE_URL = "https://lin.ee/424lkquq"
+
+    if first_comment:
+        # 動的生成されたコメントにLINE URLを追加
+        comment_text = f"{first_comment}\n\n↓ LINE登録はこちら ↓\n{LINE_URL}"
+    else:
+        # フォールバック: 固定コメント
+        comment_text = f"""カツミです💕
 
 ねぇ、これ保存した？
 まだの人、絶対しといて！！
@@ -917,11 +975,8 @@ def post_first_comment(youtube, video_id: str):
 LINEだともっと詳しい情報
 毎朝届けてるの👀✨
 
-知らないと関係ないけど、
-知らないと関係ないからね？笑
-
 ↓今すぐ友だち追加↓
-https://lin.ee/424lkquq
+{LINE_URL}
 
 届いた人から関係なくなってるよ〜📱💨"""
 
@@ -990,7 +1045,9 @@ def main():
         generate_table_image(table_data, image_path)
 
         # STEP4: 台本生成
-        script = generate_script(table_data, key_manager)
+        script_data = generate_script(table_data, key_manager)
+        script = script_data.get("script", [])
+        first_comment = script_data.get("first_comment", "")
 
         # STEP5: TTS生成
         tts_audio_path = str(temp_path / "tts_audio.wav")
@@ -1046,7 +1103,7 @@ def main():
             print(f"  動画を保存: {output_video}")
             video_url = f"file://{output_video}"
         else:
-            video_url = upload_to_youtube(video_path, title, description)
+            video_url = upload_to_youtube(video_path, title, description, first_comment)
 
         # 完了
         elapsed = time.time() - start_time
