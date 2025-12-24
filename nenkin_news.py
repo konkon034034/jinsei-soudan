@@ -2818,6 +2818,82 @@ def generate_gradient_background(output_path: str, title: str = ""):
     print(f"    [背景] ✓ フォールバック背景生成完了")
 
 
+def generate_qr_background(output_path: str):
+    """控室トーク用のQRコード付き背景画像を生成
+
+    レイアウト:
+    - 背景: 真っ黒
+    - 上部: テキスト「LINE登録で最新年金ニュースが毎朝届く！」(白、太字、50px)
+    - 中央: QRコード（画面幅の40%程度）
+    - 下部: 字幕用に空けておく
+    """
+    import os
+    from pathlib import Path
+
+    # 黒背景を作成
+    img = Image.new('RGB', (VIDEO_WIDTH, VIDEO_HEIGHT), (0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    # フォント設定（50px、太字）
+    font_size = 50
+    font = None
+    # フォント候補（優先順）
+    font_paths = [
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
+        "/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc",
+        "/System/Library/Fonts/Hiragino Sans GB.ttc",
+    ]
+    for fp in font_paths:
+        if os.path.exists(fp):
+            try:
+                font = ImageFont.truetype(fp, font_size)
+                break
+            except Exception:
+                continue
+    if font is None:
+        font = ImageFont.load_default()
+
+    # テキストを描画（上部）
+    text = "LINE登録で最新年金ニュースが毎朝届く！"
+    text_bbox = draw.textbbox((0, 0), text, font=font)
+    text_width = text_bbox[2] - text_bbox[0]
+    text_height = text_bbox[3] - text_bbox[1]
+    text_x = (VIDEO_WIDTH - text_width) // 2
+    text_y = 80  # 上から80px
+
+    # テキスト描画（白、影付き）
+    shadow_offset = 2
+    draw.text((text_x + shadow_offset, text_y + shadow_offset), text, font=font, fill=(50, 50, 50))
+    draw.text((text_x, text_y), text, font=font, fill=(255, 255, 255))
+
+    # QRコード画像を読み込み
+    qr_path = Path(__file__).parent / "assets" / "line_qr.png"
+    if qr_path.exists():
+        qr_img = Image.open(qr_path)
+
+        # QRコードをリサイズ（画面幅の40%）
+        qr_size = int(VIDEO_WIDTH * 0.4)  # 768px (1920*0.4)
+        qr_img = qr_img.resize((qr_size, qr_size), Image.LANCZOS)
+
+        # QRコードを中央に配置（テキストの下、字幕バーの上）
+        # 字幕バーは画面下部45%なので、その上に配置
+        subtitle_bar_height = int(VIDEO_HEIGHT * 0.45)
+        available_height = VIDEO_HEIGHT - text_y - text_height - 40 - subtitle_bar_height
+        qr_x = (VIDEO_WIDTH - qr_size) // 2
+        qr_y = text_y + text_height + 40 + (available_height - qr_size) // 2
+
+        # QRコードを貼り付け
+        img.paste(qr_img, (qr_x, qr_y))
+        print(f"    [QR背景] QRコード配置完了 ({qr_size}x{qr_size}px)")
+    else:
+        print(f"    [QR背景] ⚠ QRコード画像が見つかりません: {qr_path}")
+        # QRコードがない場合はテキストだけ表示
+
+    img.save(output_path)
+    print(f"    [QR背景] 控室用背景生成完了: {output_path}")
+
+
 # ===== 禁則処理用文字リスト =====
 # 行頭禁則: これらの文字は行頭に来てはいけない
 KINSOKU_HEAD = set(
@@ -3559,6 +3635,10 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
     ass_path = str(temp_dir / "subtitles.ass")
     generate_ass_subtitles(all_segments, ass_path, section_markers)
 
+    # 控室用QRコード背景を生成
+    qr_bg_path = str(temp_dir / "qr_background.png")
+    generate_qr_background(qr_bg_path)
+
     # 動画生成
     output_path = str(temp_dir / f"nenkin_news_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
 
@@ -3573,6 +3653,8 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
         # ファイルをbase64エンコード
         with open(bg_path, "rb") as f:
             bg_base64 = base64.b64encode(f.read()).decode()
+        with open(qr_bg_path, "rb") as f:
+            qr_bg_base64 = base64.b64encode(f.read()).decode()
         with open(audio_path, "rb") as f:
             audio_base64 = base64.b64encode(f.read()).decode()
         with open(ass_path, "r", encoding="utf-8") as f:
@@ -3580,13 +3662,13 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
 
         output_name = os.path.basename(output_path)
 
-        # 控室開始時刻を秒に変換（背景を黒にするため）
+        # 控室開始時刻を秒に変換（背景をQRコード付きに切り替え）
         backroom_start_sec = backroom_start_ms / 1000 if backroom_start_ms is not None else None
         if backroom_start_sec is not None:
-            print(f"  [動画] 控室開始 {backroom_start_sec:.1f}秒 から背景を黒に切り替え予定")
+            print(f"  [動画] 控室開始 {backroom_start_sec:.1f}秒 からQRコード背景に切り替え予定")
 
-        # Modal リモート呼び出し（控室開始時刻を渡す）
-        video_bytes = encode_video_gpu.remote(bg_base64, audio_base64, ass_content, output_name, backroom_start_sec)
+        # Modal リモート呼び出し（QRコード背景も渡す）
+        video_bytes = encode_video_gpu.remote(bg_base64, audio_base64, ass_content, output_name, backroom_start_sec, qr_bg_base64)
 
         # 結果をファイルに書き込み
         with open(output_path, "wb") as f:
@@ -3599,21 +3681,21 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
         bar_height = int(VIDEO_HEIGHT * 0.45)  # 画面の45%（3行字幕も収まる高さ）
         bar_y = VIDEO_HEIGHT - bar_height  # バーのY座標（画面下部）
 
-        # 控室開始時刻を秒に変換（背景を黒にするため）
+        # 控室開始時刻を秒に変換（背景をQRコード付きに切り替え）
         backroom_start_sec = backroom_start_ms / 1000 if backroom_start_ms is not None else None
 
-        # ffmpegフィルター: scale → (控室から黒背景) → 背景バー描画 → 字幕
-        # 茶色系: rgba(60,40,30,0.8) → ffmpegでは 0x3C281E@0.8
+        # ffmpegフィルター: 控室開始からQRコード背景をoverlay
         # fontsdir でフォントディレクトリを明示的に指定（日本語フォント対応）
         if backroom_start_sec is not None:
-            # 控室開始から背景を真っ黒に切り替え
+            # 控室開始からQRコード背景をoverlay（透かしバーは控室前のみ表示）
             vf_filter = (
-                f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},"
-                f"drawbox=x=0:y=0:w={VIDEO_WIDTH}:h={VIDEO_HEIGHT}:color=black:t=fill:enable='gte(t,{backroom_start_sec})',"
-                f"drawbox=x=0:y={bar_y}:w={VIDEO_WIDTH}:h={bar_height}:color=0x3C281E@0.8:t=fill,"
+                f"[0:v]scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},"
+                f"drawbox=x=0:y={bar_y}:w={VIDEO_WIDTH}:h={bar_height}:color=0x3C281E@0.8:t=fill:enable='lt(t,{backroom_start_sec})'[main];"
+                f"[1:v]scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}[qr];"
+                f"[main][qr]overlay=0:0:enable='gte(t,{backroom_start_sec})',"
                 f"ass={ass_path}:fontsdir=/usr/share/fonts"
             )
-            print(f"  [動画] 控室開始 {backroom_start_sec:.1f}秒 から背景を黒に切り替え")
+            print(f"  [動画] 控室開始 {backroom_start_sec:.1f}秒 からQRコード背景に切り替え")
         else:
             vf_filter = (
                 f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},"
@@ -3621,18 +3703,59 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager) ->
                 f"ass={ass_path}:fontsdir=/usr/share/fonts"
             )
 
-        cmd = [
-            'ffmpeg', '-y',
-            '-loop', '1', '-i', bg_path,
-            '-i', audio_path,
-            '-vf', vf_filter,
-            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
-            '-c:a', 'aac', '-b:a', '192k',
-            '-shortest',
-            '-pix_fmt', 'yuv420p',
-            '-movflags', '+faststart',
-            output_path
-        ]
+        # QRコード背景がある場合は2入力ffmpeg
+        if backroom_start_sec is not None:
+            cmd = [
+                'ffmpeg', '-y',
+                '-loop', '1', '-i', bg_path,
+                '-loop', '1', '-i', qr_bg_path,
+                '-i', audio_path,
+                '-filter_complex', vf_filter,
+                '-map', '[out]' if '[out]' in vf_filter else '0:v',
+                '-map', '2:a',
+                '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+                '-c:a', 'aac', '-b:a', '192k',
+                '-shortest',
+                '-pix_fmt', 'yuv420p',
+                '-movflags', '+faststart',
+                output_path
+            ]
+            # filter_complexの出力ラベル修正
+            vf_filter = (
+                f"[0:v]scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},"
+                f"drawbox=x=0:y={bar_y}:w={VIDEO_WIDTH}:h={bar_height}:color=0x3C281E@0.8:t=fill:enable='lt(t,{backroom_start_sec})'[main];"
+                f"[1:v]scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}[qr];"
+                f"[main][qr]overlay=0:0:enable='gte(t,{backroom_start_sec})'[overlaid];"
+                f"[overlaid]ass={ass_path}:fontsdir=/usr/share/fonts[out]"
+            )
+            cmd = [
+                'ffmpeg', '-y',
+                '-loop', '1', '-i', bg_path,
+                '-loop', '1', '-i', qr_bg_path,
+                '-i', audio_path,
+                '-filter_complex', vf_filter,
+                '-map', '[out]',
+                '-map', '2:a',
+                '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+                '-c:a', 'aac', '-b:a', '192k',
+                '-shortest',
+                '-pix_fmt', 'yuv420p',
+                '-movflags', '+faststart',
+                output_path
+            ]
+        else:
+            cmd = [
+                'ffmpeg', '-y',
+                '-loop', '1', '-i', bg_path,
+                '-i', audio_path,
+                '-vf', vf_filter,
+                '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+                '-c:a', 'aac', '-b:a', '192k',
+                '-shortest',
+                '-pix_fmt', 'yuv420p',
+                '-movflags', '+faststart',
+                output_path
+            ]
 
         subprocess.run(cmd, capture_output=True, check=True)
         print(f"✓ 動画生成完了 (ローカル CPU): {output_path}")
