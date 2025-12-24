@@ -262,10 +262,18 @@ def generate_table_data(theme: dict, key_manager: GeminiKeyManager) -> dict:
 
 
 def generate_table_image(table_data: dict, output_path: str):
-    """表画像を生成（PIL）"""
+    """表画像を生成（PIL）- スクロール用に縦長
+
+    画像サイズ: 1080 x 2420
+    - 最初は下半分だけ表示 (y=500からスタート)
+    - 50秒かけてy=0までスクロール
+    - 最後10秒はy=0で固定
+    """
     print("\n[2/6] 表画像を生成中...")
 
-    width, height = VIDEO_WIDTH, VIDEO_HEIGHT
+    width = VIDEO_WIDTH
+    # スクロール用に縦長画像 (1920 + 500 = 2420)
+    height = VIDEO_HEIGHT + 500
 
     # 背景（青空グラデーション風）
     img = Image.new('RGB', (width, height), '#87CEEB')
@@ -735,15 +743,33 @@ def process_audio_with_jingle_bgm(talk_audio_path: str, output_path: str, temp_d
     return jingle_duration
 
 
-def generate_video(image_path: str, audio_path: str, subtitle_path: str, output_path: str):
-    """動画を生成"""
-    print("\n[5/6] 動画を生成中...")
+def generate_video(image_path: str, audio_path: str, subtitle_path: str, output_path: str, duration: float = 60):
+    """動画を生成（スクロールアニメーション付き）
+
+    スクロールタイミング:
+    - 0秒: y=500（下半分だけ見える）
+    - 0〜50秒: yが500→0に徐々に変化
+    - 50〜60秒: y=0で固定（全部見える）
+    """
+    print("\n[5/6] 動画を生成中（スクロールアニメーション）...")
+
+    # スクロールアニメーション用のフィルター
+    # crop: 1080x1920の範囲を画像から切り出す
+    # y座標: 最初500、50秒かけて0に、その後0固定
+    # 式: if(lt(t,50), 500-10*t, 0)
+    scroll_filter = (
+        f"crop={VIDEO_WIDTH}:{VIDEO_HEIGHT}:0:"
+        f"'if(lt(t,50),500-10*t,0)'"
+    )
+
+    # 字幕を追加
+    vf_filter = f"{scroll_filter},ass={subtitle_path}"
 
     cmd = [
         'ffmpeg', '-y',
         '-loop', '1', '-i', image_path,
         '-i', audio_path,
-        '-vf', f'ass={subtitle_path}',
+        '-vf', vf_filter,
         '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
         '-c:a', 'aac', '-b:a', '192k',
         '-shortest', '-pix_fmt', 'yuv420p',
@@ -751,12 +777,13 @@ def generate_video(image_path: str, audio_path: str, subtitle_path: str, output_
         output_path
     ]
 
+    print(f"  スクロール: y=500→0 (50秒), 固定 (10秒)")
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if os.path.exists(output_path):
         print(f"  ✓ 動画生成完了: {output_path}")
     else:
-        print(f"  ❌ 動画生成失敗: {result.stderr[:200]}")
+        print(f"  ❌ 動画生成失敗: {result.stderr[:500]}")
         raise RuntimeError("動画生成に失敗しました")
 
 
