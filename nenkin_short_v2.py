@@ -49,6 +49,23 @@ BGM_VOLUME_REDUCTION = 18  # dB減（トークの邪魔にならないように�
 # 背景画像（Google Drive ID）
 BACKGROUND_IMAGE_ID = "1ywnGZHMZWavnus1-fPD1MVI3fWxSrAIp"
 
+# 再生リスト設定
+PLAYLIST_TITLE = "🧓 シニア必見！1分年金講座"
+PLAYLIST_DESCRIPTION = """年金のこと、ちゃんと知ってますか？
+
+60秒でサクッとわかる年金データを
+毎日お届けしています📊
+
+✅ 受給額の損益分岐点
+✅ 届出・手続き一覧
+✅ 知らないともったいない制度
+
+「あとで見る」より「今すぐ保存」📌
+知ってるか知らないかで、全然違います。
+
+🔔 チャンネル登録で最新情報をお届け！
+📱 LINE登録で毎朝届く → https://lin.ee/424lkquq"""
+
 # ===== テーマリスト =====
 THEMES = [
     {
@@ -886,6 +903,90 @@ def generate_video(table_image_path: str, bg_image_path: str, audio_path: str, s
         raise RuntimeError("動画生成に失敗しました")
 
 
+def get_or_create_playlist(youtube) -> str:
+    """再生リストを取得または作成
+
+    Args:
+        youtube: YouTube APIクライアント
+
+    Returns:
+        str: 再生リストID
+    """
+    print("  再生リストを確認中...")
+
+    # 既存の再生リストを検索
+    try:
+        request = youtube.playlists().list(
+            part="snippet",
+            mine=True,
+            maxResults=50
+        )
+        response = request.execute()
+
+        for playlist in response.get("items", []):
+            if playlist["snippet"]["title"] == PLAYLIST_TITLE:
+                playlist_id = playlist["id"]
+                print(f"  ✓ 既存の再生リスト: {playlist_id}")
+                return playlist_id
+    except Exception as e:
+        print(f"  ⚠ 再生リスト検索エラー: {e}")
+
+    # 再生リストが存在しない場合は作成
+    print("  再生リストを作成中...")
+    try:
+        request = youtube.playlists().insert(
+            part="snippet,status",
+            body={
+                "snippet": {
+                    "title": PLAYLIST_TITLE,
+                    "description": PLAYLIST_DESCRIPTION
+                },
+                "status": {
+                    "privacyStatus": "public"
+                }
+            }
+        )
+        response = request.execute()
+        playlist_id = response["id"]
+        print(f"  ✓ 再生リスト作成完了: {playlist_id}")
+        return playlist_id
+    except Exception as e:
+        print(f"  ❌ 再生リスト作成失敗: {e}")
+        return ""
+
+
+def add_video_to_playlist(youtube, playlist_id: str, video_id: str):
+    """動画を再生リストに追加
+
+    Args:
+        youtube: YouTube APIクライアント
+        playlist_id: 再生リストID
+        video_id: 動画ID
+    """
+    if not playlist_id:
+        print("  ⚠ 再生リストIDがないためスキップ")
+        return
+
+    print("  再生リストに追加中...")
+    try:
+        request = youtube.playlistItems().insert(
+            part="snippet",
+            body={
+                "snippet": {
+                    "playlistId": playlist_id,
+                    "resourceId": {
+                        "kind": "youtube#video",
+                        "videoId": video_id
+                    }
+                }
+            }
+        )
+        request.execute()
+        print(f"  ✓ 再生リストに追加完了")
+    except Exception as e:
+        print(f"  ⚠ 再生リスト追加失敗: {e}")
+
+
 def upload_to_youtube(video_path: str, title: str, description: str, first_comment: str = "") -> str:
     """YouTubeにアップロード
 
@@ -918,6 +1019,9 @@ def upload_to_youtube(video_path: str, title: str, description: str, first_comme
 
         youtube = build("youtube", "v3", credentials=creds)
 
+        # 再生リストを取得または作成
+        playlist_id = get_or_create_playlist(youtube)
+
         body = {
             "snippet": {
                 "title": title[:100],
@@ -938,6 +1042,9 @@ def upload_to_youtube(video_path: str, title: str, description: str, first_comme
         video_id = response["id"]
         video_url = f"https://youtube.com/shorts/{video_id}"
         print(f"  ✓ アップロード完了: {video_url}")
+
+        # 再生リストに追加
+        add_video_to_playlist(youtube, playlist_id, video_id)
 
         # 初コメントを自動投稿
         post_first_comment(youtube, video_id, first_comment)
