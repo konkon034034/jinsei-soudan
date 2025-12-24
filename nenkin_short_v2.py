@@ -41,6 +41,11 @@ TTS_MODEL = "gemini-2.5-flash-preview-tts"
 VOICE_KATSUMI = "Kore"   # カツミ（女性）
 VOICE_HIROSHI = "Puck"   # ヒロシ（男性）
 
+# ジングル・BGM設定（Google Drive ID）
+JINGLE_FILE_ID = "1TdXxBkuGHWBwGcLxyGJCkuggDxomHqfD"
+BGM_FILE_ID = "14X_YrRkGvq5rKofXsOL9X42zmYnaXjF1"
+BGM_VOLUME_REDUCTION = 18  # dB減（トークの邪魔にならないように）
+
 # ===== テーマリスト =====
 THEMES = [
     {
@@ -162,6 +167,20 @@ class GeminiKeyManager:
         """指定インデックス用のキーを取得（ラウンドロビン）"""
         idx = index % len(self.keys)
         return self.keys[idx], self.key_names[idx]
+
+
+def download_from_drive(file_id: str, output_path: str) -> bool:
+    """Google Driveからファイルをダウンロード"""
+    try:
+        url = f"https://drive.google.com/uc?export=download&id={file_id}"
+        response = requests.get(url, timeout=30)
+        if response.status_code == 200 and len(response.content) > 1000:
+            with open(output_path, 'wb') as f:
+                f.write(response.content)
+            return True
+    except Exception as e:
+        print(f"    ⚠ ダウンロードエラー: {e}")
+    return False
 
 
 def select_theme() -> dict:
@@ -566,13 +585,37 @@ def generate_tts_audio(script: list, output_path: str, key_manager: GeminiKeyMan
     return duration, timings
 
 
-def generate_subtitles(script: list, audio_duration: float, output_path: str, timings: list = None):
-    """ASS字幕を生成（表と被らない下部に配置）"""
+def wrap_subtitle_text(text: str, max_chars: int = 13) -> str:
+    """字幕テキストを折り返し（最大13文字/行）"""
+    if len(text) <= max_chars:
+        return text
+
+    lines = []
+    current = ""
+    for char in text:
+        current += char
+        if len(current) >= max_chars:
+            lines.append(current)
+            current = ""
+    if current:
+        lines.append(current)
+
+    return "\\N".join(lines)
+
+
+def generate_subtitles(script: list, audio_duration: float, output_path: str, timings: list = None, jingle_duration: float = 0):
+    """ASS字幕を生成（表の下、60-70%位置に配置、大きめフォント）"""
     print("  字幕を生成中...")
 
-    # 字幕位置（画面下部、表と被らない）
-    margin_v = 80  # 画面下端からの距離
+    # 字幕位置（画面の60-70%あたり = 画面下端から600-700px）
+    # 1920px * 0.35 = 672px (下から35%の位置 = 上から65%の位置)
+    margin_v = 650
 
+    # フォントサイズ: 120px（2倍）
+    font_size = 120
+
+    # BorderStyle=3 で背景ボックス、BackColourで半透明黒
+    # BackColour: &H80000000& = 50%透明の黒
     header = f"""[Script Info]
 Title: Nenkin Table Short
 ScriptType: v4.00+
@@ -582,8 +625,8 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Katsumi,Noto Sans CJK JP,60,&H00FF69B4,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,5,2,2,50,50,{margin_v},1
-Style: Hiroshi,Noto Sans CJK JP,60,&H00FFB347,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,5,2,2,50,50,{margin_v},1
+Style: Katsumi,Noto Sans CJK JP,{font_size},&H00FF69B4,&H000000FF,&H00000000,&HB0000000,1,0,0,0,100,100,0,0,3,0,0,2,30,30,{margin_v},1
+Style: Hiroshi,Noto Sans CJK JP,{font_size},&H00FFB347,&H000000FF,&H00000000,&HB0000000,1,0,0,0,100,100,0,0,3,0,0,2,30,30,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -593,24 +636,103 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     for i, line in enumerate(script):
         if timings and i < len(timings):
-            start_time = timings[i]["start"]
-            end_time = timings[i]["end"]
+            # ジングル分のオフセットを追加
+            start_time = timings[i]["start"] + jingle_duration
+            end_time = timings[i]["end"] + jingle_duration
         else:
             time_per_line = audio_duration / len(script)
-            start_time = i * time_per_line
-            end_time = (i + 1) * time_per_line
+            start_time = i * time_per_line + jingle_duration
+            end_time = (i + 1) * time_per_line + jingle_duration
 
         start_str = f"0:{int(start_time // 60):02d}:{start_time % 60:05.2f}"
         end_str = f"0:{int(end_time // 60):02d}:{end_time % 60:05.2f}"
 
         style = "Hiroshi" if line["speaker"] == "ヒロシ" else "Katsumi"
-        text = line["text"].replace('\n', '\\N')
 
+        # 13文字で折り返し
+        wrapped_text = wrap_subtitle_text(line["text"], max_chars=13)
+
+        # ポップアップアニメーション
         popup = "{\\fscx80\\fscy80\\t(0,100,\\fscx100\\fscy100)}"
-        lines.append(f"Dialogue: 0,{start_str},{end_str},{style},,0,0,0,,{popup}{text}")
+        lines.append(f"Dialogue: 0,{start_str},{end_str},{style},,0,0,0,,{popup}{wrapped_text}")
 
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines))
+
+
+def process_audio_with_jingle_bgm(talk_audio_path: str, output_path: str, temp_dir: Path) -> float:
+    """ジングルとBGMを追加して最終音声を生成
+
+    Returns:
+        float: ジングルの長さ（秒）
+    """
+    print("\n[4.5/6] ジングル・BGM処理中...")
+
+    # トーク音声を読み込み
+    talk = AudioSegment.from_file(talk_audio_path)
+    talk_duration = len(talk)
+
+    jingle_duration = 0.0
+    final_audio = talk
+
+    # ジングルをダウンロード
+    jingle_path = str(temp_dir / "jingle.mp3")
+    print("  ジングルをダウンロード中...")
+    if download_from_drive(JINGLE_FILE_ID, jingle_path):
+        try:
+            jingle = AudioSegment.from_file(jingle_path)
+            jingle_duration = len(jingle) / 1000.0
+            print(f"    ✓ ジングル: {jingle_duration:.1f}秒")
+
+            # BGMをダウンロード
+            bgm_path = str(temp_dir / "bgm.mp3")
+            print("  BGMをダウンロード中...")
+            if download_from_drive(BGM_FILE_ID, bgm_path):
+                try:
+                    bgm = AudioSegment.from_file(bgm_path)
+                    print(f"    ✓ BGM: {len(bgm) / 1000:.1f}秒")
+
+                    # BGMをトークの長さに調整（ループまたはカット）
+                    if len(bgm) < talk_duration:
+                        # ループして延長
+                        loops_needed = (talk_duration // len(bgm)) + 1
+                        bgm = bgm * loops_needed
+                    bgm = bgm[:talk_duration]
+
+                    # BGM音量を下げる
+                    bgm = bgm - BGM_VOLUME_REDUCTION
+                    print(f"    BGM音量: -{BGM_VOLUME_REDUCTION}dB")
+
+                    # トークとBGMをミックス
+                    talk_with_bgm = talk.overlay(bgm)
+                    print("    ✓ トーク+BGMミックス完了")
+
+                    # ジングル + (トーク+BGM)
+                    final_audio = jingle + talk_with_bgm
+                    print(f"    ✓ 最終音声: {len(final_audio) / 1000:.1f}秒")
+
+                except Exception as e:
+                    print(f"    ⚠ BGM処理エラー: {e}")
+                    # BGMなしでジングル + トーク
+                    final_audio = jingle + talk
+            else:
+                print("    ⚠ BGMダウンロード失敗、BGMなしで続行")
+                final_audio = jingle + talk
+
+        except Exception as e:
+            print(f"    ⚠ ジングル処理エラー: {e}")
+            # ジングルなしでトークのみ
+            final_audio = talk
+            jingle_duration = 0.0
+    else:
+        print("    ⚠ ジングルダウンロード失敗、スキップ")
+        jingle_duration = 0.0
+
+    # 最終音声を出力
+    final_audio.export(output_path, format="wav")
+    print(f"  ✓ 最終音声出力: {len(final_audio) / 1000:.1f}秒")
+
+    return jingle_duration
 
 
 def generate_video(image_path: str, audio_path: str, subtitle_path: str, output_path: str):
@@ -735,16 +857,25 @@ def main():
         script = generate_script(table_data, key_manager)
 
         # STEP5: TTS生成
-        audio_path = str(temp_path / "audio.wav")
-        duration, timings = generate_tts_audio(script, audio_path, key_manager)
+        tts_audio_path = str(temp_path / "tts_audio.wav")
+        tts_duration, timings = generate_tts_audio(script, tts_audio_path, key_manager)
 
-        # 字幕生成
+        # STEP5.5: ジングル・BGM追加
+        final_audio_path = str(temp_path / "audio.wav")
+        jingle_duration = process_audio_with_jingle_bgm(tts_audio_path, final_audio_path, temp_path)
+
+        # 最終音声の長さを取得
+        final_audio = AudioSegment.from_file(final_audio_path)
+        duration = len(final_audio) / 1000.0
+        print(f"  最終音声長: {duration:.1f}秒 (ジングル: {jingle_duration:.1f}秒)")
+
+        # 字幕生成（ジングル分だけタイミングをオフセット）
         subtitle_path = str(temp_path / "subtitles.ass")
-        generate_subtitles(script, duration, subtitle_path, timings)
+        generate_subtitles(script, duration, subtitle_path, timings, jingle_duration)
 
         # STEP6: 動画生成
         video_path = str(temp_path / "short.mp4")
-        generate_video(image_path, audio_path, subtitle_path, video_path)
+        generate_video(image_path, final_audio_path, subtitle_path, video_path)
 
         # タイトルと説明文
         title = f"{table_data.get('title', '')} {table_data.get('subtitle', '')} #Shorts"
