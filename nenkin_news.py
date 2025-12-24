@@ -4013,92 +4013,37 @@ def generate_grandma_comment(script: dict, key_manager: GeminiKeyManager) -> str
 
 
 def generate_first_comment(script: dict, news_data: dict, key_manager: GeminiKeyManager) -> str:
-    """最初のコメントを生成（カツミとしてのコメント）
+    """最初のコメントを生成（カツミとしての固定コメント）
 
     Args:
-        script: 台本データ
-        news_data: ニュースデータ
-        key_manager: APIキーマネージャー
+        script: 台本データ（未使用、互換性のため保持）
+        news_data: ニュースデータ（未使用、互換性のため保持）
+        key_manager: APIキーマネージャー（未使用、互換性のため保持）
 
     Returns:
-        str: カツミのコメント（LINE URLを含む）
+        str: カツミのコメント（LINE誘導強め）
     """
-    api_key, key_name = key_manager.get_working_key()
-    if not api_key:
-        print("  ⚠ Gemini APIキーがないためコメント生成をスキップ")
-        return ""
+    comment = """カツミです💕
+今日も見てくれてありがとう！
 
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.0-flash")
+ねぇ、知ってる？
+LINEだと毎朝7時に
+最新の年金ニュースが届くの✨
 
-    # 台本からテキストを抽出
-    script_lines = []
-    for section in script.get("news_sections", []):
-        for line in section.get("lines", []):
-            script_lines.append(f"{line.get('speaker', '')}: {line.get('text', '')}")
+「あ、今日も届いてる」って
+朝の習慣になってる人、増えてるよ👀
 
-    # 最大20行に制限（長すぎるとAPIエラーになる可能性）
-    script_text = "\n".join(script_lines[:20])
+届いてない人、関係なくなってるかも…？
 
-    # ニュースタイトルも取得
-    news_titles = []
-    for news in news_data.get("confirmed", [])[:3]:
-        news_titles.append(f"・{news.get('title', '')}")
-    news_summary = "\n".join(news_titles) if news_titles else ""
+↓ 30秒で登録できるよ ↓
+https://lin.ee/424lkquq
 
-    prompt = f"""あなたはカツミ（60代前半女性、年金ニュースラジオのパーソナリティ）です。
-今回の動画の内容について、視聴者へのコメントを書いてください。
+届いた人から関係なくなってるからね〜📱💨
 
-【カツミの設定】
-- 60代前半（60〜62歳くらいを想像させる）
-- 具体的な年齢は絶対に言わない（「あと何年で年金」「私は〇歳だから」などNG）
-- 年金受給が近い世代として視聴者に寄り添う雰囲気
+チャンネル登録も忘れずに🔔"""
 
-【今回の動画のニュース】
-{news_summary}
-
-【台本の一部】
-{script_text}
-
-【ルール】
-- カツミとして、視聴者に語りかけるコメントを書く
-- 台本の中から具体的な話題（数字、制度名、ニュース内容など）を1〜2個ピックアップ
-- その話題について「〇〇の話、驚きましたよね」「△△円って意外と大きいですよね」など具体的に触れる
-- 高齢女性に親しみやすい丁寧な口調
-- 最後に「お得な情報を逃さないように」という損得メリットでLINE登録を自然に誘導
-- 押し売り感NG、さりげなく
-- 絵文字は控えめに（1〜2個まで）
-
-【最後に必ず入れる】
-LINEのURL: https://line.me/R/ti/p/@424lkquq
-
-コメント本文のみを出力してください。"""
-
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            response = model.generate_content(prompt)
-            comment = response.text.strip()
-            # 余分な引用符を削除
-            comment = comment.strip('"\'「」『』')
-            print(f"  [コメント生成] カツミ: {comment[:80]}...")
-            return comment
-        except Exception as e:
-            error_str = str(e)
-            print(f"  ⚠ コメント生成 試行{attempt + 1}/{max_retries} 失敗: {error_str[:50]}...")
-            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
-                # 別のAPIキーを試す
-                api_key, key_name = key_manager.get_working_key()
-                if api_key:
-                    genai.configure(api_key=api_key)
-                time.sleep(5)
-            else:
-                time.sleep(3)
-            if attempt == max_retries - 1:
-                print(f"  ⚠ コメント生成失敗、スキップします")
-                return ""
-
-    return ""
+    print(f"  [コメント生成] カツミ: {comment[:50]}...")
+    return comment
 
 
 # ===== サムネイル設定 =====
