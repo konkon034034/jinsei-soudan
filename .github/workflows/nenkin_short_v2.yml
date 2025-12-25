@@ -106,6 +106,7 @@ jobs:
           YOUTUBE_REFRESH_TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
           # 通知
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           python nenkin_short_v2.py
 
