@@ -263,7 +263,7 @@ def generate_table_data(theme: dict, key_manager: GeminiKeyManager) -> dict:
   "screen_hook": "マイルド煽り（10文字以内）",
   "screen_theme": "テーマ名（15文字以内）",
   "screen_cta": "短いCTA（12文字以内）",
-  "headers": ["列1", "列2", "列3"],
+  "headers": ["列名1（6文字以内）", "列名2（6文字以内）", "列名3（6文字以内）"],
   "rows": [
     {{"cells": ["データ1", "データ2", "データ3"], "highlight": "loss"}},
     {{"cells": ["データ4", "データ5", "データ6"], "highlight": "neutral"}},
@@ -274,7 +274,7 @@ def generate_table_data(theme: dict, key_manager: GeminiKeyManager) -> dict:
 
 ルール：
 - 行数は8〜12行程度（多すぎると見づらい）
-- 列数は2〜4列
+- 列数は2〜4列、各列名は6文字以内（長いと表示が崩れる）
 - highlight: "loss"=損する情報（赤）, "gain"=得する情報（緑）, "neutral"=中立（黒）
 - 数字は最新の2024年度データを使用
 - youtube_title: YouTubeに投稿するタイトル「マイルド煽り + テーマ名 + 【年金1分裏情報】」
@@ -500,6 +500,7 @@ def generate_script(table_data: dict, key_manager: GeminiKeyManager) -> dict:
 
 ルール：
 - 60秒以内（6〜8往復、合計250〜350文字程度）
+- 1つのセリフは30文字以内（字幕が見やすくなる）
 - 控室モード、砕けた口調OK
 - 表のポイントを2〜3個解説
 - 「え、マジで？」「それヤバくない？」的なリアクション多め
@@ -721,7 +722,7 @@ def generate_subtitles(script: list, audio_duration: float, output_path: str, ti
 
     # CTA用設定: 画面の86.5%位置（YouTube UIに被ってもOK）
     # 1920px * 0.135 = 259px
-    title_font_size = 70  # CTAは短いので小さめ
+    title_font_size = 105  # CTA 1.5倍サイズ
     title_margin_v = 259   # 下から259px = 上から約86.5%位置
 
     # BorderStyle=1 で縁取り+影、高齢者に見やすい配色
