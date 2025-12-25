@@ -702,7 +702,7 @@ def post_first_comment(youtube, video_id: str, first_comment: str = ""):
     """動画に初コメントを自動投稿"""
     print("  初コメントを投稿中...")
 
-    LINE_URL = "https://lin.ee/424lkquq"
+    LINE_URL = "https://lin.ee/SrziaPE"
 
     if first_comment:
         comment_text = f"{first_comment}\n\n↓ LINE登録はこちら ↓\n{LINE_URL}"
@@ -807,7 +807,7 @@ def main():
 毎日19時にランキング動画を投稿中！
 
 🔔 チャンネル登録お願いします
-📱 LINEで毎朝7時に最新情報をお届け: https://lin.ee/424lkquq
+📱 LINEで毎朝7時に最新情報をお届け: https://lin.ee/SrziaPE
 
 #年金 #ランキング #老後 #お金 #年金制度
 """

@@ -64,7 +64,7 @@ PLAYLIST_DESCRIPTION = """年金のこと、ちゃんと知ってますか？
 知ってるか知らないかで、全然違います。
 
 🔔 チャンネル登録で最新情報をお届け！
-📱 LINE登録で毎朝届く → https://lin.ee/424lkquq"""
+📱 LINE登録で毎朝届く → https://lin.ee/SrziaPE"""
 
 # ===== テーマリスト =====
 THEMES = [
@@ -1066,7 +1066,7 @@ def post_first_comment(youtube, video_id: str, first_comment: str = ""):
     """
     print("  初コメントを投稿中...")
 
-    LINE_URL = "https://lin.ee/424lkquq"
+    LINE_URL = "https://lin.ee/SrziaPE"
 
     if first_comment:
         # 動的生成されたコメントにLINE URLを追加
