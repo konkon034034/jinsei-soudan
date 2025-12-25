@@ -4040,7 +4040,7 @@ def generate_first_comment(script: dict, news_data: dict, key_manager: GeminiKey
     Returns:
         str: カツミのコメント（LINE URL付き）
     """
-    LINE_URL = "https://lin.ee/424lkquq"
+    LINE_URL = "https://lin.ee/SrziaPE"
 
     # 台本からfirst_commentを取得
     comment = script.get("first_comment", "")
