@@ -135,6 +135,27 @@ jobs:
             fi
           fi
 
+      - name: 成功時にLINE通知
+        if: success() && github.event.inputs.test_mode != 'true'
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+        run: |
+          if [ -n "$LINE_CHANNEL_ACCESS_TOKEN" ] && [ -f "video_url.txt" ]; then
+            VIDEO_URL=$(cat video_url.txt)
+            curl -X POST "https://api.line.me/v2/bot/message/broadcast" \
+              -H "Authorization: Bearer $LINE_CHANNEL_ACCESS_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "messages": [
+                  {
+                    "type": "text",
+                    "text": "📱 年金1分裏情報を更新しました！\n▶️ '"$VIDEO_URL"'"
+                  }
+                ]
+              }'
+            echo "LINE通知を送信しました"
+          fi
+
       - name: エラー時にDiscord通知
         if: failure()
         env:

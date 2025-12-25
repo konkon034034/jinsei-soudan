@@ -4766,11 +4766,14 @@ def main():
         # 5. ハッシュタグ
         hashtags = "#年金 #年金ニュース #厚生年金 #国民年金 #老後 #シニア #iDeCo #NISA #年金解説 #社会保険"
 
-        # 6. 免責事項
+        # 6. LINE誘導
+        line_section = "\n\n📱 LINEで毎日11時に最新情報をお届け: https://lin.ee/SrziaPE\n"
+
+        # 7. 免責事項
         disclaimer = "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n【免責事項】\nこの動画は一般的な情報提供を目的としており、個別の年金相談や専門的なアドバイスを行うものではありません。正確な情報は年金事務所や専門家にご確認ください。\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
         # 概要欄を組み立て
-        description = header + summary_section + key_points_section + source_section + hashtags + disclaimer
+        description = header + summary_section + key_points_section + source_section + hashtags + line_section + disclaimer
 
         # YouTube説明文の制限（5000文字、無効文字除去）
         description = description.replace("<", "").replace(">", "")  # 無効文字除去
