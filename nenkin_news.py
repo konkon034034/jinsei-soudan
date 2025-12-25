@@ -822,7 +822,7 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager, test_mode: b
 
 【LINE誘導の例】
 「LINEだともっと詳しく届くよ」
-「毎朝届くLINE、届いてる？」
+「毎日届くLINE、届いてる？」
 「LINEの方が早く届くからね〜」
 ※URLは後から追加するので不要
 
@@ -2840,7 +2840,7 @@ def generate_qr_background(output_path: str):
 
     レイアウト:
     - 背景: 真っ黒
-    - 上部: テキスト「LINE登録で最新年金ニュースが毎朝届く！」(白、太字、50px)
+    - 上部: テキスト「LINE登録で最新年金ニュースが毎日届く！」(白、太字、50px)
     - 中央: QRコード（画面幅の40%程度）
     - 下部: 字幕用に空けておく
     """
@@ -2872,7 +2872,7 @@ def generate_qr_background(output_path: str):
         font = ImageFont.load_default()
 
     # テキストを描画（上部）
-    text = "LINE登録で最新年金ニュースが毎朝届く！"
+    text = "LINE登録で最新年金ニュースが毎日届く！"
     text_bbox = draw.textbbox((0, 0), text, font=font)
     text_width = text_bbox[2] - text_bbox[0]
     text_height = text_bbox[3] - text_bbox[1]
@@ -3807,7 +3807,7 @@ def get_or_create_playlist(youtube, title: str, description: str = None):
     """再生リストを取得または作成"""
     # デフォルトの説明文
     if description is None:
-        description = "毎朝届く年金ニュースをまとめてお届け。聞き流すだけで年金の知識が身につきます。"
+        description = "毎日届く年金ニュースをまとめてお届け。聞き流すだけで年金の知識が身につきます。"
 
     # 既存の再生リストを検索
     request = youtube.playlists().list(
@@ -3868,7 +3868,7 @@ def add_to_playlists(youtube, video_id):
         playlist_id = get_or_create_playlist(
             youtube,
             title="聞くだけでわかる年金のお話",
-            description="毎朝届く年金ニュースをまとめてお届け。聞き流すだけで年金の知識が身につきます。"
+            description="毎日届く年金ニュースをまとめてお届け。聞き流すだけで年金の知識が身につきます。"
         )
         add_to_playlist(youtube, playlist_id, video_id)
         results["playlist"] = True
@@ -4051,7 +4051,7 @@ def generate_first_comment(script: dict, news_data: dict, key_manager: GeminiKey
         comment = """カツミです💕
 今日も見てくれてありがとう！
 年金の話って難しいけど、知らないと損しちゃうからね。
-毎朝7時にLINEで届くから、届いてない人は登録してね〜"""
+毎日11時にLINEで届くから、届いてない人は登録してね〜"""
 
     # LINE URLを追加
     comment = f"{comment}\n\n↓ LINE登録はこちら ↓\n{LINE_URL}"
