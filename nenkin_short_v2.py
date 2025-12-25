@@ -122,8 +122,8 @@ THEMES = [
 
 # ダミーデータ（SKIP_API時に使用）
 DUMMY_TABLE_DATA = {
-    "title": "知らないと大損！",
-    "subtitle": "年金受給額の損益分岐点",
+    "title": "あなたは大丈夫？年金受給額の損益分岐点【年金1分裏情報】",
+    "subtitle": "",
     "headers": ["受給開始年齢", "受給率", "損益分岐点"],
     "rows": [
         {"cells": ["60歳", "76.0%", "82歳以上生きると損"], "highlight": "loss"},
@@ -257,8 +257,8 @@ def generate_table_data(theme: dict, key_manager: GeminiKeyManager) -> dict:
 
 以下のJSON形式で出力してください（JSONのみ、説明不要）：
 {{
-  "title": "知らないと大損！",
-  "subtitle": "{theme['name']}",
+  "title": "マイルド煽り + テーマ名 + 【年金1分裏情報】",
+  "subtitle": "",
   "headers": ["列1", "列2", "列3"],
   "rows": [
     {{"cells": ["データ1", "データ2", "データ3"], "highlight": "loss"}},
@@ -273,8 +273,9 @@ def generate_table_data(theme: dict, key_manager: GeminiKeyManager) -> dict:
 - 列数は2〜4列
 - highlight: "loss"=損する情報（赤）, "gain"=得する情報（緑）, "neutral"=中立（黒）
 - 数字は最新の2024年度データを使用
-- タイトルは煽り系（「知らないと損！」「これ知ってた？」「保存必須！」等）
-- subtitleはテーマを分かりやすく
+- タイトルは「マイルドな一言煽り + テーマ名 + 【年金1分裏情報】」の形式
+- 煽りパターン例：「あなたは大丈夫？」「まだ〇〇してない？」「意外と知らない！」「確認した？」「これ忘れがち！」「どっちが得？」「こんなに〇〇？」「いくらもらえる？」「みんなやってる！」
+- subtitleは空文字("")にする（タイトルに統合済み）
 - 具体的な数字や金額を入れる"""
 
     max_retries = 3
