@@ -4640,8 +4640,8 @@ def create_community_image(question: str, output_path: str) -> str:
     return output_path
 
 
-def send_community_post_to_discord(post_data: dict):
-    """コミュニティ投稿案をDiscordに送信（画像付き）
+def send_community_post_to_slack(post_data: dict):
+    """コミュニティ投稿案をSlackに送信
 
     Args:
         post_data: {"question": "質問文", "options": ["選択肢1", "選択肢2", ...]}
@@ -4649,9 +4649,9 @@ def send_community_post_to_discord(post_data: dict):
     if not post_data:
         return
 
-    webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
     if not webhook_url:
-        print("  ⚠ DISCORD_WEBHOOK_URL未設定のためスキップ")
+        print("  ⚠ SLACK_WEBHOOK_URL未設定のためスキップ")
         return
 
     question = post_data.get("question", "")
@@ -4660,14 +4660,13 @@ def send_community_post_to_discord(post_data: dict):
     # 選択肢を整形
     options_text = "\n".join([f"{i+1}. {opt}" for i, opt in enumerate(options)])
 
-    # コミュニティ投稿用画像を生成
+    # コミュニティ投稿用画像を生成（ローカル保存）
     today = datetime.now().strftime("%Y%m%d")
     image_path = f"community_post_news_{today}.png"
     create_community_image(question, image_path)
+    print(f"  ✓ コミュニティ画像生成: {image_path}")
 
-    message = f"""━━━━━━━━━━━━━━━━━━
-📊 **今日のコミュニティ投稿案**
-━━━━━━━━━━━━━━━━━━
+    message = f"""📊 *今日のコミュニティ投稿案*
 
 【質問文】コピペ用👇
 {question}
@@ -4676,22 +4675,18 @@ def send_community_post_to_discord(post_data: dict):
 {options_text}
 
 ▶️ 投稿はこちら
-https://studio.youtube.com/channel/UCcjf76-saCvRAkETlieeokw/community
-━━━━━━━━━━━━━━━━━━"""
+https://studio.youtube.com/channel/UCcjf76-saCvRAkETlieeokw/community"""
 
     try:
-        # 画像付きで送信
-        with open(image_path, 'rb') as f:
-            files = {'file': ('community_post.png', f, 'image/png')}
-            data = {'content': message}
-            response = requests.post(webhook_url, data=data, files=files, timeout=30)
+        payload = {"text": message}
+        response = requests.post(webhook_url, json=payload, timeout=30)
 
-        if response.status_code in [200, 204]:
-            print("  ✓ コミュニティ投稿案をDiscordに送信完了（画像付き）")
+        if response.status_code == 200:
+            print("  ✓ コミュニティ投稿案をSlackに送信完了")
         else:
-            print(f"  ⚠ Discord送信失敗: {response.status_code}")
+            print(f"  ⚠ Slack送信失敗: {response.status_code}")
     except Exception as e:
-        print(f"  ⚠ Discord送信エラー: {e}")
+        print(f"  ⚠ Slack送信エラー: {e}")
 
 
 def main():
@@ -4910,7 +4905,7 @@ def main():
             if not TEST_MODE and video_id:
                 community_post = generate_community_post(news_data, key_manager)
                 if community_post:
-                    send_community_post_to_discord(community_post)
+                    send_community_post_to_slack(community_post)
 
         except Exception as e:
             print(f"❌ YouTube投稿エラー: {e}")
