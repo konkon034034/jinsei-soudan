@@ -840,9 +840,11 @@ def main():
                     f"⏱️ 処理時間: {elapsed:.1f}秒"
                 )
 
-            # video_url.txt に保存（ワークフロー通知用）
+            # video_url.txt, video_title.txt に保存（ワークフロー通知用）
             with open("video_url.txt", "w") as f:
                 f.write(video_url)
+            with open("video_title.txt", "w") as f:
+                f.write(title)
 
     except Exception as e:
         print(f"\n❌ エラー: {e}")

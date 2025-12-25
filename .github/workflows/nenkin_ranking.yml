@@ -142,6 +142,10 @@ jobs:
         run: |
           if [ -n "$LINE_CHANNEL_ACCESS_TOKEN" ] && [ -f "video_url.txt" ]; then
             VIDEO_URL=$(cat video_url.txt)
+            VIDEO_TITLE=""
+            if [ -f "video_title.txt" ]; then
+              VIDEO_TITLE=$(cat video_title.txt)
+            fi
             curl -X POST "https://api.line.me/v2/bot/message/broadcast" \
               -H "Authorization: Bearer $LINE_CHANNEL_ACCESS_TOKEN" \
               -H "Content-Type: application/json" \
@@ -149,7 +153,7 @@ jobs:
                 "messages": [
                   {
                     "type": "text",
-                    "text": "📊 年金ランキング動画を更新しました！\n▶️ '"$VIDEO_URL"'"
+                    "text": "🌙 こんばんは！\n今日のランキング、一緒に見ませんか？\n\n📊 '"$VIDEO_TITLE"'\n\n▶️ '"$VIDEO_URL"'"
                   }
                 ]
               }'

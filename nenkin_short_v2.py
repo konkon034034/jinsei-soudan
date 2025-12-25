@@ -1228,11 +1228,18 @@ def main():
         print(f"🎬 動画URL: {video_url}")
         print("=" * 50)
 
+        # 動画URL・タイトルをファイルに保存（ワークフロー通知用）
+        youtube_title = table_data.get('youtube_title', '')
+        with open("video_url.txt", "w") as f:
+            f.write(video_url)
+        with open("video_title.txt", "w") as f:
+            f.write(youtube_title)
+
         # Discord通知
         if video_url and not TEST_MODE:
             send_discord_notification(f"📊 年金データ表ショート動画を投稿しました！\n\n{video_url}")
         elif TEST_MODE:
-            send_discord_notification(f"🧪 テスト完了: {table_data.get('youtube_title', '')}")
+            send_discord_notification(f"🧪 テスト完了: {youtube_title}")
 
 
 if __name__ == "__main__":
