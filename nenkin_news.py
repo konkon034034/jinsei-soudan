@@ -53,7 +53,7 @@ USE_MODAL_GPU = os.environ.get("USE_MODAL_GPU", "true").lower() == "true"
 
 # ===== チャンネル情報 =====
 CHANNEL_NAME = "毎日届く！得する年金ニュース速報"
-CHANNEL_DESCRIPTION = "毎朝7時、年金に関する最新ニュースをお届けします"
+CHANNEL_DESCRIPTION = "毎日11時、年金に関する最新ニュースをお届けします"
 
 # ===== Gemini TTS設定 =====
 GEMINI_TTS_MODEL = "gemini-2.5-flash-preview-tts"
@@ -3880,8 +3880,8 @@ def add_to_playlists(youtube, video_id):
     try:
         podcast_id = get_or_create_playlist(
             youtube,
-            title="おはよう年金ラジオ",
-            description="毎朝届く年金ニュース。カツミとヒロシが今日の年金情報をわかりやすくお届けします。家事をしながら、散歩しながら、聞き流すだけで年金の知識が身につきます。"
+            title="得する年金ニュースラジオ",
+            description="毎日届く年金ニュース。カツミとヒロシが今日の年金情報をわかりやすくお届けします。家事をしながら、散歩しながら、聞き流すだけで年金の知識が身につきます。"
         )
         add_to_playlist(youtube, podcast_id, video_id)
         results["podcast"] = True
@@ -3959,7 +3959,7 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list)
     if playlist_results["playlist"]:
         print(f"再生リスト: 聞くだけでわかる年金のお話")
     if playlist_results["podcast"]:
-        print(f"ポッドキャスト: おはよう年金ラジオ")
+        print(f"ポッドキャスト: 得する年金ニュースラジオ")
     print("=" * 40)
 
     return url
