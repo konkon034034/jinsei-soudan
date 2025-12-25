@@ -751,6 +751,125 @@ def send_discord_notification(message: str):
             print(f"  ⚠ Discord通知失敗: {e}")
 
 
+def generate_community_post_ranking(title: str, key_manager: GeminiKeyManager) -> dict:
+    """ランキング動画用コミュニティ投稿案を生成"""
+    print("\n[コミュニティ投稿案] 生成中...")
+
+    if SKIP_API:
+        print("  [SKIP_API] スキップ")
+        return None
+
+    api_key = key_manager.get_key()
+    if not api_key:
+        print("  ⚠ APIキーがないためスキップ")
+        return None
+
+    prompt = f"""あなたは年金ニュースチャンネルの運営者です。
+今日のランキング動画のテーマに関連した、視聴者参加型のアンケート投稿を作ってください。
+
+【今日のランキングテーマ】
+{title}
+
+【ルール】
+- 損得・賛否・経験を聞く形式
+- 高齢者が答えやすいシンプルな質問
+- 選択肢は2〜4個
+- 「正直に聞きます」「皆さんに質問です」など親しみやすい書き出し
+- 絵文字は控えめ（1〜2個）
+
+【出力形式】必ずこの形式で出力してください：
+質問文:
+〇〇〇〇？
+
+選択肢:
+1. △△△
+2. □□□
+3. ▲▲▲"""
+
+    try:
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(temperature=0.7)
+        )
+        text = response.text.strip()
+
+        # パース
+        question = ""
+        options = []
+        lines = text.split("\n")
+        in_options = False
+        for line in lines:
+            line = line.strip()
+            if line.startswith("質問文:"):
+                continue
+            elif line.startswith("選択肢:"):
+                in_options = True
+                continue
+            elif not in_options and line and not question:
+                question = line
+            elif in_options and line:
+                import re
+                match = re.match(r'^[\d\.・\-\*]+\s*(.+)$', line)
+                if match:
+                    options.append(match.group(1))
+                elif line:
+                    options.append(line)
+
+        if question and len(options) >= 2:
+            print(f"  ✓ 投稿案生成完了: {question[:30]}...")
+            return {"question": question, "options": options[:4]}
+
+    except Exception as e:
+        print(f"  ⚠ 生成エラー: {e}")
+
+    print("  ⚠ コミュニティ投稿案の生成に失敗")
+    return None
+
+
+def send_community_post_to_discord_ranking(post_data: dict):
+    """ランキング動画用コミュニティ投稿案をDiscordに送信"""
+    if not post_data:
+        return
+
+    webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
+    if not webhook_url:
+        return
+
+    question = post_data.get("question", "")
+    options = post_data.get("options", [])
+    options_text = "\n".join([f"{i+1}. {opt}" for i, opt in enumerate(options)])
+
+    message = f"""━━━━━━━━━━━━━━━━━━
+📊 **ランキング動画のコミュニティ投稿案**
+━━━━━━━━━━━━━━━━━━
+
+【質問文】コピペ用👇
+{question}
+
+【選択肢】
+{options_text}
+
+▶️ 投稿はこちら
+https://studio.youtube.com/channel/UCcjf76-saCvRAkETlieeokw/community
+━━━━━━━━━━━━━━━━━━"""
+
+    try:
+        response = requests.post(
+            webhook_url,
+            json={"content": message},
+            headers={"Content-Type": "application/json"},
+            timeout=30
+        )
+        if response.status_code in [200, 204]:
+            print("  ✓ コミュニティ投稿案をDiscordに送信完了")
+        else:
+            print(f"  ⚠ Discord送信失敗: {response.status_code}")
+    except Exception as e:
+        print(f"  ⚠ Discord送信エラー: {e}")
+
+
 def main():
     """メイン処理"""
     print("=" * 50)
@@ -845,6 +964,12 @@ def main():
                 f.write(video_url)
             with open("video_title.txt", "w") as f:
                 f.write(title)
+
+            # コミュニティ投稿案（本番のみ）
+            if not TEST_MODE:
+                community_post = generate_community_post_ranking(title, key_manager)
+                if community_post:
+                    send_community_post_to_discord_ranking(community_post)
 
     except Exception as e:
         print(f"\n❌ エラー: {e}")
