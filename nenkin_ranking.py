@@ -328,7 +328,8 @@ def generate_script(theme: dict, key_manager: GeminiKeyManager) -> dict:
 以下のJSON形式で出力してください:
 ```json
 {{
-  "title": "動画タイトル（テーマ名をそのまま使用）",
+  "title": "テーマ名（〇〇ランキングの形式）",
+  "hook": "煽り文（例：1位は〇〇！△位が意外... or 意外なものが△位に！）",
   "description": "動画の説明文（100文字程度）",
   "rankings": [
     {{
@@ -800,7 +801,7 @@ def main():
             generate_video(audio_path, subtitle_path, bg_path, video_path, duration)
 
             # タイトルと説明文
-            title = f"【保存版】{script.get('title', theme['title'])}"
+            title = f"{script.get('title', theme['title'])}（{script.get('hook', '1位は意外にも...')}）【年金口コミぶっちゃけランキング】"
             description = f"""{script.get('description', theme['description'])}
 
 📺 年金ニュースチャンネル
