@@ -4640,11 +4640,13 @@ def create_community_image(question: str, output_path: str) -> str:
     return output_path
 
 
-def send_community_post_to_slack(post_data: dict):
-    """コミュニティ投稿案をSlackに送信
+def send_community_post_to_slack(post_data: dict, title: str = "", video_url: str = ""):
+    """コミュニティ投稿案をSlackに送信（2種類の投稿案）
 
     Args:
         post_data: {"question": "質問文", "options": ["選択肢1", "選択肢2", ...]}
+        title: 動画タイトル
+        video_url: 動画URL
     """
     if not post_data:
         return
@@ -4666,7 +4668,20 @@ def send_community_post_to_slack(post_data: dict):
     create_community_image(question, image_path)
     print(f"  ✓ コミュニティ画像生成: {image_path}")
 
-    message = f"""📊 *今日のコミュニティ投稿案*
+    # 【投稿案1】ハイプ呼びかけ投稿
+    hype_message = f"""📺 *【投稿案1】ハイプ呼びかけ*
+
+今日の年金ニュース投稿しました！
+
+{title}
+
+🔥 この動画が役に立ったら「ハイプ」で応援お願いします！
+（週3回まで無料・いいねボタンの横にあります）
+
+▶️ {video_url}"""
+
+    # 【投稿案2】アンケート投稿
+    survey_message = f"""📊 *【投稿案2】アンケート投稿*
 
 【質問文】コピペ用👇
 {question}
@@ -4677,12 +4692,19 @@ def send_community_post_to_slack(post_data: dict):
 ▶️ 投稿はこちら
 https://studio.youtube.com/channel/UCcjf76-saCvRAkETlieeokw/community"""
 
+    # 両方を1つのメッセージで送信
+    combined_message = f"""{hype_message}
+
+━━━━━━━━━━━━━━━━━━━━
+
+{survey_message}"""
+
     try:
-        payload = {"text": message}
+        payload = {"text": combined_message}
         response = requests.post(webhook_url, json=payload, timeout=30)
 
         if response.status_code == 200:
-            print("  ✓ コミュニティ投稿案をSlackに送信完了")
+            print("  ✓ コミュニティ投稿案（2種類）をSlackに送信完了")
         else:
             print(f"  ⚠ Slack送信失敗: {response.status_code}")
     except Exception as e:
@@ -4905,7 +4927,7 @@ def main():
             if not TEST_MODE and video_id:
                 community_post = generate_community_post(news_data, key_manager)
                 if community_post:
-                    send_community_post_to_slack(community_post)
+                    send_community_post_to_slack(community_post, title, video_url)
 
         except Exception as e:
             print(f"❌ YouTube投稿エラー: {e}")
