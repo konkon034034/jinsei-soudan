@@ -122,8 +122,10 @@ THEMES = [
 
 # ダミーデータ（SKIP_API時に使用）
 DUMMY_TABLE_DATA = {
-    "title": "あなたは大丈夫？年金受給額の損益分岐点【年金1分裏情報】",
-    "subtitle": "",
+    "youtube_title": "あなたは大丈夫？年金受給額の損益分岐点【年金1分裏情報】",
+    "screen_hook": "あなたは大丈夫？",
+    "screen_theme": "年金受給額の損益分岐点",
+    "screen_cta": "保存して損回避！",
     "headers": ["受給開始年齢", "受給率", "損益分岐点"],
     "rows": [
         {"cells": ["60歳", "76.0%", "82歳以上生きると損"], "highlight": "loss"},
@@ -257,8 +259,10 @@ def generate_table_data(theme: dict, key_manager: GeminiKeyManager) -> dict:
 
 以下のJSON形式で出力してください（JSONのみ、説明不要）：
 {{
-  "title": "マイルド煽り + テーマ名 + 【年金1分裏情報】",
-  "subtitle": "",
+  "youtube_title": "マイルド煽り + テーマ名 + 【年金1分裏情報】",
+  "screen_hook": "マイルド煽り（10文字以内）",
+  "screen_theme": "テーマ名（15文字以内）",
+  "screen_cta": "短いCTA（12文字以内）",
   "headers": ["列1", "列2", "列3"],
   "rows": [
     {{"cells": ["データ1", "データ2", "データ3"], "highlight": "loss"}},
@@ -273,9 +277,10 @@ def generate_table_data(theme: dict, key_manager: GeminiKeyManager) -> dict:
 - 列数は2〜4列
 - highlight: "loss"=損する情報（赤）, "gain"=得する情報（緑）, "neutral"=中立（黒）
 - 数字は最新の2024年度データを使用
-- タイトルは「マイルドな一言煽り + テーマ名 + 【年金1分裏情報】」の形式
-- 煽りパターン例：「あなたは大丈夫？」「まだ〇〇してない？」「意外と知らない！」「確認した？」「これ忘れがち！」「どっちが得？」「こんなに〇〇？」「いくらもらえる？」「みんなやってる！」
-- subtitleは空文字("")にする（タイトルに統合済み）
+- youtube_title: YouTubeに投稿するタイトル「マイルド煽り + テーマ名 + 【年金1分裏情報】」
+- screen_hook: 画面上部1行目（10文字以内）例：「あなたは大丈夫？」「知らないと損！」「確認した？」「意外と知らない！」
+- screen_theme: 画面上部2行目（15文字以内）テーマ名のみ
+- screen_cta: 画面下部CTA（12文字以内）例：「保存して損回避！」「今すぐ保存！」「保存必須！」「これ保存！」
 - 具体的な数字や金額を入れる"""
 
     max_retries = 3
@@ -300,7 +305,7 @@ def generate_table_data(theme: dict, key_manager: GeminiKeyManager) -> dict:
                 result_text = result_text.split("```")[1].split("```")[0]
 
             table_data = json.loads(result_text)
-            print(f"  ✓ 表データ生成完了: {table_data['subtitle']}")
+            print(f"  ✓ 表データ生成完了: {table_data.get('youtube_title', '')}")
             print(f"    行数: {len(table_data['rows'])}, 列数: {len(table_data['headers'])}")
             return table_data
 
@@ -351,9 +356,9 @@ def generate_table_image(table_data: dict, output_path: str):
         cell_font = title_font
         footer_font = title_font
 
-    # タイトル（上部、黄色、太い黒縁取り+白影）
-    title = table_data.get("title", "知らないと損！")
-    title_y = 80
+    # 1行目: screen_hook（上部、黄色、太い黒縁取り+白影）
+    screen_hook = table_data.get("screen_hook", "知らないと損！")
+    hook_y = 60
 
     # 太い縁取り（黒、5px）
     outline_color = '#000000'
@@ -361,24 +366,25 @@ def generate_table_image(table_data: dict, output_path: str):
     for dx in range(-outline_width, outline_width + 1):
         for dy in range(-outline_width, outline_width + 1):
             if dx != 0 or dy != 0:
-                draw.text((width//2 + dx, title_y + dy), title, fill=outline_color, font=title_font, anchor="mm")
+                draw.text((width//2 + dx, hook_y + dy), screen_hook, fill=outline_color, font=title_font, anchor="mm")
     # 影（白、右下）
-    draw.text((width//2 + 4, title_y + 4), title, fill='#FFFFFF', font=title_font, anchor="mm")
+    draw.text((width//2 + 4, hook_y + 4), screen_hook, fill='#FFFFFF', font=title_font, anchor="mm")
     # 本体（黄色）
-    draw.text((width//2, title_y), title, fill='#FFD700', font=title_font, anchor="mm")
+    draw.text((width//2, hook_y), screen_hook, fill='#FFD700', font=title_font, anchor="mm")
 
-    # サブタイトル（太い黒縁取り+白影）
-    subtitle = table_data.get("subtitle", "")
-    subtitle_y = 150
+    # 2行目: screen_theme + 【年金1分裏情報】（太い黒縁取り+白影）
+    screen_theme = table_data.get("screen_theme", "")
+    theme_text = f"{screen_theme}【年金1分裏情報】" if screen_theme else "【年金1分裏情報】"
+    theme_y = 130
     # 太い縁取り（黒、4px）
     for dx in range(-4, 5):
         for dy in range(-4, 5):
             if dx != 0 or dy != 0:
-                draw.text((width//2 + dx, subtitle_y + dy), subtitle, fill='#000000', font=subtitle_font, anchor="mm")
+                draw.text((width//2 + dx, theme_y + dy), theme_text, fill='#000000', font=subtitle_font, anchor="mm")
     # 影（白）
-    draw.text((width//2 + 3, subtitle_y + 3), subtitle, fill='#FFFFFF', font=subtitle_font, anchor="mm")
+    draw.text((width//2 + 3, theme_y + 3), theme_text, fill='#FFFFFF', font=subtitle_font, anchor="mm")
     # 本体（黄色）
-    draw.text((width//2, subtitle_y), subtitle, fill='#FFFF00', font=subtitle_font, anchor="mm")
+    draw.text((width//2, theme_y), theme_text, fill='#FFFF00', font=subtitle_font, anchor="mm")
 
     # 表の描画
     headers = table_data.get("headers", [])
@@ -458,7 +464,7 @@ def generate_table_image(table_data: dict, output_path: str):
         footer_y = table_y + table_height + 30
         draw.text((width//2, footer_y), footer, fill='#666666', font=footer_font, anchor="mm")
 
-    # 「保存してね」メッセージは削除（セリフで言わせる）
+    # 下部CTAはASS字幕で固定表示するため、表画像内には描画しない
 
     img.save(output_path, "PNG")
     print(f"  ✓ 表画像生成完了: {output_path}")
@@ -485,7 +491,7 @@ def generate_script(table_data: dict, key_manager: GeminiKeyManager) -> dict:
     prompt = f"""あなたは年金ニュースラジオの控室にいるカツミとヒロシです。
 以下の表について60秒で本音トークしてください。
 
-【表のタイトル】{table_data.get('subtitle', '')}
+【表のタイトル】{table_data.get('screen_theme', '')}
 【表の内容（一部）】
 {rows_summary}
 
@@ -713,9 +719,9 @@ def generate_subtitles(script: list, audio_duration: float, output_path: str, ti
     # フォントサイズ: 120px
     font_size = 120
 
-    # タイトル用設定: 画面の86.5%位置（YouTube UIに被ってもOK）
+    # CTA用設定: 画面の86.5%位置（YouTube UIに被ってもOK）
     # 1920px * 0.135 = 259px
-    title_font_size = 120
+    title_font_size = 70  # CTAは短いので小さめ
     title_margin_v = 259   # 下から259px = 上から約86.5%位置
 
     # BorderStyle=1 で縁取り+影、高齢者に見やすい配色
@@ -1170,8 +1176,9 @@ def main():
         duration = len(final_audio) / 1000.0
         print(f"  最終音声長: {duration:.1f}秒 (ジングル: {jingle_duration:.1f}秒)")
 
-        # 動画タイトル（字幕用）
-        video_title = table_data.get('subtitle', '')
+        # 画面下部CTA（ASS字幕で固定表示、12文字以内に切り詰め）
+        screen_cta = table_data.get('screen_cta', '')
+        video_title = screen_cta[:12] if len(screen_cta) > 12 else screen_cta
 
         # 字幕生成（ジングル分だけタイミングをオフセット、タイトル固定表示）
         subtitle_path = str(temp_path / "subtitles.ass")
@@ -1194,8 +1201,8 @@ def main():
         generate_video(image_path, bg_image_path, final_audio_path, subtitle_path, video_path, duration)
 
         # タイトルと説明文
-        title = f"{table_data.get('title', '')} {video_title} #Shorts"
-        description = f"""📊 {table_data.get('subtitle', '')}
+        title = f"{table_data.get('youtube_title', '')} #Shorts"
+        description = f"""📊 {table_data.get('youtube_title', '')}
 
 年金の気になる情報を分かりやすい表でお届け！
 保存して活用してくださいね。
@@ -1225,7 +1232,7 @@ def main():
         if video_url and not TEST_MODE:
             send_discord_notification(f"📊 年金データ表ショート動画を投稿しました！\n\n{video_url}")
         elif TEST_MODE:
-            send_discord_notification(f"🧪 テスト完了: {table_data.get('subtitle', '')}")
+            send_discord_notification(f"🧪 テスト完了: {table_data.get('youtube_title', '')}")
 
 
 if __name__ == "__main__":
