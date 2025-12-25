@@ -146,6 +146,7 @@ jobs:
           ENDING_JINGLE_FILE_ID: ${{ secrets.ENDING_JINGLE_FILE_ID }}
           BACKGROUND_IMAGE_ID: ${{ secrets.BACKGROUND_IMAGE_ID }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
           TTS_MODE: ${{ github.event.inputs.tts_mode || 'gemini' }}
           TTS_VOICE_FEMALE: ${{ github.event.inputs.tts_voice_female || 'Kore' }}
