@@ -38,7 +38,7 @@ VOICE_KATSUMI = "Kore"  # 女性
 VOICE_HIROSHI = "Puck"  # 男性
 
 # Google Drive背景画像ID
-BACKGROUND_IMAGE_ID = "1mP9u9WhUurmn2vBXB_BzzUnzPyo8ybVO"
+BACKGROUND_IMAGE_ID = "1QC578ihs-EZpS8Byo3GtVqZfMqQeYgoD"
 
 # ===== ランキングテーマ（30種類） =====
 RANKING_THEMES = [
@@ -316,6 +316,7 @@ def generate_script(theme: dict, key_manager: GeminiKeyManager) -> dict:
 - 年金の専門家、解説役
 - 落ち着いていて優しく丁寧
 - 視聴者に寄り添う雰囲気
+- 実は関西出身。普段は標準語だが、本音がポロッと出るときや感情が高ぶったときに、ごくたまーに関西弁が混じる（10〜15回に1回くらい。「ほんまに」「なんでやねん」「せやねん」など）。視聴者に「あれ？カツミさんって関西の人？」と思わせる程度
 
 ヒロシ（40代前半男性）
 - 視聴者代弁、素朴な疑問を聞く
@@ -580,9 +581,9 @@ def generate_subtitles(dialogue: list, duration: float, output_path: str, timing
     """ASS字幕を生成"""
     print("\n[4/7] 字幕を生成中...")
 
-    # ASS字幕設定（フォントサイズ3倍: 48→144）
-    font_size = 144
-    margin_v = 80
+    # ASS字幕設定
+    font_size = 36
+    margin_v = 40
 
     ass_header = f"""[Script Info]
 Title: Ranking Video Subtitles
