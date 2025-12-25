@@ -24,6 +24,7 @@ from google import genai
 from google.genai import types
 from pydub import AudioSegment
 from PIL import Image, ImageDraw, ImageFont
+import qrcode
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
@@ -64,7 +65,7 @@ PLAYLIST_DESCRIPTION = """年金のこと、ちゃんと知ってますか？
 知ってるか知らないかで、全然違います。
 
 🔔 チャンネル登録で最新情報をお届け！
-📱 LINE登録で毎朝届く → https://lin.ee/SrziaPE"""
+📱 LINE登録はチャンネルページのリンクから！"""
 
 # ===== テーマリスト =====
 THEMES = [
@@ -854,19 +855,91 @@ def process_audio_with_jingle_bgm(talk_audio_path: str, output_path: str, temp_d
     return jingle_duration
 
 
+def generate_line_qr_overlay(output_path: str) -> str:
+    """LINE QRコード付きオーバーレイ画像を生成
+
+    Returns:
+        str: 生成した画像のパス
+    """
+    LINE_URL = "https://lin.ee/SrziaPE"
+
+    # QRコード生成
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=2,
+    )
+    qr.add_data(LINE_URL)
+    qr.make(fit=True)
+    qr_img = qr.make_image(fill_color="black", back_color="white")
+    qr_img = qr_img.resize((200, 200), Image.Resampling.LANCZOS)
+
+    # オーバーレイ画像を作成（透明背景）
+    overlay = Image.new('RGBA', (VIDEO_WIDTH, VIDEO_HEIGHT), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+
+    # 白い背景の矩形（QR + テキスト用）
+    box_width = 320
+    box_height = 300
+    box_x = VIDEO_WIDTH - box_width - 40  # 右から40px
+    box_y = VIDEO_HEIGHT - box_height - 200  # 下から200px
+
+    # 角丸白背景
+    draw.rounded_rectangle(
+        [(box_x, box_y), (box_x + box_width, box_y + box_height)],
+        radius=20,
+        fill=(255, 255, 255, 240)
+    )
+
+    # QRコードを貼り付け
+    qr_x = box_x + (box_width - 200) // 2
+    qr_y = box_y + 20
+    overlay.paste(qr_img, (qr_x, qr_y))
+
+    # テキスト追加
+    try:
+        font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
+        if not os.path.exists(font_path):
+            font_path = "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc"
+        font = ImageFont.truetype(font_path, 28)
+    except:
+        font = ImageFont.load_default()
+
+    # 「LINEで毎日届く！」
+    text1 = "📱 LINEで毎日届く！"
+    bbox = draw.textbbox((0, 0), text1, font=font)
+    text_width = bbox[2] - bbox[0]
+    text_x = box_x + (box_width - text_width) // 2
+    draw.text((text_x, qr_y + 210), text1, fill=(0, 0, 0), font=font)
+
+    # 「カメラでスキャン→」
+    text2 = "カメラでスキャン→"
+    bbox2 = draw.textbbox((0, 0), text2, font=font)
+    text_width2 = bbox2[2] - bbox2[0]
+    text_x2 = box_x + (box_width - text_width2) // 2
+    draw.text((text_x2, qr_y + 245), text2, fill=(100, 100, 100), font=font)
+
+    # 保存
+    overlay.save(output_path, 'PNG')
+    print(f"  ✓ QRオーバーレイ生成: {output_path}")
+    return output_path
+
+
 def generate_video(table_image_path: str, bg_image_path: str, audio_path: str, subtitle_path: str, output_path: str, duration: float = 60):
-    """動画を生成（背景固定 + 表スクロールアニメーション）
+    """動画を生成（背景固定 + 表スクロールアニメーション + 最後3秒QRコード）
 
     レイヤー構成（下から上）:
     - 背景画像（固定）
     - 表画像（上から下にスクロール）
     - 字幕、動画タイトル
+    - QRコード（最後3秒のみ）
 
     スクロールタイミング（上から降りてくる）:
     - 動画の半分の時点でスクロール完了
     - 例: 60秒動画 → 30秒でスクロール完了、残り30秒は固定
     """
-    print("\n[5/6] 動画を生成中（背景固定 + 表スクロール）...")
+    print("\n[5/6] 動画を生成中（背景固定 + 表スクロール + QRコード）...")
 
     # スクロールタイミング計算
     # 動画の半分の時点でスクロール完了
@@ -874,22 +947,32 @@ def generate_video(table_image_path: str, bg_image_path: str, audio_path: str, s
     scroll_end_time = duration / 2  # 動画の半分でスクロール完了
     scroll_speed = scroll_distance / scroll_end_time  # ピクセル/秒
 
+    # QRコードオーバーレイ生成
+    qr_overlay_path = "qr_overlay.png"
+    generate_line_qr_overlay(qr_overlay_path)
+
+    # QR表示タイミング（最後3秒）
+    qr_start_time = duration - 3
+
     # filter_complex:
     # [0] 背景画像を1080x1920にスケール
     # [1] 表画像をそのまま使用（1080x2420）
+    # [3] QRオーバーレイ（最後3秒のみ表示）
     # overlay: 表を背景の上に重ねる、y座標をアニメーション
     # 式: if(lt(t,scroll_end_time), -500+speed*t, 0)
     filter_complex = (
         f"[0:v]scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},setsar=1[bg];"
         f"[bg][1:v]overlay=0:'if(lt(t,{scroll_end_time}),-{scroll_distance}+{scroll_speed}*t,0)'[video];"
-        f"[video]ass={subtitle_path}[out]"
+        f"[video]ass={subtitle_path}[subtitled];"
+        f"[subtitled][3:v]overlay=0:0:enable='gte(t,{qr_start_time})'[out]"
     )
 
     cmd = [
         'ffmpeg', '-y',
-        '-loop', '1', '-i', bg_image_path,   # 背景画像
-        '-loop', '1', '-i', table_image_path, # 表画像
-        '-i', audio_path,                     # 音声
+        '-loop', '1', '-i', bg_image_path,   # 背景画像 [0]
+        '-loop', '1', '-i', table_image_path, # 表画像 [1]
+        '-i', audio_path,                     # 音声 [2]
+        '-loop', '1', '-i', qr_overlay_path,  # QRオーバーレイ [3]
         '-filter_complex', filter_complex,
         '-map', '[out]',
         '-map', '2:a',
@@ -900,8 +983,9 @@ def generate_video(table_image_path: str, bg_image_path: str, audio_path: str, s
         output_path
     ]
 
-    print(f"  レイヤー: 背景(固定) + 表(上から下) + 字幕")
+    print(f"  レイヤー: 背景(固定) + 表(上から下) + 字幕 + QR(最後3秒)")
     print(f"  スクロール: y=-{scroll_distance}→0 ({scroll_end_time:.1f}秒), 固定 ({duration - scroll_end_time:.1f}秒)")
+    print(f"  QRコード: {qr_start_time:.1f}秒〜{duration:.1f}秒")
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if os.path.exists(output_path):
