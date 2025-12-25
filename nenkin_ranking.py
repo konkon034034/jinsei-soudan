@@ -828,8 +828,81 @@ def generate_community_post_ranking(title: str, key_manager: GeminiKeyManager) -
     return None
 
 
+def create_community_image(question: str, output_path: str) -> str:
+    """コミュニティ投稿用画像を生成
+
+    Args:
+        question: 質問文
+        output_path: 出力パス
+
+    Returns:
+        str: 生成した画像のパス
+    """
+    from PIL import Image, ImageDraw, ImageFont
+    import textwrap
+
+    # 画像サイズ（YouTubeコミュニティ投稿用 1200x675推奨）
+    width = 1200
+    height = 675
+
+    # ベース画像を作成（温かみのあるベージュ系）
+    img = Image.new('RGB', (width, height), '#FFF8E7')
+    draw = ImageDraw.Draw(img)
+
+    # 上部に赤いバー
+    draw.rectangle([0, 0, width, 80], fill='#CC0000')
+
+    # フォント設定
+    try:
+        font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
+        if not os.path.exists(font_path):
+            font_path = "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc"
+        title_font = ImageFont.truetype(font_path, 42)
+        main_font = ImageFont.truetype(font_path, 56)
+        sub_font = ImageFont.truetype(font_path, 32)
+    except:
+        title_font = ImageFont.load_default()
+        main_font = ImageFont.load_default()
+        sub_font = ImageFont.load_default()
+
+    # 上部バーのテキスト
+    title_text = "📊 みんなに聞いてみた！"
+    bbox = draw.textbbox((0, 0), title_text, font=title_font)
+    text_width = bbox[2] - bbox[0]
+    draw.text((width // 2 - text_width // 2, 20), title_text, fill='white', font=title_font)
+
+    # 質問文を改行処理（20文字で折り返し）
+    wrapped_lines = []
+    for line in question.split('\n'):
+        wrapped_lines.extend(textwrap.wrap(line, width=20))
+
+    # メイン質問テキスト（中央配置）
+    y_pos = 200
+    line_height = 80
+    for line in wrapped_lines[:4]:  # 最大4行
+        bbox = draw.textbbox((0, 0), line, font=main_font)
+        text_width = bbox[2] - bbox[0]
+        draw.text((width // 2 - text_width // 2, y_pos), line, fill='#333333', font=main_font)
+        y_pos += line_height
+
+    # 下部にチャンネル名
+    channel_text = "毎日届く！得する年金ニュース速報"
+    bbox = draw.textbbox((0, 0), channel_text, font=sub_font)
+    text_width = bbox[2] - bbox[0]
+    draw.text((width // 2 - text_width // 2, height - 60), channel_text, fill='#888888', font=sub_font)
+
+    # 装飾（角に年金マーク風）
+    draw.text((40, 110), "💰", font=main_font)
+    draw.text((width - 100, 110), "💰", font=main_font)
+
+    # 保存
+    img.save(output_path, 'PNG')
+    print(f"  ✓ コミュニティ画像生成: {output_path}")
+    return output_path
+
+
 def send_community_post_to_discord_ranking(post_data: dict):
-    """ランキング動画用コミュニティ投稿案をDiscordに送信"""
+    """ランキング動画用コミュニティ投稿案をDiscordに送信（画像付き）"""
     if not post_data:
         return
 
@@ -840,6 +913,11 @@ def send_community_post_to_discord_ranking(post_data: dict):
     question = post_data.get("question", "")
     options = post_data.get("options", [])
     options_text = "\n".join([f"{i+1}. {opt}" for i, opt in enumerate(options)])
+
+    # コミュニティ投稿用画像を生成
+    today = datetime.now().strftime("%Y%m%d")
+    image_path = f"community_post_ranking_{today}.png"
+    create_community_image(question, image_path)
 
     message = f"""━━━━━━━━━━━━━━━━━━
 📊 **ランキング動画のコミュニティ投稿案**
@@ -856,14 +934,14 @@ https://studio.youtube.com/channel/UCcjf76-saCvRAkETlieeokw/community
 ━━━━━━━━━━━━━━━━━━"""
 
     try:
-        response = requests.post(
-            webhook_url,
-            json={"content": message},
-            headers={"Content-Type": "application/json"},
-            timeout=30
-        )
+        # 画像付きで送信
+        with open(image_path, 'rb') as f:
+            files = {'file': ('community_post.png', f, 'image/png')}
+            data = {'content': message}
+            response = requests.post(webhook_url, data=data, files=files, timeout=30)
+
         if response.status_code in [200, 204]:
-            print("  ✓ コミュニティ投稿案をDiscordに送信完了")
+            print("  ✓ コミュニティ投稿案をDiscordに送信完了（画像付き）")
         else:
             print(f"  ⚠ Discord送信失敗: {response.status_code}")
     except Exception as e:
