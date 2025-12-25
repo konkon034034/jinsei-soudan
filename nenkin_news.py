@@ -52,7 +52,7 @@ TTS_MODE = os.environ.get("TTS_MODE", "gemini").lower()
 USE_MODAL_GPU = os.environ.get("USE_MODAL_GPU", "true").lower() == "true"
 
 # ===== チャンネル情報 =====
-CHANNEL_NAME = "毎朝届く！おはよう年金ニュースラジオ"
+CHANNEL_NAME = "毎日届く！得する年金ニュース速報"
 CHANNEL_DESCRIPTION = "毎朝7時、年金に関する最新ニュースをお届けします"
 
 # ===== Gemini TTS設定 =====
@@ -707,7 +707,7 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager, test_mode: b
 
 【台本構成】
 1. オープニング
-   - 「おはようございます。{date_str}の年金ニュースをお届けします」
+   - 「こんにちは。{date_str}の年金ニュースをお届けします」
    - 今日のトピック紹介
 
 2. 各ニュースセクション（複数）
@@ -768,7 +768,7 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager, test_mode: b
   "description": "動画の説明文（100文字程度）",
   "tags": ["タグ1", "タグ2", "タグ3"],
   "opening": [
-    {{"speaker": "カツミ", "text": "おはようございます。{date_str}の年金ニュースをお届けします"}},
+    {{"speaker": "カツミ", "text": "こんにちは。{date_str}の年金ニュースをお届けします"}},
     {{"speaker": "ヒロシ", "text": "今日はどんなニュースがあるんですか？"}}
   ],
   "news_sections": [
