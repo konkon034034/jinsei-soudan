@@ -1,9 +1,9 @@
-name: Daily Scraper (字幕取得)
+name: Daily Scraper (字幕取得) [無効]
 
 on:
-  schedule:
-    - cron: '0 22 * * *'
-  workflow_dispatch:
+  # schedule:
+  #   - cron: '0 22 * * *'
+  workflow_dispatch:  # 手動実行のみ有効
 
 jobs:
   scrape:

@@ -1,0 +1,39 @@
+name: スプレッドシート操作
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: '実行するアクション'
+        required: true
+        default: 'check'
+        type: choice
+        options:
+          - check
+          - setup_nenkin
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python環境をセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 依存関係をインストール
+        run: pip install google-api-python-client google-auth
+
+      - name: スプレッドシート構成を確認
+        if: ${{ github.event.inputs.action == 'check' }}
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+        run: python scripts/check_spreadsheet.py
+
+      - name: 年金ニュースシートを作成
+        if: ${{ github.event.inputs.action == 'setup_nenkin' }}
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+        run: python scripts/setup_nenkin_sheet.py

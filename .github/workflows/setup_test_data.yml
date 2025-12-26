@@ -1,0 +1,35 @@
+name: テストデータセットアップ
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Python環境をセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 依存関係をインストール
+        run: |
+          pip install google-api-python-client google-auth
+
+      - name: テストデータを追加
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+        run: |
+          python add_test_data.py
+
+      - name: 完了メッセージ
+        run: |
+          echo "========================================"
+          echo "テストデータ追加完了!"
+          echo "asadora_ranking.yml を手動実行してください:"
+          echo "  gh workflow run asadora_ranking.yml"
+          echo "========================================"

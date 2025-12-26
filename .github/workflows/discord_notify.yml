@@ -1,0 +1,18 @@
+name: Discord通知（テスト結果）
+
+on:
+  workflow_dispatch:
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discord通知を送信
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl -X POST "$DISCORD_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "content": "🎬 **本日のテスト結果まとめ**\n━━━━━━━━━━━━━━━━━━\n\n**1. Google Cloud TTS テスト（短縮モード）**\n📺 https://www.youtube.com/watch?v=1g9QEcMc5nU\n⏱️ 52秒 / 14セリフ\n🎤 speaking_rate=1.15\n\n**2. 本番モード（30分動画）**\n📺 https://www.youtube.com/watch?v=H07lNkfHxAE\n⏱️ 6.5分 / 122セリフ\n🎤 Google Cloud TTS (WaveNet)\n\n**3. TTS声比較テスト**\n📺 https://www.youtube.com/watch?v=7-pva7CFjaY\n🎤 4パターン比較:\n  - Wavenet-A/D（現在）\n  - Wavenet-B/C\n  - Neural2-B/C\n  - Neural2-B/D\n\n━━━━━━━━━━━━━━━━━━"
+            }'

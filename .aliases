@@ -1,0 +1,6 @@
+# jinsei-soudan エイリアス
+# 使い方: source /Users/user/jinsei-soudan/.aliases
+
+alias 朝準備='cd /Users/user/jinsei-soudan && gh workflow run syouwa-morning-prepare.yml && echo "実行開始"'
+alias 動画生成='cd /Users/user/jinsei-soudan && gh workflow run generate-video.yml && echo "実行開始"'
+alias gas='cd /Users/user/jinsei-soudan/gas && clasp push'

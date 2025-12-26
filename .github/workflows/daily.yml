@@ -1,9 +1,9 @@
-name: 人生相談チャンネル動画生成
+name: 人生相談チャンネル動画生成 [無効]
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 21 * * *'
+  # schedule:
+  #   - cron: '0 21 * * *'
 
 jobs:
   generate:

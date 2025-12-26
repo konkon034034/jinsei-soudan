@@ -1,0 +1,88 @@
+name: 朝ドラランキング動画 Part2 (NotebookLM音声処理)
+
+on:
+  schedule:
+    # 30分ごとにチェック（AUDIO_READYタスクを処理）
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  process-audio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Python環境をセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: システム依存関係をインストール
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ffmpeg \
+            fonts-noto-cjk \
+            fonts-noto-cjk-extra \
+            imagemagick \
+            libmagickwand-dev
+
+          # ImageMagickのポリシーを緩和
+          sudo sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/' /etc/ImageMagick-6/policy.xml || true
+          sudo sed -i 's/<policy domain="path" rights="none" pattern="@\*"\/>/<policy domain="path" rights="read|write" pattern="@*"\/>/' /etc/ImageMagick-6/policy.xml || true
+
+      - name: Python依存関係をインストール
+        run: |
+          pip install --upgrade pip
+          pip install \
+            google-api-python-client \
+            google-auth \
+            google-auth-oauthlib \
+            moviepy==1.0.3 \
+            Pillow \
+            requests \
+            numpy
+
+      - name: NotebookLM音声から動画を生成
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          # 3チャンネルのみ (23, 24, 27)
+          YOUTUBE_REFRESH_TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
+          YOUTUBE_REFRESH_TOKEN_24: ${{ secrets.YOUTUBE_REFRESH_TOKEN_24 }}
+          YOUTUBE_REFRESH_TOKEN_27: ${{ secrets.YOUTUBE_REFRESH_TOKEN_27 }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          python asadora_ranking_part2.py
+
+      - name: 成果物をアップロード
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-output-part2-${{ github.run_id }}
+          path: |
+            *.mp4
+            *.srt
+          retention-days: 3
+          if-no-files-found: ignore
+
+      - name: エラー時にSlack通知
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -X POST -H 'Content-type: application/json' \
+              --data "{\"text\":\":x: *朝ドラランキング Part2 処理に失敗しました*\n\nワークフロー: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
+              "$SLACK_WEBHOOK_URL"
+          fi
