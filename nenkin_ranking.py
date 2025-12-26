@@ -13,6 +13,7 @@ import sys
 import json
 import time
 import random
+import re
 import tempfile
 import subprocess
 import base64
@@ -38,7 +39,11 @@ VOICE_KATSUMI = "Kore"  # 女性
 VOICE_HIROSHI = "Puck"  # 男性
 
 # Google Drive背景画像ID
-BACKGROUND_IMAGE_ID = "1QC578ihs-EZpS8Byo3GtVqZfMqQeYgoD"
+BACKGROUND_IMAGE_ID = "1DyjuCeNZRVPgZiiqfw7ik3TZ-2loq-ah"
+
+# Google Drive BGM ID
+BGM_FILE_ID = "1816kmpYDIoX0rBlrKLLkpjnMjlg_9hQs"
+BGM_VOLUME = 0.12  # BGM音量（0.10〜0.15推奨、トークの邪魔にならない程度）
 
 # ===== ランキングテーマ（30種類） =====
 RANKING_THEMES = [
@@ -196,41 +201,65 @@ RANKING_THEMES = [
 
 # ===== ダミーデータ（テスト用） =====
 DUMMY_SCRIPT = {
-    "title": "【テスト】フォント確認用ランキング",
+    "title": "年金で損しないためにやるべきことランキング",
     "description": "字幕とレイアウトの確認用ダミー台本",
     "opening": [
-        {"speaker": "カツミ", "text": "さあ、今日はテスト用のランキングをお届けします"},
-        {"speaker": "ヒロシ", "text": "テストだね！フォントの確認だ"},
+        {"speaker": "カツミ", "text": "さあ、今日は年金で損しないためにやるべきことランキングをお届けします"},
+        {"speaker": "ヒロシ", "text": "年金って難しそうだけど、大事なことなんですよね"},
     ],
     "rankings": [
         {
             "rank": 3,
-            "title": "テスト項目3",
+            "title": "繰り下げ受給を検討する",
+            "subtitle": "受給開始を遅らせるだけで年金額が最大84%アップ！",
+            "points": [
+                {"text": "65歳から受給開始が基本", "important": False},
+                {"text": "知り合いは届出忘れて3ヶ月分損した", "important": False, "type": "体験談"},
+                {"text": "最大84%も増額される！", "important": True},
+                {"text": "ただし寿命との兼ね合いが大事", "important": False},
+            ],
             "dialogue": [
-                {"speaker": "カツミ", "text": "これはテスト用のダミーです"},
-                {"speaker": "ヒロシ", "text": "フォントの確認用だな"},
+                {"speaker": "カツミ", "text": "これはね、実は知らない人がすごく多いんですけど、年金って繰り下げ受給すると1ヶ月ごとに0.7%ずつ増えていくんですよ"},
+                {"speaker": "ヒロシ", "text": "えぇ〜！84%も増えるんですか！？それってめちゃくちゃお得じゃないですか！"},
+                {"speaker": "カツミ", "text": "私の知り合いでね、届出忘れて3ヶ月分損した人がいるのよ。もったいないよね"},
+                {"speaker": "ヒロシ", "text": "恥ずかしい話、僕まだ親の年金のこと全然把握してないんですよ..."},
+                {"speaker": "カツミ", "text": "正直ね、この制度ほんまにわかりにくいと思うわ。役所ももっと親切に説明してほしいよね"},
             ]
         },
         {
             "rank": 2,
-            "title": "テスト項目2",
+            "title": "ねんきん定期便を必ず確認",
+            "subtitle": "記録漏れがあると将来の年金が減ってしまう！",
+            "points": [
+                {"text": "毎年届くハガキをチェック", "important": False},
+                {"text": "加入記録に漏れがないか確認", "important": False},
+                {"text": "記録漏れは年金減額の原因に！", "important": True},
+                {"text": "ねんきんネットで詳細確認可能", "important": False},
+            ],
             "dialogue": [
-                {"speaker": "カツミ", "text": "字幕のサイズ確認中"},
-                {"speaker": "ヒロシ", "text": "レイアウト大丈夫か？"},
+                {"speaker": "カツミ", "text": "ねんきん定期便って届いても見ずに捨てちゃう人が多いんですけど、実はこれ、ちゃんと確認しないと大変なことになるんです"},
+                {"speaker": "ヒロシ", "text": "そうなんですか！？僕も正直あんまりちゃんと見てなかったかも...これからはしっかり確認するようにします！"},
             ]
         },
         {
             "rank": 1,
-            "title": "テスト項目1",
+            "title": "付加年金に加入する",
+            "subtitle": "月額400円で将来の年金が年間〇〇万円増える！",
+            "points": [
+                {"text": "月額たったの400円", "important": False},
+                {"text": "国民年金の上乗せ制度", "important": False},
+                {"text": "2年で元が取れる！", "important": True},
+                {"text": "手続きは市区町村役場で", "important": False},
+            ],
             "dialogue": [
-                {"speaker": "カツミ", "text": "1位の発表です！"},
-                {"speaker": "ヒロシ", "text": "確認完了！"},
+                {"speaker": "カツミ", "text": "これが1位です！付加年金は月額たったの400円で、将来もらえる年金が増えるんです。2年で元が取れるから、とってもお得なんですよ"},
+                {"speaker": "ヒロシ", "text": "月400円で将来の年金が増えるなんて！これは絶対にやらなきゃ損ですね！今すぐ手続きしたいくらいです！"},
             ]
         },
     ],
     "ending": [
-        {"speaker": "カツミ", "text": "以上、テスト用ランキングでした"},
-        {"speaker": "ヒロシ", "text": "また次回！"},
+        {"speaker": "カツミ", "text": "以上、年金で損しないためにやるべきことランキングでした。知ってるか知らないかで全然違いますからね"},
+        {"speaker": "ヒロシ", "text": "勉強になりました！チャンネル登録よろしくお願いします！"},
     ],
     "first_comment": "テスト用コメントです"
 }
@@ -329,6 +358,60 @@ def generate_script(theme: dict, key_manager: GeminiKeyManager) -> dict:
 - 隠れ設定②：映画マニア。古い映画（昭和〜平成初期）の引用やセリフがたまに出る
 
 ※隠れ設定は「たまーに」「忘れた頃に」出る程度。毎回出さない。視聴者が「あれ？この人こういう一面あるの？」と気づく程度に。
+
+【隠れたブランドエッセンス】※さりげなく、自然に織り込む
+
+以下の3つの要素を「香り」のように漂わせてください。
+全面に押し出さず、それとなく感じさせる程度に。
+
+1. 【知らないと損】（興味を引く香り）
+   - 時々「知っておくと安心」「意外と知られていない」程度の表現
+   - 押し付けがましくなく、軽く触れる程度
+
+2. 【心の安心トーク】（温かさの香り）
+   - 「大丈夫ですよ」「焦らなくていいんです」
+   - 情報を伝えた後のさりげないフォロー
+   - 視聴者に寄り添う一言
+
+3. 【昭和の思い出×人生の知恵】（懐かしさの香り）
+   - 時々「昔はこうでしたね」「お母さんがよく言ってた」的な一言
+   - 「昭和の頃を思い出しますね」程度のさりげない懐古
+   - 人生経験からくる温かい知恵
+   - 例：「急がば回れ、って昔の人は言いましたけど…」
+   - 例：「昔のお母さんたちは自然とやってましたよね」
+
+【表現のバランス】
+- これらの要素は毎回全部入れなくてよい
+- 自然な会話の流れで、ふと出てくる程度
+- 「狙ってる感」が出たらNG
+- 視聴者が「なんか落ち着くな」と無意識に感じるレベル
+
+【必須要素】各順位の話題に必ず以下を含めること：
+
+1. 体験談・口コミ
+- 「実際に〇〇した人の声」「うちの近所の〇〇さんが...」のような具体的なエピソード
+- 視聴者が「へぇ〜そうなんだ」と思えるリアルな話
+- 例：「私の知り合いで、届出忘れて3ヶ月分損した人がいるのよ」
+
+2. カツミの愚痴・本音タイム（話題ごとに1回）
+- 専門家としてではなく、一人の女性としての本音
+- 「正直ね...」「ここだけの話...」「本音を言うとね...」で始まる
+- このタイミングで関西弁が出やすい
+- 例：「正直ね、この制度ほんまにわかりにくいと思うわ」「ここだけの話、役所の説明って不親切よね」
+
+3. ヒロシのヘタレ・頼りなさトーク（話題ごとに1回）
+- 自分の失敗談や不安を正直に吐露
+- 「僕も実は...」「恥ずかしい話...」「情けないんですけど...」で始まる
+- 視聴者が「わかる〜」と共感できる弱さ
+- 例：「恥ずかしい話、僕まだ親の年金のこと全然把握してないんですよ...」「情けないんですけど、書類見ても何書いてあるかわからなくて...」
+
+【トークの流れ例】
+1. カツミが解説（専門家モード）
+2. ヒロシが素朴な質問
+3. 体験談・口コミを紹介
+4. ヒロシのヘタレトーク（共感ポイント）
+5. カツミの本音・愚痴（関西弁チラ見せ）
+6. まとめ
 
 【台本の方針】
 - タイトルには「損」という言葉を入れない
@@ -584,13 +667,99 @@ def generate_tts_audio(dialogue: list, output_path: str, key_manager: GeminiKeyM
     return duration, timings
 
 
-def generate_subtitles(dialogue: list, duration: float, output_path: str, timings: list):
-    """ASS字幕を生成"""
+def wrap_text(text: str, max_chars: int = 18, max_lines: int = 2) -> str:
+    """テキストを指定文字数で改行（ASS用に\\Nを使用）
+
+    Args:
+        text: 元のテキスト
+        max_chars: 1行あたりの最大文字数（デフォルト18）
+        max_lines: 最大行数（デフォルト2）
+    """
+    if len(text) <= max_chars:
+        return text
+
+    lines = []
+    current_line = ""
+
+    for char in text:
+        current_line += char
+        if len(current_line) >= max_chars:
+            # 区切りの良い位置を探す
+            break_points = ["、", "。", "！", "？", "…", "」", "）", "で", "が", "を", "に", "は", "と", "も"]
+            found_break = False
+            for i in range(len(current_line) - 1, max(0, len(current_line) - 8), -1):
+                if current_line[i] in break_points:
+                    lines.append(current_line[:i+1])
+                    current_line = current_line[i+1:]
+                    found_break = True
+                    break
+            if not found_break:
+                lines.append(current_line)
+                current_line = ""
+
+            # 最大行数に達したら終了
+            if len(lines) >= max_lines:
+                break
+
+    if current_line and len(lines) < max_lines:
+        lines.append(current_line)
+
+    # 最大行数を超えた場合は切り詰め
+    lines = lines[:max_lines]
+
+    return r"\N".join(lines)
+
+
+def generate_subtitles(dialogue: list, duration: float, output_path: str, timings: list, script: dict = None):
+    """ASS字幕を生成（新レイアウト：上部タイトル、中央トピック+ポイント、下部セリフ）"""
     print("\n[4/7] 字幕を生成中...")
 
-    # ASS字幕設定
-    font_size = 36
-    margin_v = 40
+    # ===== ASS字幕設定 =====
+    # 画面上部タイトル（★付き、強調部分は赤）
+    title_font_size = 90
+    title_margin_v = 30
+
+    # 画面上部：順位タイトル（タイトルのすぐ下、Alignment=8で上基準）
+    topic_font_size = 105  # 70 → 105（1.5倍）
+    topic_margin_v = 150  # タイトル下端(30+90=120) + 間隔30px = 150
+
+    # ポイント（箇条書き）: 大きめフォント、左揃え
+    point_font_size = 80  # 40 → 80（2倍）
+    point_important_font_size = 85  # 45 → 85
+    point_base_y = 280  # ポイント開始Y位置（トピックの下）+30px下げ
+    point_line_height = 95  # 各ポイントの行間（大きくなったので調整）
+    point_left_margin = 160  # 左端からのマージン（60→160、中央寄りに）
+
+    # 画面下部セリフ（名前なし、縁取りで読みやすく）
+    dialogue_font_size = 68  # 90 → 68（0.75倍に縮小）
+    dialogue_margin_v = 160  # 130 → 160（さらに下に）
+
+    # ASS色フォーマット: &HAABBGGRR (Alpha, Blue, Green, Red)
+    title_color = "&H00FFFFFF"
+    title_outline = "&H00000000"
+
+    topic_color = "&H0000FFFF"  # 黄色
+    topic_outline = "&H00000000"
+
+    # ポイント（通常）: 白
+    point_color = "&H00FFFFFF"
+    point_outline = "&H00000000"
+
+    # ポイント（重要）: 赤 (#FF3333 → BGR: 3333FF)
+    point_important_color = "&H003333FF"
+    point_important_outline = "&H0000FFFF"  # 黄色縁取り
+
+    # ポイント（体験談）: オレンジ (#FF9933 → BGR: 3399FF)
+    point_testimonial_color = "&H003399FF"
+    point_testimonial_outline = "&H00000000"
+
+    # カツミ: 薄い紫
+    katsumi_color = "&H00DDA0DD"
+    katsumi_outline = "&H00800080"
+
+    # ヒロシ: 薄い緑
+    hiroshi_color = "&H0090EE90"
+    hiroshi_outline = "&H00228B22"
 
     ass_header = f"""[Script Info]
 Title: Ranking Video Subtitles
@@ -601,8 +770,13 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Katsumi,Noto Sans CJK JP,{font_size},&H00FF00FF,&H000000FF,&H00FFFFFF,&H00000000,1,0,0,0,100,100,0,0,1,3,2,2,30,30,{margin_v},1
-Style: Hiroshi,Noto Sans CJK JP,{font_size},&H0000FF00,&H000000FF,&H00FFFFFF,&H00000000,1,0,0,0,100,100,0,0,1,3,2,2,30,30,{margin_v},1
+Style: Title,Noto Sans CJK JP,{title_font_size},{title_color},&H000000FF,{title_outline},&H80000000,1,0,0,0,100,100,0,0,1,4,2,8,30,30,{title_margin_v},1
+Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_color},&H000000FF,{topic_outline},&H80808080,1,0,0,0,100,100,0,0,3,15,0,8,30,30,{topic_margin_v},1
+Style: Point,Noto Sans CJK JP,{point_font_size},{point_color},&H000000FF,{point_outline},&H00000000,0,0,0,0,100,100,0,0,1,2,1,7,100,100,0,1
+Style: PointImportant,Noto Sans CJK JP,{point_important_font_size},{point_important_color},&H000000FF,{point_important_outline},&H00000000,1,0,0,0,100,100,0,0,1,3,2,7,100,100,0,1
+Style: PointTestimonial,Noto Sans CJK JP,{point_font_size},{point_testimonial_color},&H000000FF,{point_testimonial_outline},&H00000000,1,0,0,0,100,100,0,0,1,2,1,7,100,100,0,1
+Style: Katsumi,Noto Sans CJK JP,{dialogue_font_size},{katsumi_color},&H000000FF,{katsumi_outline},&H00000000,1,0,0,0,100,100,0,0,1,3,2,2,50,50,{dialogue_margin_v},1
+Style: Hiroshi,Noto Sans CJK JP,{dialogue_font_size},{hiroshi_color},&H000000FF,{hiroshi_outline},&H00000000,1,0,0,0,100,100,0,0,1,3,2,2,50,50,{dialogue_margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -615,6 +789,112 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         return f"{h}:{m:02d}:{s:05.2f}"
 
     events = []
+
+    # ===== 1. タイトル（★付き、強調部分は赤、常時表示） =====
+    video_title = script.get("title", "年金ランキング") if script else "年金ランキング"
+    if len(video_title) > 25:
+        video_title = video_title[:25] + "..."
+
+    # タイトル内の重要キーワードを赤色で強調
+    # ASS色タグ: {\c&HBBGGRR&} 赤=#FF3333 → BGR=3333FF
+    highlight_color = r"{\c&H3333FF&}"
+    reset_color = r"{\c&HFFFFFF&}"
+
+    # 強調パターン（複数対応）
+    highlight_words = ["損しない", "やるべきこと", "知らない", "損する", "得する"]
+    decorated_title = video_title
+    for word in highlight_words:
+        if word in decorated_title:
+            decorated_title = decorated_title.replace(word, f"{highlight_color}【{word}】{reset_color}")
+            break  # 最初に見つかった1つだけ強調
+
+    decorated_title = f"★ {decorated_title} ★"
+    events.append(f"Dialogue: 0,0:00:00.00,{format_time(duration)},Title,,0,0,0,,{decorated_title}")
+
+    # ===== 2. 話題/順位とポイントの表示 =====
+    rankings = script.get("rankings", []) if script else []
+    sorted_rankings = sorted(rankings, key=lambda x: x.get("rank", 0), reverse=True)
+    rank_data = {r["rank"]: r for r in sorted_rankings}
+
+    # timingsから各ランキングの開始・終了時間を取得
+    topic_events = []
+    current_rank = None
+    topic_start = 0.0
+
+    for i, timing in enumerate(timings):
+        text = timing["text"]
+        start = timing["start"]
+
+        match = re.search(r"第(\d+)位は", text)
+        if match:
+            rank = int(match.group(1))
+            if current_rank is not None:
+                topic_events.append({
+                    "rank": current_rank,
+                    "start": topic_start,
+                    "end": start
+                })
+            current_rank = rank
+            topic_start = start
+
+    if current_rank is not None:
+        topic_events.append({
+            "rank": current_rank,
+            "start": topic_start,
+            "end": duration
+        })
+
+    # 各トピックのイベントを生成
+    for topic in topic_events:
+        rank = topic["rank"]
+        start = topic["start"]
+        end = topic["end"]
+        start_str = format_time(start)
+        end_str = format_time(end)
+
+        ranking_data = rank_data.get(rank, {})
+        rank_title = ranking_data.get("title", "")
+        points = ranking_data.get("points", [])
+
+        # トピックタイトル（ズームアニメーション）
+        topic_text = f"【第{rank}位】{rank_title}"
+        zoom_effect = r"{\fscx50\fscy50\t(0,500,\fscx100\fscy100)}"
+        events.append(f"Dialogue: 1,{start_str},{end_str},Topic,,0,0,0,,{zoom_effect}{topic_text}")
+
+        # ポイント（箇条書き）を順次表示
+        topic_duration = end - start
+        if points:
+            point_interval = min(topic_duration / (len(points) + 1), 2.0)  # 最大2秒間隔
+            for idx, point in enumerate(points):
+                point_start = start + (idx + 1) * point_interval * 0.5  # 0.5秒後から開始
+                point_start_str = format_time(point_start)
+
+                point_text = point.get("text", "")
+                is_important = point.get("important", False)
+                point_type = point.get("type", "")
+
+                # 位置を計算（moveタグで右から左へスライドイン）
+                y_pos = point_base_y + idx * point_line_height
+                # スライドイン: 右端(2000)から左揃え位置へ、各項目200ms遅延
+                slide_delay = idx * 200  # 0ms, 200ms, 400ms...
+                slide_start = slide_delay
+                slide_end = slide_delay + 400  # 400msでスライド完了
+                move_tag = r"{\an7\move(2000," + str(y_pos) + "," + str(point_left_margin) + "," + str(y_pos) + "," + str(slide_start) + "," + str(slide_end) + r")}"
+
+                if is_important:
+                    # 重要ポイント: 赤、少し大きめ
+                    bullet_text = f"【重要】{point_text}"
+                    events.append(f"Dialogue: 2,{point_start_str},{end_str},PointImportant,,0,0,0,,{move_tag}{bullet_text}")
+                elif point_type == "体験談":
+                    # 体験談ポイント: オレンジ
+                    bullet_text = f"【体験談】{point_text}"
+                    events.append(f"Dialogue: 2,{point_start_str},{end_str},PointTestimonial,,0,0,0,,{move_tag}{bullet_text}")
+                else:
+                    # 通常ポイント: 白
+                    bullet_text = f"・{point_text}"
+                    events.append(f"Dialogue: 2,{point_start_str},{end_str},Point,,0,0,0,,{move_tag}{bullet_text}")
+
+    # ===== 3. セリフ（下部、名前なし、複数行対応） =====
     for timing in timings:
         speaker = timing["speaker"]
         text = timing["text"]
@@ -625,14 +905,17 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         start_str = format_time(start)
         end_str = format_time(end)
 
-        events.append(f"Dialogue: 0,{start_str},{end_str},{style},,0,0,0,,{text}")
+        # テキストを複数行に分割（大きいフォントなので短めに）
+        wrapped_text = wrap_text(text, 18)
+        # 名前は表示しない（声で判断できる）
+        events.append(f"Dialogue: 3,{start_str},{end_str},{style},,0,0,0,,{wrapped_text}")
 
     ass_content = ass_header + "\n".join(events)
 
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(ass_content)
 
-    print(f"  ✓ 字幕生成完了: {len(events)}イベント")
+    print(f"  ✓ 字幕生成完了: {len(events)}イベント（タイトル1、話題{len(topic_events)}、セリフ{len(timings)}）")
 
 
 def download_background_image(file_id: str, output_path: str) -> bool:
@@ -654,32 +937,76 @@ def download_background_image(file_id: str, output_path: str) -> bool:
     return False
 
 
-def generate_video(audio_path: str, subtitle_path: str, bg_path: str, output_path: str, duration: float):
-    """動画を生成"""
+def download_bgm(file_id: str, output_path: str) -> bool:
+    """Google DriveからBGMをダウンロード"""
+    try:
+        import gdown
+        url = f"https://drive.google.com/uc?id={file_id}"
+        gdown.download(url, output_path, quiet=True)
+        return os.path.exists(output_path)
+    except Exception as e:
+        print(f"  ⚠ BGMダウンロード失敗: {e}")
+    return False
+
+
+def generate_video(audio_path: str, subtitle_path: str, bg_path: str, output_path: str, duration: float, bgm_path: str = None):
+    """動画を生成（下部セリフ帯のみ、タイトルは字幕で表示、BGMミックス対応）"""
     print("\n[5/7] 動画を生成中...")
 
-    # ffmpegコマンド
-    vf_filter = f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},ass={subtitle_path}:fontsdir=/usr/share/fonts"
+    # ===== レイアウト設定 =====
+    # 上部タイトル帯: 削除（字幕で白文字+黒縁取りのみ）
+    # 下部セリフ帯: 透過背景なし（字幕のみ、縁取りで読みやすく）
 
-    cmd = [
-        'ffmpeg', '-y',
-        '-loop', '1', '-i', bg_path,
-        '-i', audio_path,
-        '-vf', vf_filter,
-        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
-        '-c:a', 'aac', '-b:a', '192k',
-        '-shortest',
-        '-pix_fmt', 'yuv420p',
-        '-movflags', '+faststart',
-        output_path
-    ]
+    # ffmpegフィルタチェーン:
+    # 1. 背景画像をスケール
+    # 2. ASS字幕を重ねる（透かし背景なし）
+    vf_filter = (
+        f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},"
+        f"ass={subtitle_path}:fontsdir=/usr/share/fonts"
+    )
+
+    # BGMがある場合はミックス、ない場合は通常のコマンド
+    if bgm_path and os.path.exists(bgm_path):
+        # BGMをループ再生しながらトーク音声とミックス
+        # [2:a] = BGM, [1:a] = トーク音声
+        af_filter = f"[2:a]volume={BGM_VOLUME},aloop=loop=-1:size=2e+09[bgm];[1:a][bgm]amix=inputs=2:duration=first[aout]"
+        cmd = [
+            'ffmpeg', '-y',
+            '-loop', '1', '-i', bg_path,
+            '-i', audio_path,
+            '-i', bgm_path,
+            '-vf', vf_filter,
+            '-filter_complex', af_filter,
+            '-map', '0:v', '-map', '[aout]',
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+            '-c:a', 'aac', '-b:a', '192k',
+            '-shortest',
+            '-pix_fmt', 'yuv420p',
+            '-movflags', '+faststart',
+            output_path
+        ]
+    else:
+        # BGMなしの場合
+        cmd = [
+            'ffmpeg', '-y',
+            '-loop', '1', '-i', bg_path,
+            '-i', audio_path,
+            '-vf', vf_filter,
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+            '-c:a', 'aac', '-b:a', '192k',
+            '-shortest',
+            '-pix_fmt', 'yuv420p',
+            '-movflags', '+faststart',
+            output_path
+        ]
 
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         print(f"  ❌ 動画生成失敗: {result.stderr[:500]}")
         raise RuntimeError("動画生成に失敗しました")
 
-    print(f"  ✓ 動画生成完了: {duration:.1f}秒")
+    bgm_status = "BGMあり" if (bgm_path and os.path.exists(bgm_path)) else "BGMなし"
+    print(f"  ✓ 動画生成完了: {duration:.1f}秒（{bgm_status}）")
 
 
 def upload_to_youtube(video_path: str, title: str, description: str, first_comment: str = "") -> str:
@@ -1016,9 +1343,9 @@ def main():
             audio_path = str(temp_path / "audio.wav")
             duration, timings = generate_tts_audio(dialogue, audio_path, key_manager)
 
-            # STEP4: 字幕生成
+            # STEP4: 字幕生成（新レイアウト対応）
             subtitle_path = str(temp_path / "subtitles.ass")
-            generate_subtitles(dialogue, duration, subtitle_path, timings)
+            generate_subtitles(dialogue, duration, subtitle_path, timings, script)
 
             # STEP5: 背景画像ダウンロード
             bg_path = str(temp_path / "background.png")
@@ -1030,9 +1357,18 @@ def main():
                 bg.save(bg_path)
                 print("  ⚠ 背景画像ダウンロード失敗、デフォルト背景を使用")
 
+            # STEP5.5: BGMダウンロード
+            bgm_path = str(temp_path / "bgm.mp3")
+            print("  BGMをダウンロード中...")
+            if download_bgm(BGM_FILE_ID, bgm_path):
+                print(f"  ✓ BGMダウンロード完了（音量: {BGM_VOLUME}）")
+            else:
+                bgm_path = None
+                print("  ⚠ BGMダウンロード失敗、BGMなしで続行")
+
             # STEP6: 動画生成
             video_path = str(temp_path / "ranking.mp4")
-            generate_video(audio_path, subtitle_path, bg_path, video_path, duration)
+            generate_video(audio_path, subtitle_path, bg_path, video_path, duration, bgm_path)
 
             # タイトルと説明文
             title = f"{script.get('title', theme['title'])}（{script.get('hook', '1位は意外にも...')}）【年金口コミぶっちゃけランキング】"
