@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>年金損しない度チェック</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app-container">
+    <header>
+        年金損しない度チェック
+    </header>
+
+    <main>
+        <!-- Welcome Screen -->
+        <section id="welcome-screen" class="welcome-container fade-in">
+            <div class="hero-image-placeholder">
+                <span>💴</span>
+            </div>
+            <h1>あなたの年金、<br>本当に大丈夫？</h1>
+            <p class="description">
+                たった1分の診断で、将来受け取れる年金のリスクレベルが分かります。
+                <br>老後に後悔しないために、今すぐチェック！
+            </p>
+            <button id="start-btn" class="btn-primary">診断をスタート</button>
+        </section>
+
+        <!-- Quiz Screen -->
+        <section id="quiz-screen" class="quiz-container hidden">
+            <div class="progress-bar">
+                <div id="progress-fill" class="progress-fill"></div>
+            </div>
+            <h2 id="question-text" class="question-text">Question Text</h2>
+            <div id="options-container">
+                <!-- Buttons will be injected here -->
+            </div>
+        </section>
+
+        <!-- Loading Screen -->
+        <section id="loading-screen" class="loading-container hidden">
+            <div class="spinner"></div>
+            <p>診断結果を集計中...</p>
+        </section>
+
+        <!-- Result Screen -->
+        <section id="result-screen" class="result-container hidden">
+            <p class="rank-label">あなたのランクは...</p>
+            <div class="rank-badge">
+                Rank&nbsp;<span id="result-rank">B</span>
+            </div>
+            <h3 id="result-title" class="rank-title">TITLE</h3>
+            <div id="result-message" class="result-message">
+                Message
+            </div>
+
+            <div class="cta-section">
+                <a id="affiliate-link" href="#" class="btn-primary">
+                    無料で資料請求する
+                </a>
+                <p class="cta-note">年金のプロがあなたに最適なプランをご提案</p>
+            </div>
+        </section>
+    </main>
+</div>
+
+<script src="questions.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
