@@ -557,9 +557,13 @@ def _process_tts_line_parallel(args: tuple) -> dict:
     voice = VOICE_HIROSHI if speaker == "ヒロシ" else VOICE_KATSUMI
 
     # スタッガード遅延（API負荷軽減）- インデックスに応じて遅延
-    stagger_delay = (line_index % 15) * 0.3  # 15ワーカーで0.3秒ずつずらす
-    if stagger_delay > 0:
-        time.sleep(stagger_delay)
+    # 初期遅延: 各ワーカーが少しずつずれて開始
+    initial_delay = (line_index % 8) * 1.0  # 8ワーカーで1秒ずつずらす
+    # 追加遅延: バッチごとにさらに遅延
+    batch_delay = (line_index // 29) * 2.0  # 29キーごとに2秒追加
+    total_delay = initial_delay + batch_delay
+    if total_delay > 0:
+        time.sleep(min(total_delay, 30.0))  # 最大30秒
 
     audio_path = str(temp_dir / f"line_{line_index:04d}.wav")
     max_retries = 3
@@ -606,7 +610,8 @@ def _process_tts_line_parallel(args: tuple) -> dict:
 
         except Exception as e:
             if attempt < max_retries - 1:
-                time.sleep(2 * (attempt + 1))  # 指数バックオフ
+                wait_time = 5 * (attempt + 1)  # より長い指数バックオフ（5秒、10秒）
+                time.sleep(wait_time)
             else:
                 # 無音で代替
                 silence = AudioSegment.silent(duration=1000)
@@ -661,9 +666,10 @@ def generate_tts_audio(dialogue: list, output_path: str, key_manager: GeminiKeyM
     # 一時ディレクトリを作成
     temp_dir = Path(tempfile.mkdtemp(prefix="tts_parallel_"))
 
-    # 並列処理のワーカー数（APIキー数とセリフ数の小さい方、最大15）
-    max_workers = min(len(all_keys), total_lines, 15)
-    print(f"  [並列処理] max_workers={max_workers}")
+    # 並列処理のワーカー数（APIキー数とセリフ数の小さい方、最大8）
+    # 429エラー対策で同時リクエスト数を制限
+    max_workers = min(len(all_keys), total_lines, 8)
+    print(f"  [並列処理] max_workers={max_workers}, {len(all_keys)}キー使用")
 
     # タスクを準備（各セリフに異なるAPIキーを割り当て）
     tasks = []
@@ -960,9 +966,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 point_start = start + (idx + 1) * point_interval * 0.5  # 0.5秒後から開始
                 point_start_str = format_time(point_start)
 
-                point_text = point.get("text", "")
-                is_important = point.get("important", False)
-                point_type = point.get("type", "")
+                # pointが文字列の場合と辞書の場合に対応
+                if isinstance(point, str):
+                    point_text = point
+                    is_important = False
+                    point_type = ""
+                else:
+                    point_text = point.get("text", "") if isinstance(point, dict) else str(point)
+                    is_important = point.get("important", False) if isinstance(point, dict) else False
+                    point_type = point.get("type", "") if isinstance(point, dict) else ""
 
                 # 位置を計算（moveタグで右から左へスライドイン）
                 y_pos = point_base_y + idx * point_line_height
