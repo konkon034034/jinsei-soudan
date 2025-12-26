@@ -1,0 +1,235 @@
+name: 年金ニュース動画自動生成
+
+on:
+  schedule:
+    # 毎日11:00 JST = UTC 2:00
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'テストモード（短縮版）※スケジュール実行は常に本番'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      tts_mode:
+        description: 'TTSエンジン'
+        required: false
+        default: 'gemini'
+        type: choice
+        options:
+          - 'gemini'
+          - 'google_cloud'
+      use_modal_gpu:
+        description: 'Modal GPUを使用する'
+        required: false
+        default: 'true'
+        type: boolean
+      tts_voice_female:
+        description: 'TTS女性音声 (Kore/Aoede等)'
+        required: false
+        default: 'Kore'
+        type: choice
+        options:
+          - 'Kore'
+          - 'Aoede'
+          - 'Charon'
+      tts_voice_male:
+        description: 'TTS男性音声 (Puck/Fenrir等)'
+        required: false
+        default: 'Puck'
+        type: choice
+        options:
+          - 'Puck'
+          - 'Fenrir'
+          - 'Charon'
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  generate-video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Python環境をセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: システム依存関係をインストール
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ffmpeg \
+            fonts-noto-cjk \
+            fonts-noto-cjk-extra \
+            fonts-ipafont \
+            fonts-ipaexfont
+
+      - name: Python依存関係をインストール
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Modal関数をデプロイ
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          modal deploy modal_video.py
+
+      - name: 環境変数チェック
+        env:
+          YOUTUBE_REFRESH_TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
+        run: |
+          echo "=== 環境変数チェック ==="
+          echo "YOUTUBE_REFRESH_TOKEN_23: $([ -n \"$YOUTUBE_REFRESH_TOKEN_23\" ] && echo '設定済み' || echo '未設定')"
+
+      - name: 動画を生成・投稿
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
+          GEMINI_API_KEY_4: ${{ secrets.GEMINI_API_KEY_4 }}
+          GEMINI_API_KEY_5: ${{ secrets.GEMINI_API_KEY_5 }}
+          GEMINI_API_KEY_6: ${{ secrets.GEMINI_API_KEY_6 }}
+          GEMINI_API_KEY_7: ${{ secrets.GEMINI_API_KEY_7 }}
+          GEMINI_API_KEY_8: ${{ secrets.GEMINI_API_KEY_8 }}
+          GEMINI_API_KEY_9: ${{ secrets.GEMINI_API_KEY_9 }}
+          GEMINI_API_KEY_10: ${{ secrets.GEMINI_API_KEY_10 }}
+          GEMINI_API_KEY_11: ${{ secrets.GEMINI_API_KEY_11 }}
+          GEMINI_API_KEY_12: ${{ secrets.GEMINI_API_KEY_12 }}
+          GEMINI_API_KEY_13: ${{ secrets.GEMINI_API_KEY_13 }}
+          GEMINI_API_KEY_14: ${{ secrets.GEMINI_API_KEY_14 }}
+          GEMINI_API_KEY_15: ${{ secrets.GEMINI_API_KEY_15 }}
+          GEMINI_API_KEY_16: ${{ secrets.GEMINI_API_KEY_16 }}
+          GEMINI_API_KEY_17: ${{ secrets.GEMINI_API_KEY_17 }}
+          GEMINI_API_KEY_18: ${{ secrets.GEMINI_API_KEY_18 }}
+          GEMINI_API_KEY_19: ${{ secrets.GEMINI_API_KEY_19 }}
+          GEMINI_API_KEY_20: ${{ secrets.GEMINI_API_KEY_20 }}
+          GEMINI_API_KEY_21: ${{ secrets.GEMINI_API_KEY_21 }}
+          GEMINI_API_KEY_22: ${{ secrets.GEMINI_API_KEY_22 }}
+          GEMINI_API_KEY_23: ${{ secrets.GEMINI_API_KEY_23 }}
+          GEMINI_API_KEY_24: ${{ secrets.GEMINI_API_KEY_24 }}
+          GEMINI_API_KEY_25: ${{ secrets.GEMINI_API_KEY_25 }}
+          GEMINI_API_KEY_26: ${{ secrets.GEMINI_API_KEY_26 }}
+          GEMINI_API_KEY_27: ${{ secrets.GEMINI_API_KEY_27 }}
+          GEMINI_API_KEY_28: ${{ secrets.GEMINI_API_KEY_28 }}
+          GEMINI_API_KEY_29: ${{ secrets.GEMINI_API_KEY_29 }}
+          GEMINI_API_KEY_30: ${{ secrets.GEMINI_API_KEY_30 }}
+          GEMINI_API_KEY_31: ${{ secrets.GEMINI_API_KEY_31 }}
+          GEMINI_API_KEY_32: ${{ secrets.GEMINI_API_KEY_32 }}
+          GEMINI_API_KEY_33: ${{ secrets.GEMINI_API_KEY_33 }}
+          GEMINI_API_KEY_34: ${{ secrets.GEMINI_API_KEY_34 }}
+          GEMINI_API_KEY_35: ${{ secrets.GEMINI_API_KEY_35 }}
+          GEMINI_API_KEY_36: ${{ secrets.GEMINI_API_KEY_36 }}
+          GEMINI_API_KEY_37: ${{ secrets.GEMINI_API_KEY_37 }}
+          GEMINI_API_KEY_38: ${{ secrets.GEMINI_API_KEY_38 }}
+          GEMINI_API_KEY_39: ${{ secrets.GEMINI_API_KEY_39 }}
+          GEMINI_API_KEY_40: ${{ secrets.GEMINI_API_KEY_40 }}
+          GEMINI_API_KEY_41: ${{ secrets.GEMINI_API_KEY_41 }}
+          GEMINI_API_KEY_42: ${{ secrets.GEMINI_API_KEY_42 }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
+          JINGLE_FILE_ID: ${{ secrets.JINGLE_FILE_ID }}
+          ENDING_JINGLE_FILE_ID: ${{ secrets.ENDING_JINGLE_FILE_ID }}
+          BACKGROUND_IMAGE_ID: ${{ secrets.BACKGROUND_IMAGE_ID }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
+          TTS_MODE: ${{ github.event.inputs.tts_mode || 'gemini' }}
+          TTS_VOICE_FEMALE: ${{ github.event.inputs.tts_voice_female || 'Kore' }}
+          TTS_VOICE_MALE: ${{ github.event.inputs.tts_voice_male || 'Puck' }}
+          USE_MODAL_GPU: ${{ github.event.inputs.use_modal_gpu || '' }}
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+        run: |
+          python nenkin_news.py
+
+      - name: 成果物をアップロード
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nenkin-news-${{ github.run_id }}
+          path: |
+            *.mp4
+          retention-days: 3
+          if-no-files-found: ignore
+
+      - name: 成功時にDiscord通知
+        if: success()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            # 動画URLを読み込み
+            VIDEO_URL=""
+            if [ -f "video_url.txt" ]; then
+              VIDEO_URL=$(cat video_url.txt)
+            fi
+
+            # 動画URLがある場合は含める
+            if [ -n "$VIDEO_URL" ]; then
+              curl -X POST "$DISCORD_WEBHOOK_URL" \
+                -H "Content-Type: application/json" \
+                -d "{
+                  \"content\": \"✅ **年金ニュース投稿完了！**\n━━━━━━━━━━━━━━━━━━\n\n📺 動画URL: ${VIDEO_URL}\n🎤 TTS: ${{ github.event.inputs.tts_mode || 'gemini' }}\n🧪 テストモード: ${{ github.event.inputs.test_mode || 'false' }}\n🖥️ Modal GPU: ${{ github.event.inputs.use_modal_gpu || 'auto' }}\n\n━━━━━━━━━━━━━━━━━━\"
+                }"
+            else
+              curl -X POST "$DISCORD_WEBHOOK_URL" \
+                -H "Content-Type: application/json" \
+                -d "{
+                  \"content\": \"⚠️ **年金ニュース動画生成完了（投稿なし）**\n━━━━━━━━━━━━━━━━━━\n\n📺 動画は生成されましたがYouTube投稿に失敗しました\n🔗 ワークフロー: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\n━━━━━━━━━━━━━━━━━━\"
+                }"
+            fi
+          fi
+
+      - name: 成功時にLINE通知
+        if: success() && github.event.inputs.test_mode != 'true'
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+        run: |
+          if [ -n "$LINE_CHANNEL_ACCESS_TOKEN" ] && [ -f "video_url.txt" ]; then
+            VIDEO_URL=$(cat video_url.txt)
+            VIDEO_TITLE=""
+            if [ -f "video_title.txt" ]; then
+              VIDEO_TITLE=$(cat video_title.txt)
+            fi
+            curl -X POST "https://api.line.me/v2/bot/message/broadcast" \
+              -H "Authorization: Bearer $LINE_CHANNEL_ACCESS_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "messages": [
+                  {
+                    "type": "text",
+                    "text": "☀️ おはようございます！\n今日も年金のお話、届きましたよ〜\n\n📺 '"$VIDEO_TITLE"'\n\n▶️ '"$VIDEO_URL"'"
+                  }
+                ]
+              }'
+            echo "LINE通知を送信しました"
+          fi
+
+      - name: エラー時にDiscord通知
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"content\": \"❌ **年金ニュース動画生成に失敗しました**\n━━━━━━━━━━━━━━━━━━\n\n🔗 ワークフロー: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\n━━━━━━━━━━━━━━━━━━\"
+              }"
+          fi
