@@ -19,6 +19,7 @@ import subprocess
 import base64
 from datetime import datetime
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from google import genai
@@ -547,8 +548,84 @@ def extract_all_dialogue(script: dict) -> list:
     return dialogue
 
 
+def _process_tts_line_parallel(args: tuple) -> dict:
+    """並列TTS処理用の1セリフ処理関数（ThreadPoolExecutor用）"""
+    line, api_key, key_name, line_index, temp_dir, total_lines = args
+
+    speaker = line["speaker"]
+    text = line["text"]
+    voice = VOICE_HIROSHI if speaker == "ヒロシ" else VOICE_KATSUMI
+
+    # スタッガード遅延（API負荷軽減）- インデックスに応じて遅延
+    stagger_delay = (line_index % 15) * 0.3  # 15ワーカーで0.3秒ずつずらす
+    if stagger_delay > 0:
+        time.sleep(stagger_delay)
+
+    audio_path = str(temp_dir / f"line_{line_index:04d}.wav")
+    max_retries = 3
+
+    for attempt in range(max_retries):
+        try:
+            client = genai.Client(api_key=api_key)
+            response = client.models.generate_content(
+                model=TTS_MODEL,
+                contents=text,
+                config=types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=types.SpeechConfig(
+                        voice_config=types.VoiceConfig(
+                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                voice_name=voice
+                            )
+                        )
+                    )
+                )
+            )
+
+            # 音声データを取得
+            audio_data = response.candidates[0].content.parts[0].inline_data.data
+            audio_segment = AudioSegment(
+                data=audio_data,
+                sample_width=2,
+                frame_rate=24000,
+                channels=1
+            )
+
+            # ファイルに保存
+            audio_segment.export(audio_path, format="wav")
+            duration = len(audio_segment) / 1000.0
+
+            return {
+                "index": line_index,
+                "success": True,
+                "path": audio_path,
+                "duration": duration,
+                "speaker": speaker,
+                "text": text
+            }
+
+        except Exception as e:
+            if attempt < max_retries - 1:
+                time.sleep(2 * (attempt + 1))  # 指数バックオフ
+            else:
+                # 無音で代替
+                silence = AudioSegment.silent(duration=1000)
+                silence.export(audio_path, format="wav")
+                return {
+                    "index": line_index,
+                    "success": False,
+                    "path": audio_path,
+                    "duration": 1.0,
+                    "speaker": speaker,
+                    "text": text,
+                    "error": str(e)[:50]
+                }
+
+    return {"index": line_index, "success": False, "path": None, "duration": 0}
+
+
 def generate_tts_audio(dialogue: list, output_path: str, key_manager: GeminiKeyManager) -> tuple:
-    """TTS音声を生成"""
+    """TTS音声を並列生成（29キー対応）"""
     print("\n[3/7] TTS音声を生成中...")
 
     if SKIP_API:
@@ -578,93 +655,107 @@ def generate_tts_audio(dialogue: list, output_path: str, key_manager: GeminiKeyM
     if not all_keys:
         raise RuntimeError("APIキーがありません")
 
-    audio_segments = []
+    total_lines = len(dialogue)
+    print(f"  合計 {total_lines} セリフを{len(all_keys)}個のAPIキーで並列生成")
+
+    # 一時ディレクトリを作成
+    temp_dir = Path(tempfile.mkdtemp(prefix="tts_parallel_"))
+
+    # 並列処理のワーカー数（APIキー数とセリフ数の小さい方、最大15）
+    max_workers = min(len(all_keys), total_lines, 15)
+    print(f"  [並列処理] max_workers={max_workers}")
+
+    # タスクを準備（各セリフに異なるAPIキーを割り当て）
+    tasks = []
+    for i, line in enumerate(dialogue):
+        api_key, key_name = all_keys[i % len(all_keys)]
+        tasks.append((line, api_key, key_name, i, temp_dir, total_lines))
+
+    # ThreadPoolExecutorで並列処理
+    results = [None] * total_lines
+    success_count = 0
+    fail_count = 0
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_process_tts_line_parallel, task): task[3] for task in tasks}
+
+        for future in as_completed(futures):
+            line_index = futures[future]
+            try:
+                result = future.result()
+                results[result["index"]] = result
+                if result["success"]:
+                    success_count += 1
+                else:
+                    fail_count += 1
+                    if "error" in result:
+                        print(f"  ⚠ TTS失敗 [{result['index']+1}] ({result['speaker']}): {result['error']}")
+
+                # 進捗表示（20セリフごと）
+                completed = success_count + fail_count
+                if completed % 20 == 0 or completed == total_lines:
+                    print(f"  [{completed}/{total_lines}] 完了 (成功:{success_count}, 失敗:{fail_count})")
+
+            except Exception as e:
+                fail_count += 1
+                print(f"  ✗ 例外 [{line_index+1}]: {str(e)[:50]}")
+
+    print(f"  [並列処理完了] {success_count}/{total_lines} 成功")
+
+    # 音声を順番に結合してタイミングを計算
+    combined = AudioSegment.empty()
     timings = []
     current_time = 0.0
 
-    total_lines = len(dialogue)
-    print(f"  合計 {total_lines} セリフを生成します")
-
-    for i, line in enumerate(dialogue):
-        speaker = line["speaker"]
-        text = line["text"]
-        voice = VOICE_HIROSHI if speaker == "ヒロシ" else VOICE_KATSUMI
-
-        # APIキーをラウンドロビンで選択
-        api_key, key_name = all_keys[i % len(all_keys)]
-
-        max_retries = 3
-        for attempt in range(max_retries):
+    for i, result in enumerate(results):
+        if result and result["path"] and os.path.exists(result["path"]):
             try:
-                client = genai.Client(api_key=api_key)
-                response = client.models.generate_content(
-                    model=TTS_MODEL,
-                    contents=text,
-                    config=types.GenerateContentConfig(
-                        response_modalities=["AUDIO"],
-                        speech_config=types.SpeechConfig(
-                            voice_config=types.VoiceConfig(
-                                prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                    voice_name=voice
-                                )
-                            )
-                        )
-                    )
-                )
-
-                # 音声データを取得
-                audio_data = response.candidates[0].content.parts[0].inline_data.data
-                audio_segment = AudioSegment(
-                    data=audio_data,
-                    sample_width=2,
-                    frame_rate=24000,
-                    channels=1
-                )
-
-                # タイミング記録
+                audio_segment = AudioSegment.from_file(result["path"])
                 duration = len(audio_segment) / 1000.0
+
                 timings.append({
-                    "speaker": speaker,
-                    "text": text,
+                    "speaker": result["speaker"],
+                    "text": result["text"],
                     "start": current_time,
                     "end": current_time + duration
                 })
+
+                combined += audio_segment
                 current_time += duration
 
-                audio_segments.append(audio_segment)
-
-                if (i + 1) % 10 == 0 or i == total_lines - 1:
-                    print(f"  [{i + 1}/{total_lines}] TTS生成中...")
-
-                break
+                # 間隔を追加（0.3秒）
+                pause = AudioSegment.silent(duration=300)
+                combined += pause
+                current_time += 0.3
 
             except Exception as e:
-                print(f"  ⚠ TTS失敗 ({speaker}): {str(e)[:30]}...")
-                if attempt < max_retries - 1:
-                    # 別のAPIキーを試す
-                    api_key, key_name = all_keys[(i + attempt + 1) % len(all_keys)]
-                    time.sleep(2)
-                else:
-                    # 無音で代替
-                    silence = AudioSegment.silent(duration=1000)
-                    audio_segments.append(silence)
-                    current_time += 1.0
+                print(f"  ⚠ 音声結合エラー [{i+1}]: {e}")
+        else:
+            # 失敗したセリフは無音1秒で代替
+            silence = AudioSegment.silent(duration=1000)
+            combined += silence
+            if i < len(dialogue):
+                timings.append({
+                    "speaker": dialogue[i]["speaker"],
+                    "text": dialogue[i]["text"],
+                    "start": current_time,
+                    "end": current_time + 1.0
+                })
+            current_time += 1.0
 
-        # 間隔を追加
-        pause = AudioSegment.silent(duration=300)
-        audio_segments.append(pause)
-        current_time += 0.3
-
-    # 音声を結合
-    combined = AudioSegment.empty()
-    for segment in audio_segments:
-        combined += segment
-
+    # 出力
     combined.export(output_path, format="wav")
-    duration = len(combined) / 1000.0
-    print(f"  ✓ TTS生成完了: {duration:.1f}秒")
+    total_duration = len(combined) / 1000.0
+    print(f"  ✓ TTS生成完了: {total_duration:.1f}秒")
 
-    return duration, timings
+    # 一時ファイルを削除
+    import shutil
+    try:
+        shutil.rmtree(temp_dir)
+    except:
+        pass
+
+    return total_duration, timings
 
 
 def wrap_text(text: str, max_chars: int = 18, max_lines: int = 2) -> str:
