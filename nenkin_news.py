@@ -3887,34 +3887,18 @@ def add_to_playlist(youtube, playlist_id, video_id):
 
 
 def add_to_playlists(youtube, video_id):
-    """動画を再生リストとポッドキャストの両方に追加"""
-    results = {"playlist": False, "podcast": False}
+    """動画を再生リストに追加（固定ID使用）"""
+    # 横動画用再生リストID
+    PLAYLIST_ID = "PLSMHaaaPDI0jiSoTEHp2iZ6MPpA8LRRel"
 
-    # 通常の再生リスト
+    results = {"playlist": False}
+
     try:
-        playlist_id = get_or_create_playlist(
-            youtube,
-            title="聞くだけでわかる年金のお話",
-            description="毎日届く年金ニュースをまとめてお届け。聞き流すだけで年金の知識が身につきます。"
-        )
-        add_to_playlist(youtube, playlist_id, video_id)
+        add_to_playlist(youtube, PLAYLIST_ID, video_id)
         results["playlist"] = True
-        print(f"  ✓ 再生リストに追加: {playlist_id}")
+        print(f"  ✓ 再生リストに追加: {PLAYLIST_ID}")
     except Exception as e:
         print(f"  ⚠ 再生リスト追加エラー: {e}")
-
-    # ポッドキャスト用再生リスト
-    try:
-        podcast_id = get_or_create_playlist(
-            youtube,
-            title="得する年金ニュースラジオ",
-            description="毎日届く年金ニュース。カツミとヒロシが今日の年金情報をわかりやすくお届けします。家事をしながら、散歩しながら、聞き流すだけで年金の知識が身につきます。"
-        )
-        add_to_playlist(youtube, podcast_id, video_id)
-        results["podcast"] = True
-        print(f"  ✓ ポッドキャストに追加: {podcast_id}")
-    except Exception as e:
-        print(f"  ⚠ ポッドキャスト追加エラー: {e}")
 
     return results
 

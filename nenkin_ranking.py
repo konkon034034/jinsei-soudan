@@ -1160,6 +1160,9 @@ def upload_to_youtube(video_path: str, title: str, description: str, first_comme
         video_url = f"https://youtube.com/watch?v={video_id}"
         print(f"  ✓ アップロード完了: {video_url}")
 
+        # 再生リストに追加
+        add_to_playlist(youtube, video_id)
+
         # 初コメントを自動投稿
         post_first_comment(youtube, video_id, first_comment)
 
@@ -1168,6 +1171,31 @@ def upload_to_youtube(video_path: str, title: str, description: str, first_comme
     except Exception as e:
         print(f"  ❌ アップロード失敗: {e}")
         return ""
+
+
+def add_to_playlist(youtube, video_id: str):
+    """動画を再生リストに追加"""
+    # ランキング用再生リストID（固定）
+    PLAYLIST_ID = "PLSMHaaaPDI0hZg5xqpAiJoyk3q6CdI20Z"
+
+    print("  再生リストに追加中...")
+    try:
+        request = youtube.playlistItems().insert(
+            part="snippet",
+            body={
+                "snippet": {
+                    "playlistId": PLAYLIST_ID,
+                    "resourceId": {
+                        "kind": "youtube#video",
+                        "videoId": video_id
+                    }
+                }
+            }
+        )
+        request.execute()
+        print(f"  ✓ 再生リストに追加: {PLAYLIST_ID}")
+    except Exception as e:
+        print(f"  ⚠ 再生リスト追加エラー: {e}")
 
 
 def post_first_comment(youtube, video_id: str, first_comment: str = ""):
