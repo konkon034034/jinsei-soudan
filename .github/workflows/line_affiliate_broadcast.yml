@@ -1,0 +1,50 @@
+name: LINE Affiliate Broadcast
+
+on:
+  schedule:
+    # 木曜 16:00 JST = 7:00 UTC
+    - cron: '0 7 * * 4'
+    # 日曜 16:00 JST = 7:00 UTC
+    - cron: '0 7 * * 0'
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Test mode (log only, no broadcast)'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  broadcast:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests
+
+      - name: Run LINE Affiliate Broadcast
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          # アフィリエイトリンク（後で設定）
+          AFFILIATE_LINK_URANAI: ${{ secrets.AFFILIATE_LINK_URANAI }}
+          AFFILIATE_LINK_HOKEN: ${{ secrets.AFFILIATE_LINK_HOKEN }}
+          AFFILIATE_LINK_SHUKATSU: ${{ secrets.AFFILIATE_LINK_SHUKATSU }}
+          AFFILIATE_LINK_PET: ${{ secrets.AFFILIATE_LINK_PET }}
+          AFFILIATE_LINK_SUPPLEMENT: ${{ secrets.AFFILIATE_LINK_SUPPLEMENT }}
+          AFFILIATE_LINK_FOOD: ${{ secrets.AFFILIATE_LINK_FOOD }}
+          # テストモード（スケジュール実行時はfalse、手動実行時は入力値）
+          TEST_MODE: ${{ github.event_name == 'schedule' && 'false' || inputs.test_mode }}
+        run: |
+          python line_affiliate_broadcast.py
