@@ -110,6 +110,43 @@ jobs:
         run: |
           python nenkin_short_v2.py
 
+      - name: Chrome/ChromeDriverをセットアップ（TikTok用）
+        if: success() && github.event.inputs.test_mode != 'true'
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      - name: TikTokにアップロード
+        if: success() && github.event.inputs.test_mode != 'true'
+        continue-on-error: true
+        env:
+          TIKTOK_SESSIONID: ${{ secrets.TIKTOK_SESSIONID }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          # TikTok uploaderとSeleniumをインストール
+          pip install tiktok-uploader selenium webdriver-manager
+
+          # 動画ファイルとタイトルを取得
+          if [ -f "output_video.mp4" ] && [ -f "video_title.txt" ]; then
+            VIDEO_PATH="output_video.mp4"
+            VIDEO_TITLE=$(cat video_title.txt)
+
+            echo "=== TikTokアップロード開始 ==="
+            echo "動画: $VIDEO_PATH"
+            echo "タイトル: $VIDEO_TITLE"
+
+            python upload_tiktok.py --video "$VIDEO_PATH" --title "$VIDEO_TITLE" || true
+
+            # 結果を確認
+            if [ -f "tiktok_result.json" ]; then
+              echo "=== TikTok結果 ==="
+              cat tiktok_result.json
+            fi
+          else
+            echo "動画ファイルまたはタイトルが見つかりません。TikTokアップロードをスキップ。"
+            ls -la
+          fi
+
       - name: テスト用アーティファクトをアップロード
         if: ${{ github.event.inputs.test_mode == 'true' }}
         uses: actions/upload-artifact@v4

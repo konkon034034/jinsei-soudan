@@ -66,55 +66,18 @@ RANKING_COUNT = 3 if TEST_MODE else 10  # テスト時はTOP3、本番はTOP10
 FISH_AUDIO_API_KEY = os.environ.get("FISH_AUDIO_API_KEY", "")
 FISH_AUDIO_API_URL = "https://api.fish.audio/v1/tts"
 
-# Fish Audio ボイスID（全チャンネル統一）
-# カツミ（女性）: 女性アナウンサー（ベテラン）- 信頼感ある落ち着いた進行役
-FISH_VOICE_KATSUMI = "f1d92c18f84e47c6b5bc0cebb80ddaf5"
-
-# ヒロシ（男性）: おじさん（極道風）- 毒舌ツッコミ役
-FISH_VOICE_HIROSHI = "dd25aabce1894d94b5c3d1230efaeb68"
-
-# チャンネルごとのボイス設定（全チャンネル統一）
-# channel: (カツミのボイス, ヒロシのボイス)
-CHANNEL_VOICE_CONFIG = {
-    "27": (FISH_VOICE_KATSUMI, FISH_VOICE_HIROSHI),  # TOKEN_27
-    "23": (FISH_VOICE_KATSUMI, FISH_VOICE_HIROSHI),  # TOKEN_23
-    "24": (FISH_VOICE_KATSUMI, FISH_VOICE_HIROSHI),  # TOKEN_24
-}
-
-# デフォルトのキャラクター設定
-CHARACTERS = {
-    "カツミ": {
-        "voice": FISH_VOICE_KATSUMI,
-        "color": "#4169E1",  # 青（知的）
-        "description": "メインMC、論理的、紹介・説明担当"
-    },
-    "ヒロシ": {
-        "voice": FISH_VOICE_HIROSHI,
-        "color": "#FF6347",  # 赤（サブ）
-        "description": "サブMC、リアクション・共感担当、毒舌"
-    }
-}
-
-# Fish Audio ボイス名マッピング
-FISH_VOICE_NAMES = {
-    FISH_VOICE_KATSUMI: "女性アナウンサー（ベテラン）",
-    FISH_VOICE_HIROSHI: "おじさん（極道風）",
-}
-
-
-def get_voice_name(voice: str) -> str:
-    """ボイスIDから説明を取得"""
-    return FISH_VOICE_NAMES.get(voice, voice[:8] + "...")
-
-
-def setup_channel_voices(channel: str):
-    """チャンネルに応じてキャラクターのボイスを設定"""
-    if channel in CHANNEL_VOICE_CONFIG:
-        katsumi_voice, hiroshi_voice = CHANNEL_VOICE_CONFIG[channel]
-        CHARACTERS["カツミ"]["voice"] = katsumi_voice
-        CHARACTERS["ヒロシ"]["voice"] = hiroshi_voice
-        print(f"  ボイス設定: カツミ={get_voice_name(katsumi_voice)}, "
-              f"ヒロシ={get_voice_name(hiroshi_voice)}")
+# キャラクター設定を共通ファイルからインポート
+from character_settings import (
+    CHARACTERS,
+    CHANNEL_VOICE_CONFIG,
+    FISH_VOICE_KATSUMI,
+    FISH_VOICE_HIROSHI,
+    FISH_VOICE_NAMES,
+    get_voice_name,
+    setup_channel_voices,
+    detect_emotion_tag,
+    CHARACTER_PROMPT,
+)
 
 
 class GeminiKeyManager:
@@ -539,49 +502,6 @@ def wave_file(filename: str, pcm: bytes, channels: int = 1, rate: int = 24000, s
         wf.writeframes(pcm)
 
 
-def detect_emotion_tag(speaker: str, text: str) -> str:
-    """
-    セリフの内容から感情タグを判定
-
-    感情タグルール:
-    - カツミ（普通）: タグなし
-    - カツミ（共感）: (empathetic)
-    - ヒロシ（毒舌）: (frustrated) または (sarcastic)
-    - ヒロシ（ツッコミ）: (surprised)
-    - ヒロシ（断言）: (confident)
-    """
-    # 毒舌・皮肉パターン
-    toxic_patterns = ["まあ", "正直", "ぶっちゃけ", "ひどい", "残念", "ダメ", "最悪", "無理", "やばい", "やめて"]
-    # ツッコミパターン
-    tsukkomi_patterns = ["えっ", "え？", "何それ", "マジで", "うそ", "本当", "信じられない", "！？", "!?"]
-    # 断言パターン
-    confident_patterns = ["間違いない", "絶対", "確実", "これは", "断言", "やっぱり", "当然", "もちろん"]
-    # 共感パターン
-    empathetic_patterns = ["わかる", "そうだね", "確かに", "なるほど", "いいね", "素敵", "すごい", "感動"]
-
-    if speaker == "ヒロシ":
-        # 毒舌チェック
-        for pattern in toxic_patterns:
-            if pattern in text:
-                return "(sarcastic) " if random.random() > 0.5 else "(frustrated) "
-        # ツッコミチェック
-        for pattern in tsukkomi_patterns:
-            if pattern in text:
-                return "(surprised) "
-        # 断言チェック
-        for pattern in confident_patterns:
-            if pattern in text:
-                return "(confident) "
-
-    elif speaker == "カツミ":
-        # 共感チェック
-        for pattern in empathetic_patterns:
-            if pattern in text:
-                return "(empathetic) "
-
-    return ""  # タグなし
-
-
 def generate_fish_audio_tts(text: str, reference_id: str, output_path: str, max_retries: int = 3, timeout: int = 60) -> bool:
     """
     Fish Audio APIで音声を生成
@@ -648,13 +568,98 @@ def generate_fish_audio_tts(text: str, reference_id: str, output_path: str, max_
     return False
 
 
-def concatenate_audio_files(audio_files: list, output_path: str) -> bool:
+def generate_silence(output_path: str, duration: float = 0.5, sample_rate: int = 24000) -> bool:
     """
-    複数の音声ファイルをffmpegで結合
+    無音のWAVファイルを生成
+
+    Args:
+        output_path: 出力ファイルパス
+        duration: 無音の長さ（秒）
+        sample_rate: サンプルレート
+
+    Returns:
+        bool: 成功時True
+    """
+    try:
+        cmd = [
+            'ffmpeg', '-y',
+            '-f', 'lavfi',
+            '-i', f'anullsrc=r={sample_rate}:cl=mono',
+            '-t', str(duration),
+            '-acodec', 'pcm_s16le',
+            output_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        return result.returncode == 0
+    except Exception as e:
+        print(f"    [ffmpeg] 無音生成エラー: {e}")
+        return False
+
+
+def add_silence_to_audio(audio_path: str, silence_duration: float = 0.5) -> bool:
+    """
+    音声ファイルの末尾に無音を追加
+
+    Args:
+        audio_path: 音声ファイルパス（上書き）
+        silence_duration: 追加する無音の長さ（秒）
+
+    Returns:
+        bool: 成功時True
+    """
+    try:
+        temp_dir = Path(audio_path).parent
+        silence_file = str(temp_dir / "silence_padding.wav")
+        temp_output = str(temp_dir / "temp_with_silence.wav")
+
+        # 無音ファイルを生成
+        if not generate_silence(silence_file, silence_duration):
+            return False
+
+        # 結合用ファイルリストを作成
+        list_file = temp_dir / "silence_concat.txt"
+        with open(list_file, 'w') as f:
+            f.write(f"file '{audio_path}'\n")
+            f.write(f"file '{silence_file}'\n")
+
+        # 結合
+        cmd = [
+            'ffmpeg', '-y', '-f', 'concat', '-safe', '0',
+            '-i', str(list_file),
+            '-acodec', 'pcm_s16le', '-ar', '24000', '-ac', '1',
+            temp_output
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        # クリーンアップと置き換え
+        if list_file.exists():
+            list_file.unlink()
+        if os.path.exists(silence_file):
+            os.remove(silence_file)
+
+        if result.returncode == 0:
+            # 元ファイルを置き換え
+            import shutil
+            shutil.move(temp_output, audio_path)
+            return True
+        else:
+            if os.path.exists(temp_output):
+                os.remove(temp_output)
+            return False
+
+    except Exception as e:
+        print(f"    [ffmpeg] 無音追加エラー: {e}")
+        return False
+
+
+def concatenate_audio_files(audio_files: list, output_path: str, gap_duration: float = 0.5) -> bool:
+    """
+    複数の音声ファイルをffmpegで結合（各ファイル間に無音ギャップを挿入）
 
     Args:
         audio_files: 結合する音声ファイルのリスト
         output_path: 出力ファイルパス
+        gap_duration: 各音声間のギャップ（秒）デフォルト0.5秒
 
     Returns:
         bool: 成功時True
@@ -663,19 +668,29 @@ def concatenate_audio_files(audio_files: list, output_path: str) -> bool:
         return False
 
     if len(audio_files) == 1:
-        # 1ファイルの場合はコピー
+        # 1ファイルの場合は無音を追加してコピー
         import shutil
         shutil.copy(audio_files[0], output_path)
+        add_silence_to_audio(output_path, 0.5)  # 末尾に0.5秒の無音追加
         return True
 
     try:
-        # 一時ファイルリストを作成
+        # 一時ファイルリストを作成（間に無音を挿入）
         temp_dir = Path(audio_files[0]).parent
         list_file = temp_dir / "concat_list.txt"
+        silence_file = str(temp_dir / "gap_silence.wav")
+
+        # 無音ファイルを生成
+        if not generate_silence(silence_file, gap_duration):
+            print(f"    [警告] ギャップ用無音生成失敗、ギャップなしで続行")
+            silence_file = None
 
         with open(list_file, 'w') as f:
-            for audio_file in audio_files:
+            for i, audio_file in enumerate(audio_files):
                 f.write(f"file '{audio_file}'\n")
+                # 最後以外のファイルの後にギャップを挿入
+                if silence_file and i < len(audio_files) - 1:
+                    f.write(f"file '{silence_file}'\n")
 
         # ffmpegで結合
         cmd = [
@@ -690,8 +705,12 @@ def concatenate_audio_files(audio_files: list, output_path: str) -> bool:
         # 一時ファイル削除
         if list_file.exists():
             list_file.unlink()
+        if silence_file and os.path.exists(silence_file):
+            os.remove(silence_file)
 
         if result.returncode == 0:
+            # 末尾に0.5秒の無音を追加（音声切れ対策）
+            add_silence_to_audio(output_path, 0.5)
             return True
         else:
             print(f"    [ffmpeg] 結合エラー: {result.stderr[:200]}")
@@ -1065,6 +1084,186 @@ def generate_gradient_background(output_path: str, rank: int = 0,
     img.save(output_path)
 
 
+def generate_ranking_table_image(
+    output_path: str,
+    rankings: list,
+    current_rank: int = None,
+    video_title: str = None
+):
+    """
+    ランキング表の画像を生成（1920x1080横動画用）
+
+    Args:
+        output_path: 出力画像パス
+        rankings: ランキングデータのリスト [{rank, work_title, year, cast}, ...]
+        current_rank: 現在発表中の順位（ハイライト表示）
+        video_title: 動画タイトル（上部に表示）
+    """
+    img = Image.new('RGB', (VIDEO_WIDTH, VIDEO_HEIGHT))
+    draw = ImageDraw.Draw(img)
+
+    # 背景グラデーション（ダークブルー系）
+    for y in range(VIDEO_HEIGHT):
+        ratio = y / VIDEO_HEIGHT
+        r = int(20 * (1 - ratio) + 40 * ratio)
+        g = int(30 * (1 - ratio) + 60 * ratio)
+        b = int(60 * (1 - ratio) + 100 * ratio)
+        draw.line([(0, y), (VIDEO_WIDTH, y)], fill=(r, g, b))
+
+    # フォント設定
+    font_path = get_font_path()
+    try:
+        font_title = ImageFont.truetype(font_path, 56) if font_path else ImageFont.load_default()
+        font_rank = ImageFont.truetype(font_path, 44) if font_path else ImageFont.load_default()
+        font_item = ImageFont.truetype(font_path, 36) if font_path else ImageFont.load_default()
+    except:
+        font_title = ImageFont.load_default()
+        font_rank = ImageFont.load_default()
+        font_item = ImageFont.load_default()
+
+    # タイトル描画
+    if video_title:
+        # タイトルを短縮（長すぎる場合）
+        display_title = video_title[:30] + "..." if len(video_title) > 30 else video_title
+        bbox = draw.textbbox((0, 0), display_title, font=font_title)
+        text_width = bbox[2] - bbox[0]
+        x = (VIDEO_WIDTH - text_width) // 2
+        # 影
+        draw.text((x + 3, 33), display_title, font=font_title, fill=(0, 0, 0))
+        draw.text((x, 30), display_title, font=font_title, fill=(255, 215, 0))  # ゴールド
+
+    # テーブル設定
+    table_top = 120
+    table_left = 100
+    table_width = VIDEO_WIDTH - 200
+    row_height = 85
+
+    # ヘッダー
+    header_y = table_top
+    draw.rectangle(
+        [table_left, header_y, table_left + table_width, header_y + row_height],
+        fill=(50, 50, 80),
+        outline=(100, 100, 150),
+        width=2
+    )
+
+    # ヘッダーテキスト
+    col_widths = [120, 600, 150, 400]  # 順位, タイトル, 年, 詳細
+    headers = ["順位", "タイトル", "年", "詳細"]
+    col_x = table_left
+    for i, (header, width) in enumerate(zip(headers, col_widths)):
+        bbox = draw.textbbox((0, 0), header, font=font_rank)
+        text_width = bbox[2] - bbox[0]
+        x = col_x + (width - text_width) // 2
+        draw.text((x, header_y + 20), header, font=font_rank, fill=(200, 200, 255))
+        col_x += width
+
+    # ランキング行を描画（1位が上、10位が下の順）
+    # 表示：1位→2位→...→10位（上から下へ）
+    # 発表：10位→9位→...→1位（下から上へ進む）
+    sorted_rankings = sorted(rankings, key=lambda x: x.get("rank", 0), reverse=False)
+
+    for idx, item in enumerate(sorted_rankings):
+        rank = item.get("rank", idx + 1)
+        work_title = item.get("work_title", "")[:25]  # 長すぎる場合は切る
+        year = item.get("year", "")
+        cast = item.get("cast", "")[:20]  # 長すぎる場合は切る
+
+        row_y = table_top + row_height * (idx + 1)
+
+        # 現在の順位をハイライト（10位から発表なので、current_rank以上の数字が発表済み）
+        is_current = (current_rank is not None and rank == current_rank)
+        is_revealed = (current_rank is not None and rank >= current_rank)
+
+        if is_current:
+            # 現在発表中: 黄色ハイライト
+            bg_color = (255, 215, 0)  # ゴールド
+            text_color = (0, 0, 0)
+            # グロー効果
+            for offset in range(5, 0, -1):
+                alpha = int(50 * offset / 5)
+                glow_color = (255, 255, 200)
+                draw.rectangle(
+                    [table_left - offset, row_y - offset,
+                     table_left + table_width + offset, row_y + row_height + offset],
+                    outline=glow_color,
+                    width=1
+                )
+        elif is_revealed:
+            # 発表済み: やや明るい背景
+            bg_color = (60, 70, 100)
+            text_color = (255, 255, 255)
+        else:
+            # 未発表: 暗い背景（シルエット）
+            bg_color = (30, 35, 50)
+            text_color = (100, 100, 120)
+
+        # 行の背景
+        draw.rectangle(
+            [table_left, row_y, table_left + table_width, row_y + row_height],
+            fill=bg_color,
+            outline=(80, 80, 120),
+            width=1
+        )
+
+        # 順位（1-3位は特別色）
+        rank_text = f"第{rank}位"
+        if rank <= 3 and is_revealed:
+            if rank == 1:
+                rank_color = (255, 215, 0) if not is_current else (180, 0, 0)  # ゴールド
+            elif rank == 2:
+                rank_color = (192, 192, 192) if not is_current else (0, 0, 0)  # シルバー
+            else:
+                rank_color = (205, 127, 50) if not is_current else (0, 0, 0)  # ブロンズ
+        else:
+            rank_color = text_color
+
+        col_x = table_left
+        # 順位
+        bbox = draw.textbbox((0, 0), rank_text, font=font_rank)
+        text_width = bbox[2] - bbox[0]
+        x = col_x + (col_widths[0] - text_width) // 2
+        draw.text((x, row_y + 22), rank_text, font=font_rank, fill=rank_color)
+        col_x += col_widths[0]
+
+        # タイトル（未発表時は「？？？」）
+        if is_revealed:
+            title_display = f"『{work_title}』" if work_title else "---"
+        else:
+            title_display = "？？？"
+        draw.text((col_x + 20, row_y + 25), title_display, font=font_item, fill=text_color)
+        col_x += col_widths[1]
+
+        # 年
+        if is_revealed:
+            year_display = str(year) if year else "---"
+        else:
+            year_display = "？？"
+        bbox = draw.textbbox((0, 0), year_display, font=font_item)
+        text_width = bbox[2] - bbox[0]
+        x = col_x + (col_widths[2] - text_width) // 2
+        draw.text((x, row_y + 25), year_display, font=font_item, fill=text_color)
+        col_x += col_widths[2]
+
+        # 詳細（キャスト）
+        if is_revealed:
+            cast_display = cast if cast else "---"
+        else:
+            cast_display = "？？？？？"
+        draw.text((col_x + 20, row_y + 25), cast_display, font=font_item, fill=text_color)
+
+    # 装飾: 下部にチャンネル情報
+    footer_text = "チャンネル登録よろしくお願いします！"
+    bbox = draw.textbbox((0, 0), footer_text, font=font_item)
+    text_width = bbox[2] - bbox[0]
+    x = (VIDEO_WIDTH - text_width) // 2
+    draw.text((x + 2, VIDEO_HEIGHT - 52), footer_text, font=font_item, fill=(0, 0, 0))
+    draw.text((x, VIDEO_HEIGHT - 50), footer_text, font=font_item, fill=(255, 255, 255))
+
+    img.save(output_path, quality=95)
+    return output_path
+
+
 def resize_image(image_path: str, width: int, height: int):
     """画像をリサイズ"""
     img = Image.open(image_path)
@@ -1427,7 +1626,7 @@ def create_video_ffmpeg(sections: list, all_segments: list, temp_dir: Path) -> t
             temp_video
         ]
     else:
-        # BGMなし
+        # BGMなし: 音声の長さに合わせて動画を生成（-shortestは使用しない）
         cmd_step1 = [
             'ffmpeg', '-y',
             '-f', 'concat', '-safe', '0', '-i', concat_file,
@@ -1436,7 +1635,7 @@ def create_video_ffmpeg(sections: list, all_segments: list, temp_dir: Path) -> t
             '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
             '-c:a', 'aac', '-b:a', '192k',
             '-pix_fmt', 'yuv420p',
-            '-shortest',
+            '-t', str(total_duration + 1.0),  # 音声長 + 1秒の余裕
             '-movflags', '+faststart',
             temp_video
         ]
@@ -1580,8 +1779,10 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager, ch
     """動画を作成（FFmpegベース高速版、各順位ごとにWAV音声を生成）"""
     sections = []  # FFmpeg用のセクション情報
     all_segments = []
+    section_timestamps = []  # チャプター用タイムスタンプ
     current_time = 0.0
     video_title = script.get("title", "")  # 動画タイトル（フォールバック用）
+    rankings_data = script.get("rankings", [])  # ランキングデータ
 
     total_steps = RANKING_COUNT + 2  # オープニング + ランキング数 + エンディング
     print(f"動画作成開始（FFmpeg高速モード）... [全{total_steps}セクション]")
@@ -1594,8 +1795,21 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager, ch
         script["opening"], opening_audio_path, key_manager, channel
     )
 
+    # オープニング背景: ランキング表（全て未発表）
     opening_bg = str(temp_dir / "opening_bg.png")
-    generate_gradient_background(opening_bg, rank=0, video_title=video_title)
+    generate_ranking_table_image(
+        opening_bg,
+        rankings_data,
+        current_rank=RANKING_COUNT + 1,  # 全て未発表
+        video_title=video_title
+    )
+    print(f"    → ランキング表（オープニング）を生成")
+
+    # オープニングのチャプター
+    section_timestamps.append({
+        "time": 0.0,
+        "title": "オープニング"
+    })
 
     if opening_duration > 0:
         sections.append({
@@ -1617,6 +1831,13 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager, ch
         step = idx + 2  # オープニングが1なので2から
         print(f"[{step}/{total_steps}] 第{rank}位 音声生成中...")
 
+        # チャプター用タイムスタンプを記録
+        work_title = item.get("work_title", "")
+        section_timestamps.append({
+            "time": current_time,
+            "title": f"第{rank}位 {work_title}"
+        })
+
         # 順位ごとに別ファイルで音声を生成
         rank_audio_path = str(temp_dir / f"rank_{rank}.wav")
 
@@ -1624,22 +1845,15 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager, ch
             item["dialogue"], rank_audio_path, key_manager, channel
         )
 
-        # 背景画像を取得（Google画像検索）
-        image_path = str(temp_dir / f"rank_{rank}.jpg")
-        work_title = item.get("work_title", "")
-        cast = item.get("cast", "")
-        print(f"    画像検索: {work_title} / {cast}")
-
-        if not fetch_ranking_image(work_title, cast, image_path):
-            # フォールバック: グラデーション背景（タイトル・順位・作品名付き）
-            print(f"    → フォールバック: グラデーション背景")
-            image_path = str(temp_dir / f"rank_{rank}.png")
-            generate_gradient_background(
-                image_path,
-                rank=rank,
-                video_title=video_title,
-                work_title=work_title
-            )
+        # 背景画像: ランキング表（現在の順位をハイライト）
+        image_path = str(temp_dir / f"rank_{rank}_table.png")
+        generate_ranking_table_image(
+            image_path,
+            rankings_data,
+            current_rank=rank,
+            video_title=video_title
+        )
+        print(f"    → ランキング表（第{rank}位ハイライト）を生成")
 
         if duration > 0:
             sections.append({
@@ -1663,8 +1877,21 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager, ch
         script["ending"], ending_audio_path, key_manager, channel
     )
 
+    # エンディング背景: ランキング表（全て発表済み）
     ending_bg = str(temp_dir / "ending_bg.png")
-    generate_gradient_background(ending_bg, rank=11, video_title=video_title)
+    generate_ranking_table_image(
+        ending_bg,
+        rankings_data,
+        current_rank=1,  # 全て発表済み
+        video_title=video_title
+    )
+    print(f"    → ランキング表（エンディング・全発表）を生成")
+
+    # エンディングのチャプター
+    section_timestamps.append({
+        "time": current_time,
+        "title": "エンディング"
+    })
 
     if ending_duration > 0:
         sections.append({
@@ -1683,7 +1910,83 @@ def create_video(script: dict, temp_dir: Path, key_manager: GeminiKeyManager, ch
     if not sections:
         raise ValueError("有効なセクションがありません")
 
-    return create_video_ffmpeg(sections, all_segments, temp_dir)
+    video_path, srt_path = create_video_ffmpeg(sections, all_segments, temp_dir)
+
+    # チャプター情報をファイルに保存
+    chapters_path = str(temp_dir / "chapters.txt")
+    generate_youtube_chapters(section_timestamps, chapters_path)
+
+    return video_path, srt_path, section_timestamps
+
+
+def generate_youtube_chapters(timestamps: list, output_path: str) -> str:
+    """
+    YouTubeチャプター用のテキストを生成
+
+    Args:
+        timestamps: [{"time": 0.0, "title": "オープニング"}, ...]
+        output_path: 出力ファイルパス
+
+    Returns:
+        チャプターテキスト
+    """
+    lines = []
+    for item in timestamps:
+        time_seconds = item["time"]
+        title = item["title"]
+
+        # 秒を MM:SS または H:MM:SS 形式に変換
+        hours = int(time_seconds // 3600)
+        minutes = int((time_seconds % 3600) // 60)
+        seconds = int(time_seconds % 60)
+
+        if hours > 0:
+            time_str = f"{hours}:{minutes:02d}:{seconds:02d}"
+        else:
+            time_str = f"{minutes}:{seconds:02d}"
+
+        lines.append(f"{time_str} {title}")
+
+    chapters_text = "\n".join(lines)
+
+    # ファイルに保存
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(chapters_text)
+
+    print(f"\n[チャプター情報]")
+    print(chapters_text)
+
+    return chapters_text
+
+
+def format_chapters_for_description(timestamps: list) -> str:
+    """
+    YouTubeの説明欄用にチャプター情報をフォーマット
+
+    Args:
+        timestamps: [{"time": 0.0, "title": "オープニング"}, ...]
+
+    Returns:
+        YouTube説明欄用のチャプターテキスト
+    """
+    lines = ["📋 チャプター"]
+    for item in timestamps:
+        time_seconds = item["time"]
+        title = item["title"]
+
+        # 秒を MM:SS または H:MM:SS 形式に変換
+        hours = int(time_seconds // 3600)
+        minutes = int((time_seconds % 3600) // 60)
+        seconds = int(time_seconds % 60)
+
+        if hours > 0:
+            time_str = f"{hours}:{minutes:02d}:{seconds:02d}"
+        else:
+            time_str = f"{minutes}:{seconds:02d}"
+
+        lines.append(f"{time_str} {title}")
+
+    return "\n".join(lines)
 
 
 def upload_to_youtube(video_path: str, title: str, description: str, tags: list, channel_token: str, mode: str = "AUTO") -> str:
@@ -1833,14 +2136,18 @@ def process_auto_mode(task: dict, key_manager: GeminiKeyManager):
         # 3-5. 動画作成
         print("[3/6] 動画作成中...")
         temp_dir = Path(tempfile.mkdtemp())
-        video_path, srt_path = create_video(script, temp_dir, key_manager, channel)
+        video_path, srt_path, chapter_timestamps = create_video(script, temp_dir, key_manager, channel)
+
+        # チャプター情報を説明欄に追加
+        chapters_text = format_chapters_for_description(chapter_timestamps)
+        description_with_chapters = f"{script['description']}\n\n{chapters_text}"
 
         # 6. YouTubeアップロード
         print("[6/6] YouTubeアップロード中...")
         youtube_url = upload_to_youtube(
             video_path,
             script["title"],
-            script["description"],
+            description_with_chapters,
             script.get("tags", ["シニア", "老後", "ランキング", "口コミ"]),
             channel,
             mode  # TEST → 限定公開, AUTO → 公開
