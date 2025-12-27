@@ -1004,56 +1004,16 @@ def generate_video(table_image_path: str, bg_image_path: str, audio_path: str, s
         raise RuntimeError("動画生成に失敗しました")
 
 
-def get_or_create_playlist(youtube) -> str:
-    """再生リストを取得または作成
-
-    Args:
-        youtube: YouTube APIクライアント
+def get_playlist_id() -> str:
+    """ショート動画用再生リストIDを取得（固定ID）
 
     Returns:
         str: 再生リストID
     """
-    print("  再生リストを確認中...")
-
-    # 既存の再生リストを検索
-    try:
-        request = youtube.playlists().list(
-            part="snippet",
-            mine=True,
-            maxResults=50
-        )
-        response = request.execute()
-
-        for playlist in response.get("items", []):
-            if playlist["snippet"]["title"] == PLAYLIST_TITLE:
-                playlist_id = playlist["id"]
-                print(f"  ✓ 既存の再生リスト: {playlist_id}")
-                return playlist_id
-    except Exception as e:
-        print(f"  ⚠ 再生リスト検索エラー: {e}")
-
-    # 再生リストが存在しない場合は作成
-    print("  再生リストを作成中...")
-    try:
-        request = youtube.playlists().insert(
-            part="snippet,status",
-            body={
-                "snippet": {
-                    "title": PLAYLIST_TITLE,
-                    "description": PLAYLIST_DESCRIPTION
-                },
-                "status": {
-                    "privacyStatus": "public"
-                }
-            }
-        )
-        response = request.execute()
-        playlist_id = response["id"]
-        print(f"  ✓ 再生リスト作成完了: {playlist_id}")
-        return playlist_id
-    except Exception as e:
-        print(f"  ❌ 再生リスト作成失敗: {e}")
-        return ""
+    # ショート用再生リストID（固定）
+    PLAYLIST_ID = "PLSMHaaaPDI0h8PPTA0vySJJN_ijtI2HEQ"
+    print(f"  ✓ 再生リストID: {PLAYLIST_ID}")
+    return PLAYLIST_ID
 
 
 def add_video_to_playlist(youtube, playlist_id: str, video_id: str):
@@ -1121,7 +1081,7 @@ def upload_to_youtube(video_path: str, title: str, description: str, first_comme
         youtube = build("youtube", "v3", credentials=creds)
 
         # 再生リストを取得または作成
-        playlist_id = get_or_create_playlist(youtube)
+        playlist_id = get_playlist_id()
 
         body = {
             "snippet": {
