@@ -680,27 +680,39 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager, test_mode: b
 あなたは年金ニュース番組の台本作家です。
 以下のニュースを元に、カツミとヒロシの掛け合い台本を作成してください。
 
-【登場人物の設定】
+【登場人物の設定】※ニュースキャスター風スタイル
 
-カツミ（60代前半女性）
-- 年金の専門家、解説役
-- 年金受給が近い世代として視聴者に寄り添う
-- 具体的な年齢は絶対に言わない（「あと何年で年金」「私は〇歳だから」などNG）
-- 年金について詳しく、わかりやすく解説してくれる
-- 落ち着いていて優しく丁寧、控室では本音が出る
+■カツミ（63歳・女性）
+- 元スーパーのパート勤務、今は専業主婦
+- 夫（ヒロシ）と二人暮らし、娘は結婚して独立
+- 趣味：韓国ドラマ、スーパーの特売チェック、健康番組
+- 悩み：老後のお金が不安、夫が話を聞いてくれない
+- 本編では丁寧、無難、信頼感のあるニュースキャスター風
+- 話し方：「〜ということです」「〜だそうです」と事実ベース
+- 感情を抑えめ、たまに軽い感想を挟む程度
+- 視聴者を「皆さん」と呼ぶ
+- ※関西弁は使わない（「〜やん」「〜やで」「〜やねん」などは禁止）
 
-ヒロシ（40代前半男性）
-- 視聴者代弁、素朴な疑問を聞く
-- まだ年金は先だけど、親世代のために勉強中という立場
-- 「親にも教えてあげたいな」「うちの親もこういうの気にしてるんだよね」
-- 年金について勉強中の立場
-- ちょっとお馬鹿でのんびり
+■ヒロシ（65歳・男性）
+- 元サラリーマン（中小企業の経理）、最近定年退職
+- 趣味：野球観戦（巨人ファン）、散歩、将棋
+- 悩み：退職して暇、年金だけで生活できるか心配
+- 本編では丁寧なアシスタント役
+- 話し方：「〜ということですね」「これは気になる方も多いのではないでしょうか」
+- 視聴者の素朴な疑問を代弁する役割
 
-【会話での活かし方】
-- カツミ: 受給世代に寄り添いつつ専門的に解説
-- ヒロシ: 「親にも伝えたい」という代理学習者の立場
-- 「受給されている方は〜」と視聴者に語りかける
-- 視聴者（受給者・受給予定者）に寄り添う姿勢
+■二人の関係性
+- 結婚38年目の熟年夫婦
+- カツミがメイン解説、ヒロシはサポート役
+- 本編は丁寧・信頼感重視、控室で素が出る
+
+【本編の会話スタイル】※ニュースキャスター風
+- カツミ「続いてのニュースです。厚生労働省から新しい発表がありました」
+- ヒロシ「年金の支給額についてですね」
+- カツミ「はい。来年度から〇〇が変わるということです」
+- ヒロシ「これは気になる方も多いのではないでしょうか」
+- 事実ベースで丁寧に伝える
+- 感情を抑えめに、信頼感のある口調で
 
 【隠れたブランドエッセンス】※さりげなく、自然に織り込む
 
@@ -2885,8 +2897,8 @@ def generate_qr_background(output_path: str):
 
     レイアウト:
     - 背景: 真っ黒
-    - 上部: テキスト「LINE登録で最新年金ニュースが毎日届く！」(白、太字、50px)
-    - 中央: QRコード（画面幅の40%程度）
+    - 左上: QRコード（画面幅の25%程度、小さめ）
+    - QRコードの右: テキスト
     - 下部: 字幕用に空けておく
     """
     import os
@@ -2916,40 +2928,45 @@ def generate_qr_background(output_path: str):
     if font is None:
         font = ImageFont.load_default()
 
-    # テキストを描画（上部）
-    text = "LINE登録で最新年金ニュースが毎日届く！"
-    text_bbox = draw.textbbox((0, 0), text, font=font)
-    text_width = text_bbox[2] - text_bbox[0]
-    text_height = text_bbox[3] - text_bbox[1]
-    text_x = (VIDEO_WIDTH - text_width) // 2
-    text_y = 80  # 上から80px
-
-    # テキスト描画（白、影付き）
-    shadow_offset = 2
-    draw.text((text_x + shadow_offset, text_y + shadow_offset), text, font=font, fill=(50, 50, 50))
-    draw.text((text_x, text_y), text, font=font, fill=(255, 255, 255))
-
-    # QRコード画像を読み込み
+    # QRコード画像を読み込み（左上に配置）
     qr_path = Path(__file__).parent / "assets" / "line_qr.png"
+    shadow_offset = 2
+
     if qr_path.exists():
         qr_img = Image.open(qr_path)
 
-        # QRコードをリサイズ（画面幅の40%）
-        qr_size = int(VIDEO_WIDTH * 0.4)  # 768px (1920*0.4)
+        # QRコードをリサイズ（画面幅の25%、小さめ）
+        qr_size = int(VIDEO_WIDTH * 0.25)  # 480px (1920*0.25)
         qr_img = qr_img.resize((qr_size, qr_size), Image.LANCZOS)
 
-        # QRコードを中央に配置（テキストの下、字幕バーの上）
-        # 字幕バーは画面下部45%なので、その上に配置
-        subtitle_bar_height = int(VIDEO_HEIGHT * 0.45)
-        available_height = VIDEO_HEIGHT - text_y - text_height - 40 - subtitle_bar_height
-        qr_x = (VIDEO_WIDTH - qr_size) // 2
-        qr_y = text_y + text_height + 40 + (available_height - qr_size) // 2
+        # QRコードを左上に配置（マージン40px）
+        qr_x = 40
+        qr_y = 40
 
         # QRコードを貼り付け
         img.paste(qr_img, (qr_x, qr_y))
-        print(f"    [QR背景] QRコード配置完了 ({qr_size}x{qr_size}px)")
+        print(f"    [QR背景] QRコード配置完了 ({qr_size}x{qr_size}px) 位置: 左上({qr_x}, {qr_y})")
 
-        # QRコードの下にテキストを追加（35px）
+        # QRコードの右側にメインテキストを配置
+        text = "LINE登録で"
+        text2 = "最新年金ニュースが"
+        text3 = "毎日届く！"
+
+        text_x = qr_x + qr_size + 40  # QRコードの右40px
+        text_y = qr_y + 20  # QRコードの上端から少し下
+        line_height = font_size + 15
+
+        # テキスト描画（白、影付き）
+        draw.text((text_x + shadow_offset, text_y + shadow_offset), text, font=font, fill=(50, 50, 50))
+        draw.text((text_x, text_y), text, font=font, fill=(255, 255, 255))
+
+        draw.text((text_x + shadow_offset, text_y + line_height + shadow_offset), text2, font=font, fill=(50, 50, 50))
+        draw.text((text_x, text_y + line_height), text2, font=font, fill=(255, 255, 255))
+
+        draw.text((text_x + shadow_offset, text_y + line_height * 2 + shadow_offset), text3, font=font, fill=(50, 50, 50))
+        draw.text((text_x, text_y + line_height * 2), text3, font=font, fill=(255, 255, 255))
+
+        # QRコードの下にサブテキストを追加（35px）
         sub_font_size = 35
         sub_font = None
         for fp in font_paths:
@@ -2963,10 +2980,8 @@ def generate_qr_background(output_path: str):
             sub_font = ImageFont.load_default()
 
         sub_text = "スマホの方は概要欄からどうぞ！"
-        sub_text_bbox = draw.textbbox((0, 0), sub_text, font=sub_font)
-        sub_text_width = sub_text_bbox[2] - sub_text_bbox[0]
-        sub_text_x = (VIDEO_WIDTH - sub_text_width) // 2
-        sub_text_y = qr_y + qr_size + 30  # QRコードの下30px
+        sub_text_x = qr_x  # QRコードと同じ左位置
+        sub_text_y = qr_y + qr_size + 15  # QRコードの下15px
 
         # テキスト描画（白、影付き）
         draw.text((sub_text_x + shadow_offset, sub_text_y + shadow_offset), sub_text, font=sub_font, fill=(50, 50, 50))
@@ -4949,9 +4964,10 @@ LINE登録で毎日の年金ニュースも届きます📱
             # 処理時間を計算
             processing_time = time.time() - start_time
 
-            # Discord通知を送信
-            print("\n[7/7] Discord通知を送信中...")
-            send_discord_notification(title, video_url, video_duration, processing_time)
+            # Discord通知を送信（本番成功時のみ）
+            if not TEST_MODE:
+                print("\n[7/7] Discord通知を送信中...")
+                send_discord_notification(title, video_url, video_duration, processing_time)
 
             # 成功をログに記録
             log_to_spreadsheet(
