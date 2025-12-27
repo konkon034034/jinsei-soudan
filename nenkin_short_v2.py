@@ -1520,12 +1520,14 @@ https://konkon034034.github.io/nenkin-shindan/
 ━━━━━━━━━━━━━━━━━━━━"""
 
         # STEP7: アップロード
+        import shutil
+        # 動画ファイルを保存（TikTokアップロード用にも使用）
+        output_video = "output_video.mp4"
+        shutil.copy(video_path, output_video)
+        print(f"  動画を保存: {output_video}")
+
         if TEST_MODE:
             print("\n[テストモード] YouTubeアップロードをスキップ")
-            import shutil
-            output_video = f"nenkin_table_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
-            shutil.copy(video_path, output_video)
-            print(f"  動画を保存: {output_video}")
             video_url = f"file://{output_video}"
         else:
             video_url = upload_to_youtube(video_path, title, description, first_comment)
