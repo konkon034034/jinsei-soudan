@@ -210,9 +210,13 @@ def get_all_comments(youtube, channel_id: str) -> list:
 
     # アップロードプレイリストから動画を取得
     videos = get_channel_videos(youtube, channel_id)
-    video_ids = [v["id"] for v in videos]
 
-    for video_id in video_ids:
+    # video_id -> title のマッピングを作成
+    video_titles = {v["id"]: v["title"] for v in videos}
+
+    for video in videos:
+        video_id = video["id"]
+        video_title = video["title"]
         try:
             # 動画のコメントを取得
             comments_response = youtube.commentThreads().list(
@@ -231,6 +235,7 @@ def get_all_comments(youtube, channel_id: str) -> list:
                     "id": item["id"],
                     "comment_id": item["snippet"]["topLevelComment"]["id"],
                     "video_id": video_id,
+                    "video_title": video_title,
                     "author": snippet["authorDisplayName"],
                     "author_channel_id": snippet.get("authorChannelId", {}).get("value", ""),
                     "text": snippet["textDisplay"],
@@ -294,37 +299,45 @@ def generate_reply(comment_text: str, author_name: str, key_manager: GeminiKeyMa
     model = genai.GenerativeModel("gemini-2.0-flash")
 
     prompt = f"""あなたは年金ニュースラジオのカツミです。
-視聴者からのコメントに温かく返信してください。
+視聴者からのコメントに、心から寄り添って返信してください。
+
+【最重要：まずコメントをしっかり読んで共感する】
+- コメントの内容を理解して、相手の気持ちに寄り添う
+- 「わかります！」「そうですよね〜」「私もそう思います」のような共感
+- 相手が不安なら「大丈夫ですよ」、嬉しそうなら「よかったですね！」
+- コメントの具体的な内容に触れて、ちゃんと読んでることを伝える
 
 【カツミの人柄】
 - 63歳の主婦、親しみやすくて優しい
-- 視聴者を「皆さん」「〇〇さん」と呼んで寄り添う
+- 視聴者を「〇〇さん」と名前で呼んで寄り添う
 - 押し付けがましくない、太陽のような温かさ
-
-【返信のルール】
-- 丁寧で優しい口調
-- 年金の具体的なアドバイスは避ける（「専門家にご相談ください」と案内）
-- 感謝を伝える
-- 絵文字は控えめに（1-2個まで）
+- 井戸端会議のおばちゃんのような親近感
 
 【返信の構成】
-1. コメントへの共感・感謝（1-2文）
-2. やんわりLINE誘導（1文）※毎回違う言い回しで
+1. 共感・寄り添い（相手の気持ちをくみ取る）
+2. 感謝（コメントしてくれたことへの感謝）
+3. さりげなくLINE誘導（太陽アプローチ）
+
+【共感フレーズの例】
+- 「わかります〜！私も同じこと思ってました」
+- 「そうなんですよね、不安になりますよね」
+- 「〇〇さんのお気持ち、すごくわかります」
+- 「それは大変でしたね...」
+- 「嬉しいコメントありがとうございます！」
 
 【LINE誘導のコツ】※北風と太陽なら「太陽」のアプローチ
 - 押し付けない、「よかったら」「もしよければ」のニュアンス
-- 自分で選んだと感じさせる
 - 毎回違うバリエーションで自然に
 
-LINE誘導の例（参考にして自然に変える）:
-- 「もっと詳しく知りたい方は、LINEでも情報お届けしてますよ〜😊」
-- 「よかったらLINEも覗いてみてくださいね。新NISAのガイドもプレゼントしてます🎁」
-- 「LINEでもお話できたら嬉しいです♪」
-- 「LINEだけの情報もあるので、よかったら〜📱」
-- 「LINEでも年金の話してるので、気が向いたらぜひ〜」
-- 「もしよければLINEにも遊びに来てくださいね😊」
+LINE誘導の例:
+- 「LINEでも年金の話してるので、気が向いたらぜひ〜😊」
+- 「よかったらLINEも覗いてみてくださいね🎁」
+- 「もしよければLINEにも遊びに来てください♪」
 
-※LINEリンクは返信に含めない（後から自動追加されます）
+【ルール】
+- 年金の具体的なアドバイスは避ける（「年金事務所にご相談くださいね」と案内）
+- 絵文字は控えめに（1-2個まで）
+- LINEリンクは返信に含めない（後から自動追加されます）
 
 投稿者: {author_name}さん
 コメント: {comment_text}
@@ -342,54 +355,98 @@ LINE誘導の例（参考にして自然に変える）:
         return ""
 
 
-def send_discord_notification(comment: dict, ai_reply: str):
-    """Discordに通知を送信"""
-    webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
+def send_slack_comment_notification(comment: dict, ai_reply: str, video_title: str = ""):
+    """Slackにコメント返信案を送信（アクション必要な通知）"""
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
     if not webhook_url:
-        print("  ⚠ DISCORD_WEBHOOK_URL未設定")
+        print("  ⚠ SLACK_WEBHOOK_URL未設定")
         return False
 
-    # コメントテキストを短縮（Discord制限対策）
-    comment_text = comment['text'][:200] + "..." if len(comment['text']) > 200 else comment['text']
+    # コメントテキストを短縮
+    comment_text = comment['text'][:300] + "..." if len(comment['text']) > 300 else comment['text']
 
-    # 返信案をエスケープ（コマンド用）
-    escaped_reply = ai_reply.replace('"', '\\"').replace('\n', ' ')[:150]
+    # YouTubeコメントへのリンク
+    comment_link = f"https://www.youtube.com/watch?v={comment['video_id']}&lc={comment['comment_id']}"
 
-    message = f"""📬 **新しいコメント**
-
-👤 **投稿者**: {comment['author']}
-💬 **コメント**: {comment_text}
-🎬 **動画**: https://youtube.com/watch?v={comment['video_id']}
-
-🤖 **カツミの返信案**:
-{ai_reply}
-
-📱 ※投稿時にLINE URL（lin.ee/SrziaPE）が自動追加されます
-
-━━━━━━━━━━━━━━
-✅ 承認して返信（コピペしてターミナルで実行）:
-```
-gh workflow run reply_comment.yml -f comment_id="{comment['comment_id']}" -f reply_text="{escaped_reply}"
-```
-
-❌ スキップ: 放置でOK（処理済み記録されています）
-━━━━━━━━━━━━━━"""
+    # Slack Block形式のメッセージ
+    blocks = [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": "💬 コメント返信してね！",
+                "emoji": True
+            }
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*動画:* {video_title or '年金ニュース'}\n*投稿者:* {comment['author']}"
+            }
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*元コメント:*\n>{comment_text}"
+            }
+        },
+        {
+            "type": "divider"
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*🤖 カツミの返信案:*\n{ai_reply}"
+            }
+        },
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": "📱 投稿時にLINE URL（lin.ee/SrziaPE）が自動追加されます"
+                }
+            ]
+        },
+        {
+            "type": "divider"
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"<{comment_link}|📍 YouTubeでコメントを確認>"
+            }
+        },
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"コメントID: `{comment['comment_id']}`"
+                }
+            ]
+        }
+    ]
 
     try:
         response = requests.post(
             webhook_url,
-            json={"content": message},
+            json={"blocks": blocks},
             headers={"Content-Type": "application/json"},
             timeout=30
         )
         if response.status_code in [200, 204]:
-            print(f"  ✓ Discord通知送信完了: {comment['author']}")
+            print(f"  ✓ Slack通知送信完了: {comment['author']}")
             return True
         else:
-            print(f"  ⚠ Discord通知失敗: {response.status_code}")
+            print(f"  ⚠ Slack通知失敗: {response.status_code}")
             return False
     except Exception as e:
-        print(f"  ⚠ Discord通知エラー: {e}")
+        print(f"  ⚠ Slack通知エラー: {e}")
         return False
 
 
@@ -501,8 +558,9 @@ def main():
 
         if ai_reply:
             print(f"  返信案: {ai_reply[:50]}...")
-            # Discord通知
-            notified = send_discord_notification(comment, ai_reply)
+            # Slack通知（アクション必要な通知）
+            video_title = comment.get("video_title", "年金ニュース")
+            notified = send_slack_comment_notification(comment, ai_reply, video_title)
         else:
             print("  ⚠ 返信生成に失敗")
             notified = False
