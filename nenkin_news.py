@@ -872,16 +872,23 @@ def generate_script(news_data: dict, key_manager: GeminiKeyManager, test_mode: b
    - 「一緒に勉強していきましょうね」
    - 「分からないことあったらコメントしてね」
 
+4. 最後にさりげなくLINEプレゼント告知（自然な形で）
+   - 「そうそう、LINEで友だち登録すると新NISAガイドがもらえますよ〜📖」
+   - 「あ、LINE登録で新NISAの資料もらえるから、興味ある人はぜひ〜」
+   - 「LINEで友だち追加すると、私たちが作った新NISAガイドがもらえるんですよ〜」
+   ※ 毎回少しずつ表現を変えて、宣伝っぽくならないように自然に
+
 【カツミの性格・トーン】
 - 親しみやすい中高年女性、日常のぼやきや本音をよく言う
 - 視聴者を「皆さん」と呼んで寄り添う
 - 「〜ですよね」「〜かしら」など柔らかい語尾
-- 絵文字は控えめに（😊🙏程度で1〜2個）
+- 絵文字は控えめに（😊🙏📖程度で1〜2個）
 - 200文字以内
 
 【NG】
-- 堅い敬語、宣伝っぽい文章、LINE誘導（URLは後から自動追加）
+- 堅い敬語、宣伝っぽい文章
 - 毎回同じような内容（日常話題は必ず変える）
+- LINEのURLを直接書く（URLは後から自動追加されるため不要）
 
 {"【テストモード：短縮版】" if test_mode else "【重要：30分のラジオ番組を作成】"}
 {'''- 合計18〜25セリフで簡潔に
@@ -2979,13 +2986,24 @@ def generate_qr_background(output_path: str):
         if sub_font is None:
             sub_font = ImageFont.load_default()
 
-        sub_text = "スマホの方は概要欄からどうぞ！"
         sub_text_x = qr_x  # QRコードと同じ左位置
         sub_text_y = qr_y + qr_size + 15  # QRコードの下15px
+        sub_line_height = sub_font_size + 10
 
-        # テキスト描画（白、影付き）
-        draw.text((sub_text_x + shadow_offset, sub_text_y + shadow_offset), sub_text, font=sub_font, fill=(50, 50, 50))
-        draw.text((sub_text_x, sub_text_y), sub_text, font=sub_font, fill=(255, 255, 255))
+        # 1行目: プレゼント告知
+        sub_text1 = "🎁 友だち登録でプレゼント！"
+        draw.text((sub_text_x + shadow_offset, sub_text_y + shadow_offset), sub_text1, font=sub_font, fill=(50, 50, 50))
+        draw.text((sub_text_x, sub_text_y), sub_text1, font=sub_font, fill=(255, 255, 255))
+
+        # 2行目: NISAガイド
+        sub_text2 = "『新NISA超入門ガイド』無料配布中"
+        draw.text((sub_text_x + shadow_offset, sub_text_y + sub_line_height + shadow_offset), sub_text2, font=sub_font, fill=(50, 50, 50))
+        draw.text((sub_text_x, sub_text_y + sub_line_height), sub_text2, font=sub_font, fill=(255, 255, 255))
+
+        # 3行目: スマホ案内
+        sub_text3 = "スマホの方は概要欄からどうぞ！"
+        draw.text((sub_text_x + shadow_offset, sub_text_y + sub_line_height * 2 + shadow_offset), sub_text3, font=sub_font, fill=(50, 50, 50))
+        draw.text((sub_text_x, sub_text_y + sub_line_height * 2), sub_text3, font=sub_font, fill=(255, 255, 255))
     else:
         print(f"    [QR背景] ⚠ QRコード画像が見つかりません: {qr_path}")
         # QRコードがない場合はテキストだけ表示
@@ -4907,6 +4925,18 @@ def main():
 
         # 6. LINE誘導
         line_section = """
+
+━━━━━━━━━━━━━━━━━━━━
+🎁 LINE登録で無料プレゼント！
+━━━━━━━━━━━━━━━━━━━━
+
+「年金だけじゃ足りない…」そんな不安ありませんか？
+
+カツミとヒロシが作った
+『新NISA超入門ガイド』をプレゼント中🎁
+
+▼ 友だち追加で今すぐ受け取る
+https://lin.ee/SrziaPE
 
 ━━━━━━━━━━━━━━━━━━━━
 📺 ご視聴ありがとうございます！
