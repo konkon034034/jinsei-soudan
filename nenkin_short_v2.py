@@ -27,6 +27,7 @@ from PIL import Image, ImageDraw, ImageFont
 import qrcode
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from character_settings import apply_reading_dict
 
 # ===== 設定 =====
 VIDEO_WIDTH = 1080
@@ -639,7 +640,7 @@ def _generate_single_tts(args: tuple) -> dict:
     """単一セリフのTTS生成"""
     index, line, api_key, key_name = args
     speaker = line["speaker"]
-    text = line["text"]
+    text = apply_reading_dict(line["text"])  # 読み方辞書を適用
     voice = VOICE_HIROSHI if speaker == "ヒロシ" else VOICE_KATSUMI
 
     max_retries = 3
