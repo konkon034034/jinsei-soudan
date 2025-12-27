@@ -82,5 +82,10 @@ jinsei-soudan/
 ├── assets/                   # 素材ファイル
 ├── output/                   # 出力先
 ├── temp/                     # 一時ファイル
+├── docs/                     # ドキュメント
 └── requirements.txt
 ```
+
+## ドキュメント
+
+- 音声テキスト同期については [docs/audio_subtitle_sync_guide.md](docs/audio_subtitle_sync_guide.md) を参照
