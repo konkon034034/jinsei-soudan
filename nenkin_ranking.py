@@ -342,28 +342,47 @@ def generate_script(theme: dict, key_manager: GeminiKeyManager) -> dict:
 {theme['description']}
 
 【登場人物】
-カツミ（60代前半女性）
-- 年金の専門家、解説役
-- 落ち着いていて優しく丁寧
-- 視聴者に寄り添う雰囲気
-- 実は関西出身。普段は標準語だが、本音がポロッと出るときや感情が高ぶったときに、ごくたまに関西弁が混じる（10〜15回に1回くらい。「ほんまに」「なんでやねん」「せやねん」など）
-- 隠れ設定①：韓国ドラマ沼。ドラマの話になると急に熱くなる（たまにポロッと出る程度）
-- 隠れ設定②：温泉マニア。旅行や温泉の話で急に詳しくなる
-- 隠れ設定③：実は甘いもの大好き。スイーツの話で目が輝く
 
-ヒロシ（40代前半男性）
-- 視聴者代弁、素朴な疑問を聞く
-- 親世代のために勉強中という立場
-- ちょっとお馬鹿でのんびり、リアクション大きめ
-- 隠れ設定①：実は涙もろい。感動話や人情話でウルっとくる
-- 隠れ設定②：映画マニア。古い映画（昭和〜平成初期）の引用やセリフがたまに出る
+■カツミ（63歳・女性）
+- 元スーパーのパート勤務、今は専業主婦
+- 夫（ヒロシ）と二人暮らし、娘は結婚して独立
+- 趣味：韓国ドラマ、スーパーの特売チェック、健康番組
+- 性格：おしゃべり好き、世話焼き、ちょっと心配性
+- 口癖：「あら〜」「ねえねえ」「それ私も思ってた！」
+- 悩み：老後のお金が足りるか不安、夫が話を聞いてくれない
+- 話し方：「〜ですよね」「〜かしら」「〜だわ」など柔らかい標準語
+- ※関西弁は使わない（「〜やん」「〜やで」「〜やねん」などは禁止）
 
-※隠れ設定は「たまーに」「忘れた頃に」出る程度。毎回出さない。視聴者が「あれ？この人こういう一面あるの？」と気づく程度に。
+■ヒロシ（65歳・男性）
+- 元サラリーマン（中小企業の経理）、最近定年退職
+- 趣味：野球観戦（巨人ファン）、散歩、将棋
+- 性格：真面目だけどちょっと抜けてる、妻には頭が上がらない
+- 口癖：「へぇ〜」「そうなの？」「それはマズいね」
+- 悩み：退職して暇、年金だけで生活できるか心配
+- 話し方：「〜ですね」「〜ですか」「〜ですよ」など丁寧な標準語
+
+■二人の関係性
+- 結婚38年目の熟年夫婦
+- カツミがよく喋り、ヒロシは聞き役
+- たまにカツミがヒロシにツッコむ（「あなた知らなかったの？」）
+- 根底には信頼関係がある
+- 視聴者と同じ目線で年金の勉強をしている
+
+【トーンと姿勢】
+- ニュースキャスターではなく、視聴者の隣で一緒に伴走している感じ
+- カツミとヒロシ自身も年金のことで上手くいってない、不安がある
+- 「私たちも一緒に頑張りましょう」という共感
+
+【会話の特徴】
+- カツミ「ねえ、これ知ってた？」→ヒロシ「え、知らなかった」のパターン
+- ヒロシが的外れなことを言う→カツミがツッコむ
+- 二人とも「私たちも勉強中」というスタンス
+- 日常のあるあるネタを混ぜる（スーパーの物価、健康診断、孫の話など）
+- 視聴者が「うちもそう！」と思える共感ポイントを入れる
 
 【隠れたブランドエッセンス】※さりげなく、自然に織り込む
 
 以下の3つの要素を「香り」のように漂わせてください。
-全面に押し出さず、それとなく感じさせる程度に。
 
 1. 【知らないと損】（興味を引く香り）
    - 時々「知っておくと安心」「意外と知られていない」程度の表現
@@ -377,15 +396,6 @@ def generate_script(theme: dict, key_manager: GeminiKeyManager) -> dict:
 3. 【昭和の思い出×人生の知恵】（懐かしさの香り）
    - 時々「昔はこうでしたね」「お母さんがよく言ってた」的な一言
    - 「昭和の頃を思い出しますね」程度のさりげない懐古
-   - 人生経験からくる温かい知恵
-   - 例：「急がば回れ、って昔の人は言いましたけど…」
-   - 例：「昔のお母さんたちは自然とやってましたよね」
-
-【表現のバランス】
-- これらの要素は毎回全部入れなくてよい
-- 自然な会話の流れで、ふと出てくる程度
-- 「狙ってる感」が出たらNG
-- 視聴者が「なんか落ち着くな」と無意識に感じるレベル
 
 【必須要素】各順位の話題に必ず以下を含めること：
 
@@ -394,25 +404,29 @@ def generate_script(theme: dict, key_manager: GeminiKeyManager) -> dict:
 - 視聴者が「へぇ〜そうなんだ」と思えるリアルな話
 - 例：「私の知り合いで、届出忘れて3ヶ月分損した人がいるのよ」
 
-2. カツミの愚痴・本音タイム（話題ごとに1回）
-- 専門家としてではなく、一人の女性としての本音
-- 「正直ね...」「ここだけの話...」「本音を言うとね...」で始まる
-- このタイミングで関西弁が出やすい
-- 例：「正直ね、この制度ほんまにわかりにくいと思うわ」「ここだけの話、役所の説明って不親切よね」
-
-3. ヒロシのヘタレ・頼りなさトーク（話題ごとに1回）
-- 自分の失敗談や不安を正直に吐露
-- 「僕も実は...」「恥ずかしい話...」「情けないんですけど...」で始まる
+2. カツミ or ヒロシの本音・弱音（話題ごとに1回）
+- 「正直、私もこれできてなくて…」
+- 「僕もこれ知らなかったんですよね…」
 - 視聴者が「わかる〜」と共感できる弱さ
-- 例：「恥ずかしい話、僕まだ親の年金のこと全然把握してないんですよ...」「情けないんですけど、書類見ても何書いてあるかわからなくて...」
+
+3. 具体的にやれること（1つだけ、簡単なもの）
+- 「まずは年金事務所に電話してみましょう」
+- 「ねんきん定期便、引き出しの奥にありませんか？まず見てみて」
+- 「スマホで"ねんきんネット"って検索するだけでも第一歩ですよ」
+
+4. 寄り添いの言葉
+- 「焦らなくていいんです、一緒にやっていきましょうね」
 
 【トークの流れ例】
-1. カツミが解説（専門家モード）
-2. ヒロシが素朴な質問
-3. 体験談・口コミを紹介
-4. ヒロシのヘタレトーク（共感ポイント）
-5. カツミの本音・愚痴（関西弁チラ見せ）
-6. まとめ
+カツミ「ねえねえ、これ見てよ。年金の繰り下げ受給の話」
+ヒロシ「ああ、70歳まで待つと増えるってやつ？」
+カツミ「そうそう。でもね、私たちの場合どうなのかなって」
+ヒロシ「うーん、僕もよくわかってないんだよね正直」
+カツミ「でしょ？だから調べてみたの」
+〜解説〜
+カツミ「ね、私たちもねんきん定期便ちゃんと見てなかったじゃない」
+ヒロシ「確かに…引き出しの奥にあるかも」
+カツミ「今日帰ったら一緒に探してみましょうよ。皆さんも、まずはそこからですよ」
 
 【台本の方針】
 - タイトルには「損」という言葉を入れない
@@ -845,9 +859,9 @@ def generate_subtitles(dialogue: list, duration: float, output_path: str, timing
     point_line_height = 95  # 各ポイントの行間（大きくなったので調整）
     point_left_margin = 160  # 左端からのマージン（60→160、中央寄りに）
 
-    # 画面下部セリフ（名前なし、縁取りで読みやすく）
-    dialogue_font_size = 68  # 90 → 68（0.75倍に縮小）
-    dialogue_margin_v = 160  # 130 → 160（さらに下に）
+    # 画面下部セリフ（名前なし、背景付き）
+    dialogue_font_size = 102  # 68 × 1.5 = 102（1.5倍に拡大）
+    dialogue_margin_v = 140  # 下マージン調整
 
     # ASS色フォーマット: &HAABBGGRR (Alpha, Blue, Green, Red)
     title_color = "&H00FFFFFF"
@@ -890,8 +904,8 @@ Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_color},&H000000FF,{topic_
 Style: Point,Noto Sans CJK JP,{point_font_size},{point_color},&H000000FF,{point_outline},&H00000000,0,0,0,0,100,100,0,0,1,2,1,7,100,100,0,1
 Style: PointImportant,Noto Sans CJK JP,{point_important_font_size},{point_important_color},&H000000FF,{point_important_outline},&H00000000,1,0,0,0,100,100,0,0,1,3,2,7,100,100,0,1
 Style: PointTestimonial,Noto Sans CJK JP,{point_font_size},{point_testimonial_color},&H000000FF,{point_testimonial_outline},&H00000000,1,0,0,0,100,100,0,0,1,2,1,7,100,100,0,1
-Style: Katsumi,Noto Sans CJK JP,{dialogue_font_size},{katsumi_color},&H000000FF,{katsumi_outline},&H00000000,1,0,0,0,100,100,0,0,1,3,2,2,50,50,{dialogue_margin_v},1
-Style: Hiroshi,Noto Sans CJK JP,{dialogue_font_size},{hiroshi_color},&H000000FF,{hiroshi_outline},&H00000000,1,0,0,0,100,100,0,0,1,3,2,2,50,50,{dialogue_margin_v},1
+Style: Katsumi,Noto Sans CJK JP,{dialogue_font_size},{katsumi_color},&H000000FF,{katsumi_outline},&H80808080,1,0,0,0,100,100,0,0,3,8,0,2,50,50,{dialogue_margin_v},1
+Style: Hiroshi,Noto Sans CJK JP,{dialogue_font_size},{hiroshi_color},&H000000FF,{hiroshi_outline},&H80808080,1,0,0,0,100,100,0,0,3,8,0,2,50,50,{dialogue_margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -907,8 +921,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     # ===== 1. タイトル（★付き、強調部分は赤、常時表示） =====
     video_title = script.get("title", "年金ランキング") if script else "年金ランキング"
+    # タイトルが長い場合は2行に折り返し（25文字で改行）
     if len(video_title) > 25:
-        video_title = video_title[:25] + "..."
+        # 区切りの良い位置を探す
+        break_pos = 25
+        for i in range(min(25, len(video_title)) - 1, 10, -1):
+            if video_title[i] in ["、", "。", "！", "？", "…", "」", "）", "の", "を", "が", "に", "は", "と"]:
+                break_pos = i + 1
+                break
+        video_title = video_title[:break_pos] + r"\N" + video_title[break_pos:]
 
     # タイトル内の重要キーワードを赤色で強調
     # ASS色タグ: {\c&HBBGGRR&} 赤=#FF3333 → BGR=3333FF
@@ -1107,12 +1128,13 @@ def generate_video(audio_path: str, subtitle_path: str, bg_path: str, output_pat
             output_path
         ]
     else:
-        # BGMなしの場合
+        # BGMなしの場合（明示的にオーディオをマッピング）
         cmd = [
             'ffmpeg', '-y',
             '-loop', '1', '-i', bg_path,
             '-i', audio_path,
             '-vf', vf_filter,
+            '-map', '0:v', '-map', '1:a',
             '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
             '-c:a', 'aac', '-b:a', '192k',
             '-shortest',
@@ -1120,6 +1142,13 @@ def generate_video(audio_path: str, subtitle_path: str, bg_path: str, output_pat
             '-movflags', '+faststart',
             output_path
         ]
+
+    # デバッグ: 音声ファイルの確認
+    if os.path.exists(audio_path):
+        audio_size = os.path.getsize(audio_path)
+        print(f"  [デバッグ] 音声ファイル: {audio_path} ({audio_size} bytes)")
+    else:
+        print(f"  ⚠ 音声ファイルが見つかりません: {audio_path}")
 
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
