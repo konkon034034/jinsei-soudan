@@ -77,6 +77,7 @@ from character_settings import (
     setup_channel_voices,
     detect_emotion_tag,
     CHARACTER_PROMPT,
+    apply_reading_dict,
 )
 
 
@@ -749,7 +750,7 @@ def generate_fish_audio_dialogue(dialogue: list, channel: str, output_path: str,
 
     for idx, line in enumerate(dialogue):
         speaker = line["speaker"]
-        text = line["text"]
+        text = apply_reading_dict(line["text"])  # 読み方辞書を適用
 
         # ボイスIDを選択
         voice_id = katsumi_voice if speaker == "カツミ" else hiroshi_voice
