@@ -1303,31 +1303,63 @@ def get_font_path():
 import subprocess
 
 
-def combine_audio_ffmpeg(audio_files: list, output_path: str) -> bool:
-    """FFmpegで音声ファイルを結合（WAV→MP3変換対応）"""
+def combine_audio_ffmpeg(audio_files: list, output_path: str, gap_duration: float = 0.5) -> bool:
+    """FFmpegで音声ファイルを結合（WAV→MP3変換対応、無音ギャップ挿入）
+
+    Args:
+        audio_files: 結合する音声ファイルのリスト
+        output_path: 出力ファイルパス（MP3）
+        gap_duration: 各音声間のギャップ（秒）デフォルト0.5秒
+    """
     if not audio_files:
         return False
 
+    temp_dir = Path(audio_files[0]).parent
+    silence_file = str(temp_dir / "combine_silence.wav")
+    padding_file = str(temp_dir / "combine_padding.wav")
+
+    # 無音ファイルを生成（ギャップ用）
+    silence_generated = generate_silence(silence_file, gap_duration, 24000)
+    if silence_generated:
+        print(f"  無音ギャップ: {gap_duration}秒")
+
+    # 末尾パディング用無音
+    padding_generated = generate_silence(padding_file, 0.5, 24000)
+
     if len(audio_files) == 1:
-        # 1ファイルの場合も変換が必要
+        # 1ファイルの場合：末尾に無音を追加してMP3変換
+        list_path = output_path + ".txt"
+        with open(list_path, 'w') as f:
+            f.write(f"file '{audio_files[0]}'\n")
+            if padding_generated:
+                f.write(f"file '{padding_file}'\n")
+
         cmd = [
-            'ffmpeg', '-y',
-            '-i', audio_files[0],
+            'ffmpeg', '-y', '-f', 'concat', '-safe', '0',
+            '-i', list_path,
             '-acodec', 'libmp3lame', '-ab', '192k',
             output_path
         ]
         try:
             subprocess.run(cmd, check=True, capture_output=True)
+            os.remove(list_path)
+            print(f"  末尾無音パディング: 0.5秒")
             return True
         except subprocess.CalledProcessError as e:
-            print(f"音声変換エラー: {e.stderr.decode()}")
+            print(f"音声変換エラー: {e.stderr.decode()[:200]}")
             return False
 
-    # concat用のファイルリストを作成
+    # concat用のファイルリストを作成（無音ギャップ挿入）
     list_path = output_path + ".txt"
     with open(list_path, 'w') as f:
-        for audio_file in audio_files:
+        for i, audio_file in enumerate(audio_files):
             f.write(f"file '{audio_file}'\n")
+            # 最後以外のファイルの後にギャップを挿入
+            if silence_generated and i < len(audio_files) - 1:
+                f.write(f"file '{silence_file}'\n")
+        # 末尾に無音パディングを追加
+        if padding_generated:
+            f.write(f"file '{padding_file}'\n")
 
     # WAVを結合してMP3にエンコード
     cmd = [
@@ -1340,9 +1372,15 @@ def combine_audio_ffmpeg(audio_files: list, output_path: str) -> bool:
     try:
         subprocess.run(cmd, check=True, capture_output=True)
         os.remove(list_path)
+        # 一時ファイル削除
+        if os.path.exists(silence_file):
+            os.remove(silence_file)
+        if os.path.exists(padding_file):
+            os.remove(padding_file)
+        print(f"  末尾無音パディング: 0.5秒")
         return True
     except subprocess.CalledProcessError as e:
-        print(f"音声結合エラー: {e.stderr.decode()}")
+        print(f"音声結合エラー: {e.stderr.decode()[:200]}")
         return False
 
 
