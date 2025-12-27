@@ -296,12 +296,35 @@ def generate_reply(comment_text: str, author_name: str, key_manager: GeminiKeyMa
     prompt = f"""あなたは年金ニュースラジオのカツミです。
 視聴者からのコメントに温かく返信してください。
 
-ルール:
+【カツミの人柄】
+- 63歳の主婦、親しみやすくて優しい
+- 視聴者を「皆さん」「〇〇さん」と呼んで寄り添う
+- 押し付けがましくない、太陽のような温かさ
+
+【返信のルール】
 - 丁寧で優しい口調
 - 年金の具体的なアドバイスは避ける（「専門家にご相談ください」と案内）
 - 感謝を伝える
-- 短め（2-3文）
 - 絵文字は控えめに（1-2個まで）
+
+【返信の構成】
+1. コメントへの共感・感謝（1-2文）
+2. やんわりLINE誘導（1文）※毎回違う言い回しで
+
+【LINE誘導のコツ】※北風と太陽なら「太陽」のアプローチ
+- 押し付けない、「よかったら」「もしよければ」のニュアンス
+- 自分で選んだと感じさせる
+- 毎回違うバリエーションで自然に
+
+LINE誘導の例（参考にして自然に変える）:
+- 「もっと詳しく知りたい方は、LINEでも情報お届けしてますよ〜😊」
+- 「よかったらLINEも覗いてみてくださいね。新NISAのガイドもプレゼントしてます🎁」
+- 「LINEでもお話できたら嬉しいです♪」
+- 「LINEだけの情報もあるので、よかったら〜📱」
+- 「LINEでも年金の話してるので、気が向いたらぜひ〜」
+- 「もしよければLINEにも遊びに来てくださいね😊」
+
+※LINEリンクは返信に含めない（後から自動追加されます）
 
 投稿者: {author_name}さん
 コメント: {comment_text}
@@ -311,7 +334,7 @@ def generate_reply(comment_text: str, author_name: str, key_manager: GeminiKeyMa
     try:
         response = model.generate_content(
             prompt,
-            generation_config={"temperature": 0.7, "max_output_tokens": 200}
+            generation_config={"temperature": 0.8, "max_output_tokens": 300}
         )
         return response.text.strip()
     except Exception as e:
@@ -329,6 +352,9 @@ def send_discord_notification(comment: dict, ai_reply: str):
     # コメントテキストを短縮（Discord制限対策）
     comment_text = comment['text'][:200] + "..." if len(comment['text']) > 200 else comment['text']
 
+    # 返信案をエスケープ（コマンド用）
+    escaped_reply = ai_reply.replace('"', '\\"').replace('\n', ' ')[:150]
+
     message = f"""📬 **新しいコメント**
 
 👤 **投稿者**: {comment['author']}
@@ -338,15 +364,15 @@ def send_discord_notification(comment: dict, ai_reply: str):
 🤖 **カツミの返信案**:
 {ai_reply}
 
+📱 ※投稿時にLINE URL（lin.ee/SrziaPE）が自動追加されます
+
 ━━━━━━━━━━━━━━
-✅ 承認:
-`gh workflow run reply_comment.yml -f comment_id="{comment['comment_id']}" -f action=approve`
+✅ 承認して返信（コピペしてターミナルで実行）:
+```
+gh workflow run reply_comment.yml -f comment_id="{comment['comment_id']}" -f reply_text="{escaped_reply}"
+```
 
-🔄 再生成:
-`gh workflow run reply_comment.yml -f comment_id="{comment['comment_id']}" -f action=regenerate`
-
-❌ スキップ:
-`gh workflow run reply_comment.yml -f comment_id="{comment['comment_id']}" -f action=skip`
+❌ スキップ: 放置でOK（処理済み記録されています）
 ━━━━━━━━━━━━━━"""
 
     try:
@@ -368,7 +394,13 @@ def send_discord_notification(comment: dict, ai_reply: str):
 
 
 def reply_to_comment(youtube, parent_comment_id: str, reply_text: str) -> bool:
-    """コメントに返信する"""
+    """コメントに返信する（LINE URL自動追加）"""
+    LINE_URL = "https://lin.ee/SrziaPE"
+
+    # LINE URLが含まれていなければ自動追加
+    if LINE_URL not in reply_text and "lin.ee" not in reply_text:
+        reply_text = f"{reply_text}\n\n👉 {LINE_URL}"
+
     try:
         youtube.comments().insert(
             part="snippet",
