@@ -906,8 +906,8 @@ Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_color},&H000000FF,{topic_
 Style: Point,Noto Sans CJK JP,{point_font_size},{point_color},&H000000FF,{point_outline},&H00000000,0,0,0,0,100,100,0,0,1,2,1,7,100,100,0,1
 Style: PointImportant,Noto Sans CJK JP,{point_important_font_size},{point_important_color},&H000000FF,{point_important_outline},&H00000000,1,0,0,0,100,100,0,0,1,3,2,7,100,100,0,1
 Style: PointTestimonial,Noto Sans CJK JP,{point_font_size},{point_testimonial_color},&H000000FF,{point_testimonial_outline},&H00000000,1,0,0,0,100,100,0,0,1,2,1,7,100,100,0,1
-Style: Katsumi,Noto Sans CJK JP,{dialogue_font_size},{katsumi_color},&H000000FF,{katsumi_outline},&H80808080,1,0,0,0,100,100,0,0,3,8,0,2,50,50,{dialogue_margin_v},1
-Style: Hiroshi,Noto Sans CJK JP,{dialogue_font_size},{hiroshi_color},&H000000FF,{hiroshi_outline},&H80808080,1,0,0,0,100,100,0,0,3,8,0,2,50,50,{dialogue_margin_v},1
+Style: Katsumi,Noto Sans CJK JP,{dialogue_font_size},{katsumi_color},&H000000FF,{katsumi_outline},&H00000000,1,0,0,0,100,100,0,0,1,4,2,2,50,50,{dialogue_margin_v},1
+Style: Hiroshi,Noto Sans CJK JP,{dialogue_font_size},{hiroshi_color},&H000000FF,{hiroshi_outline},&H00000000,1,0,0,0,100,100,0,0,1,4,2,2,50,50,{dialogue_margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -1098,14 +1098,18 @@ def generate_video(audio_path: str, subtitle_path: str, bg_path: str, output_pat
     print("\n[5/7] 動画を生成中...")
 
     # ===== レイアウト設定 =====
-    # 上部タイトル帯: 削除（字幕で白文字+黒縁取りのみ）
-    # 下部セリフ帯: 透過背景なし（字幕のみ、縁取りで読みやすく）
+    # 下部セリフ帯: 常時表示のグレー帯（drawboxで描画）
+    # 字幕（2〜3行）と名前バーを含めて画面下端まで覆う
+    bar_y = 650  # 字幕開始位置（画面上部から650px、130px上に拡張）
+    bar_height = VIDEO_HEIGHT - bar_y  # 画面下端まで（= 430px）
 
     # ffmpegフィルタチェーン:
     # 1. 背景画像をスケール
-    # 2. ASS字幕を重ねる（透かし背景なし）
+    # 2. 下部にグレー帯を常時描画（rgba(128,128,128,0.5)）
+    # 3. ASS字幕を重ねる
     vf_filter = (
         f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},"
+        f"drawbox=x=0:y={bar_y}:w={VIDEO_WIDTH}:h={bar_height}:color=0x808080@0.5:t=fill,"
         f"ass={subtitle_path}:fontsdir=/usr/share/fonts"
     )
 
