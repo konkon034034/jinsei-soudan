@@ -94,7 +94,7 @@ class GeminiKeyManager:
             self.keys.append(base_key)
             self.key_names.append("GEMINI_API_KEY")
 
-        for i in range(1, 10):
+        for i in range(1, 43):  # GEMINI_API_KEY_1〜42に対応
             key = os.environ.get(f"GEMINI_API_KEY_{i}")
             if key:
                 self.keys.append(key)
