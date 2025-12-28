@@ -49,7 +49,7 @@ jobs:
       - name: Python依存関係をインストール
         run: |
           pip install --upgrade pip
-          pip install google-genai pydub pillow google-auth google-api-python-client requests gdown
+          pip install google-genai pydub pillow google-auth google-api-python-client requests gdown gtts
 
       - name: ランキング動画を生成
         env:
