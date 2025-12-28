@@ -1158,113 +1158,222 @@ def download_bgm(file_id: str, output_path: str) -> bool:
 
 
 def generate_summary_table_image(script: dict, output_path: str):
-    """ランキングまとめ表を画像として生成（TV風シンプルデザイン）"""
+    """ランキングまとめ表を画像として生成（TV番組風・派手バージョン）"""
     from PIL import Image, ImageDraw, ImageFont
 
-    # 画像設定（ダークネイビー背景）
-    img = Image.new('RGB', (VIDEO_WIDTH, VIDEO_HEIGHT), '#1a1a2e')
+    def hex_to_rgb(hex_color):
+        """16進数カラーをRGBタプルに変換"""
+        hex_color = hex_color.lstrip('#')
+        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+    def draw_gradient_rect(draw, x1, y1, x2, y2, color1, color2, radius=0):
+        """水平グラデーションの矩形を描画"""
+        c1 = hex_to_rgb(color1)
+        c2 = hex_to_rgb(color2)
+        width = x2 - x1
+        for i in range(width):
+            ratio = i / width
+            r = int(c1[0] + (c2[0] - c1[0]) * ratio)
+            g = int(c1[1] + (c2[1] - c1[1]) * ratio)
+            b = int(c1[2] + (c2[2] - c1[2]) * ratio)
+            draw.line([(x1 + i, y1), (x1 + i, y2)], fill=(r, g, b))
+
+    def draw_vertical_gradient(img, color1, color2):
+        """背景の縦グラデーション"""
+        from PIL import Image as PILImage
+        c1 = hex_to_rgb(color1)
+        c2 = hex_to_rgb(color2)
+        for y in range(img.height):
+            ratio = y / img.height
+            r = int(c1[0] + (c2[0] - c1[0]) * ratio)
+            g = int(c1[1] + (c2[1] - c1[1]) * ratio)
+            b = int(c1[2] + (c2[2] - c1[2]) * ratio)
+            for x in range(img.width):
+                img.putpixel((x, y), (r, g, b))
+
+    # 画像設定
+    img = Image.new('RGB', (VIDEO_WIDTH, VIDEO_HEIGHT), '#0f0f23')
     draw = ImageDraw.Draw(img)
 
-    # フォント設定（日本語フォントを使用）
+    # 背景グラデーション（ダークブルー）
+    draw_vertical_gradient(img, '#0a0a1a', '#1a1a3a')
+    draw = ImageDraw.Draw(img)  # 再取得
+
+    # フォント設定
     try:
-        # Ubuntu/GitHub Actions環境
         font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
         if not os.path.exists(font_path):
             font_path = "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc"
-        title_font = ImageFont.truetype(font_path, 52)
-        rank_font = ImageFont.truetype(font_path, 40)
-        text_font = ImageFont.truetype(font_path, 32)
+        title_font = ImageFont.truetype(font_path, 48)
+        rank_num_font = ImageFont.truetype(font_path, 56)
+        rank_text_font = ImageFont.truetype(font_path, 28)
+        item_font = ImageFont.truetype(font_path, 30)
     except:
         try:
-            # macOS環境
             font_path = "/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc"
-            title_font = ImageFont.truetype(font_path, 52)
-            rank_font = ImageFont.truetype(font_path, 40)
-            text_font = ImageFont.truetype(font_path, 32)
+            title_font = ImageFont.truetype(font_path, 48)
+            rank_num_font = ImageFont.truetype(font_path, 56)
+            rank_text_font = ImageFont.truetype(font_path, 28)
+            item_font = ImageFont.truetype(font_path, 30)
         except:
             title_font = ImageFont.load_default()
-            rank_font = ImageFont.load_default()
-            text_font = ImageFont.load_default()
+            rank_num_font = ImageFont.load_default()
+            rank_text_font = ImageFont.load_default()
+            item_font = ImageFont.load_default()
 
-    # ===== タイトル（白文字 + 黄色下線） =====
-    title = "本日のランキングまとめ"
+    # ===== タイトルエリア（金色フレーム） =====
+    title = "本日のランキング TOP5"
     title_bbox = draw.textbbox((0, 0), title, font=title_font)
     title_width = title_bbox[2] - title_bbox[0]
-    title_x = (VIDEO_WIDTH - title_width) // 2
-    title_y = 60
+    title_height = title_bbox[3] - title_bbox[1]
 
-    # タイトルテキスト（白）
-    draw.text((title_x, title_y), title, fill='#FFFFFF', font=title_font)
+    frame_padding = 30
+    frame_width = title_width + frame_padding * 2 + 80  # トロフィー分
+    frame_height = title_height + frame_padding * 2
+    frame_x = (VIDEO_WIDTH - frame_width) // 2
+    frame_y = 40
 
-    # 黄色の下線
-    underline_y = title_y + (title_bbox[3] - title_bbox[1]) + 10
-    draw.rectangle(
-        [(title_x, underline_y), (title_x + title_width, underline_y + 4)],
+    # 外枠（金色グラデーション風）
+    draw.rounded_rectangle(
+        [(frame_x - 4, frame_y - 4), (frame_x + frame_width + 4, frame_y + frame_height + 4)],
+        radius=15,
         fill='#FFD700'
     )
+    # 内側（ダーク）
+    draw.rounded_rectangle(
+        [(frame_x, frame_y), (frame_x + frame_width, frame_y + frame_height)],
+        radius=12,
+        fill='#1a1a2e'
+    )
+    # 内側の金縁
+    draw.rounded_rectangle(
+        [(frame_x + 3, frame_y + 3), (frame_x + frame_width - 3, frame_y + frame_height - 3)],
+        radius=10,
+        outline='#FFD700',
+        width=2
+    )
 
-    # ===== ランキング表示 =====
+    # タイトルテキスト（トロフィー + テキスト）
+    full_title = f"  {title}  "
+    title_x = frame_x + (frame_width - title_width) // 2
+    title_y = frame_y + frame_padding - 5
+
+    # 影
+    draw.text((title_x + 2, title_y + 2), full_title, fill='#000000', font=title_font)
+    # 本体（白）
+    draw.text((title_x, title_y), full_title, fill='#FFFFFF', font=title_font)
+
+    # ===== ランキングカード =====
     rankings = script.get("rankings", [])
     sorted_rankings = sorted(rankings, key=lambda x: x.get("rank", 0))
 
-    # レイアウト設定
-    start_y = 180
-    row_height = 100
-    left_margin = 60
-    bar_max_width = 480  # バーの最大幅
+    # カード設定
+    card_start_y = 160
+    card_height = 90
+    card_spacing = 10
+    card_margin = 50
 
-    # バーの色設定（順位別）
-    bar_colors = {
-        1: '#FFD700',  # 金
-        2: '#C0C0C0',  # 銀
-        3: '#CD7F32',  # 銅
+    # バーの長さ比率（階段状）
+    bar_ratios = {1: 1.0, 2: 0.85, 3: 0.70, 4: 0.55, 5: 0.40}
+
+    # グラデーション色設定
+    gradient_colors = {
+        1: ('#FFD700', '#FFEC8B'),  # 金
+        2: ('#C0C0C0', '#E8E8E8'),  # 銀
+        3: ('#CD7F32', '#DAA06D'),  # 銅
+        4: ('#4169E1', '#6495ED'),  # 青
+        5: ('#8A2BE2', '#9370DB'),  # 紫
     }
-    default_bar_color = '#4a5568'  # 4位以下はグレー
 
-    # メダル絵文字
-    medals = {1: '🥇', 2: '🥈', 3: '🥉'}
+    # 順位テキスト
+    rank_labels = {1: '1st', 2: '2nd', 3: '3rd', 4: '4th', 5: '5th'}
 
     for i, ranking in enumerate(sorted_rankings[:5]):
         rank = ranking.get("rank", i + 1)
         title_text = ranking.get("title", "")
 
-        y = start_y + i * row_height
+        y = card_start_y + i * (card_height + card_spacing)
+        bar_ratio = bar_ratios.get(rank, 0.4)
+        card_width = int((VIDEO_WIDTH - card_margin * 2) * bar_ratio)
 
-        # バーの幅を計算（順位が下がるほど短く）
-        bar_width = int(bar_max_width * (1.0 - (rank - 1) * 0.12))
+        # カードの影
+        shadow_offset = 4
+        draw.rounded_rectangle(
+            [(card_margin + shadow_offset, y + shadow_offset),
+             (card_margin + card_width + shadow_offset, y + card_height + shadow_offset)],
+            radius=12,
+            fill='#000000'
+        )
 
-        # バーの色
-        bar_color = bar_colors.get(rank, default_bar_color)
+        # カード背景（半透明風の暗い色）
+        draw.rounded_rectangle(
+            [(card_margin, y), (card_margin + card_width, y + card_height)],
+            radius=12,
+            fill='#2a2a4a'
+        )
 
-        # ===== 順位表示 =====
-        if rank <= 3:
-            # メダル + 順位
-            rank_text = f"{medals[rank]} {rank}位"
-        else:
-            # 順位のみ
-            rank_text = f"   {rank}位"
+        # カード内側の輝き効果（上部）
+        draw.rounded_rectangle(
+            [(card_margin + 2, y + 2), (card_margin + card_width - 2, y + 20)],
+            radius=10,
+            fill='#3a3a5a'
+        )
 
-        draw.text((left_margin, y), rank_text, fill='#FFFFFF', font=rank_font)
-
-        # ===== タイトルテキスト =====
-        text_x = left_margin + 130
-        # 長いタイトルは省略
-        max_chars = 16
-        display_title = title_text[:max_chars] + "…" if len(title_text) > max_chars else title_text
-        draw.text((text_x, y + 5), display_title, fill='#FFFFFF', font=text_font)
-
-        # ===== TV風バーグラフ =====
-        bar_x = VIDEO_WIDTH - left_margin - bar_max_width
-        bar_y = y + 50
+        # グラデーションバー
+        bar_margin = 120
+        bar_x = card_margin + bar_margin
+        bar_y = y + 55
+        bar_width = card_width - bar_margin - 20
         bar_height = 24
 
-        # バー描画（右寄せ）
-        bar_start_x = bar_x + (bar_max_width - bar_width)
-        draw.rounded_rectangle(
-            [(bar_start_x, bar_y), (bar_start_x + bar_width, bar_y + bar_height)],
-            radius=4,
-            fill=bar_color
+        colors = gradient_colors.get(rank, ('#4169E1', '#6495ED'))
+        draw_gradient_rect(draw, bar_x, bar_y, bar_x + bar_width, bar_y + bar_height, colors[0], colors[1])
+
+        # バーの光沢効果（上半分を明るく）
+        draw.rectangle(
+            [(bar_x, bar_y), (bar_x + bar_width, bar_y + bar_height // 3)],
+            fill=None
         )
+
+        # 順位表示（大きく）
+        rank_num = str(rank)
+        rank_bbox = draw.textbbox((0, 0), rank_num, font=rank_num_font)
+        rank_x = card_margin + 25
+        rank_y = y + (card_height - (rank_bbox[3] - rank_bbox[1])) // 2 - 8
+
+        # 順位の色
+        rank_color = colors[0]
+
+        # 影
+        draw.text((rank_x + 2, rank_y + 2), rank_num, fill='#000000', font=rank_num_font)
+        # 本体
+        draw.text((rank_x, rank_y), rank_num, fill=rank_color, font=rank_num_font)
+
+        # 「位」テキスト
+        pos_text = "位"
+        draw.text((rank_x + 50, rank_y + 25), pos_text, fill='#FFFFFF', font=rank_text_font)
+
+        # タイトルテキスト
+        max_chars = 14
+        display_title = title_text[:max_chars] + "…" if len(title_text) > max_chars else title_text
+        text_x = bar_x
+        text_y = y + 15
+
+        # 影
+        draw.text((text_x + 1, text_y + 1), display_title, fill='#000000', font=item_font)
+        # 本体
+        draw.text((text_x, text_y), display_title, fill='#FFFFFF', font=item_font)
+
+    # ===== 装飾：キラキラエフェクト =====
+    import random
+    random.seed(42)  # 再現性のため固定
+    for _ in range(15):
+        x = random.randint(50, VIDEO_WIDTH - 50)
+        y = random.randint(50, VIDEO_HEIGHT - 50)
+        size = random.randint(2, 5)
+        brightness = random.randint(150, 255)
+        draw.ellipse([(x - size, y - size), (x + size, y + size)],
+                     fill=(brightness, brightness, brightness))
 
     img.save(output_path)
     print(f"  ✓ まとめ表画像生成完了")
