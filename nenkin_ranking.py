@@ -1166,19 +1166,30 @@ def generate_summary_table_image(script: dict, output_path: str):
         hex_color = hex_color.lstrip('#')
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
-    def draw_gradient_bar(draw, x, y, width, height, color1, color2):
-        """グラデーションバーを描画"""
+    def hex_to_rgba(hex_color, alpha=255):
+        """16進数カラーをRGBAタプルに変換"""
+        hex_color = hex_color.lstrip('#')
+        rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+        return rgb + (alpha,)
+
+    def draw_gradient_bar_transparent(img, x, y, width, height, color1, color2, alpha=150):
+        """半透明グラデーションバーを描画"""
         c1 = hex_to_rgb(color1)
         c2 = hex_to_rgb(color2)
+        # 半透明レイヤーを作成
+        bar_layer = Image.new('RGBA', (int(width), int(height)), (0, 0, 0, 0))
+        bar_draw = ImageDraw.Draw(bar_layer)
         for i in range(int(width)):
             ratio = i / width
             r = int(c1[0] + (c2[0] - c1[0]) * ratio)
             g = int(c1[1] + (c2[1] - c1[1]) * ratio)
             b = int(c1[2] + (c2[2] - c1[2]) * ratio)
-            draw.line([(x + i, y), (x + i, y + height)], fill=(r, g, b))
+            bar_draw.line([(i, 0), (i, height)], fill=(r, g, b, alpha))
+        # メイン画像に合成
+        img.paste(bar_layer, (int(x), int(y)), bar_layer)
 
-    # 画像設定（ダークブルー背景）
-    img = Image.new('RGB', (VIDEO_WIDTH, VIDEO_HEIGHT), '#0f0f23')
+    # 画像設定（ダークブルー背景）- RGBA モードで作成
+    img = Image.new('RGBA', (VIDEO_WIDTH, VIDEO_HEIGHT), '#0f0f23')
     draw = ImageDraw.Draw(img)
 
     # フォント設定（大きめ）
@@ -1261,13 +1272,22 @@ def generate_summary_table_image(script: dict, output_path: str):
     bar_ratios = {1: 1.0, 2: 0.85, 3: 0.70, 4: 0.55, 5: 0.40}
     percent_values = {1: 100, 2: 85, 3: 70, 4: 55, 5: 40}
 
-    # 色設定
+    # 色設定（赤→オレンジ→黄→緑→青グラデーション）
     bar_colors = {
-        1: ('#FFD700', '#FFF8DC'),  # 金
-        2: ('#C0C0C0', '#F0F0F0'),  # 銀
-        3: ('#CD7F32', '#E8C090'),  # 銅
-        4: ('#4169E1', '#87CEEB'),  # 青
-        5: ('#8A2BE2', '#DA70D6'),  # 紫
+        1: ('#ff4444', '#ff8866'),  # 赤系
+        2: ('#ff8c00', '#ffaa44'),  # オレンジ系
+        3: ('#ffd700', '#ffee66'),  # 黄色系
+        4: ('#32cd32', '#66ee66'),  # 緑系
+        5: ('#4169e1', '#6699ff'),  # 青系
+    }
+
+    # テキスト色グラデーション（明るい→やや明るい）
+    text_colors = {
+        1: '#FFFFFF',  # 真っ白
+        2: '#F0F0F0',  # やや白
+        3: '#E0E0E0',  # 少し薄い
+        4: '#D0D0D0',  # 薄め
+        5: '#C0C0C0',  # さらに薄い
     }
 
     for i, ranking in enumerate(sorted_rankings[:5]):
@@ -1310,37 +1330,35 @@ def generate_summary_table_image(script: dict, output_path: str):
         draw.text((rank_x, rank_y), rank_str, fill=colors[0], font=rank_font)
         draw.text((rank_x + rank_w + 5, rank_y + 40), "位", fill='#FFFFFF', font=pos_font)
 
-        # ===== タイトル（上部） =====
+        # ===== タイトル（上部）- テキスト色グラデーション =====
         text_x = bar_start_x
-        text_y = y + 12
+        text_y = y + 8  # 少し上に
         max_chars = 14
         display_title = item_title[:max_chars] + "…" if len(item_title) > max_chars else item_title
+        text_color = text_colors.get(rank, '#FFFFFF')
 
         draw.text((text_x + 2, text_y + 2), display_title, fill='#000000', font=item_font)
-        draw.text((text_x, text_y), display_title, fill='#FFFFFF', font=item_font)
+        draw.text((text_x, text_y), display_title, fill=text_color, font=item_font)
 
-        # ===== バーグラフ（長く・太く） =====
+        # ===== バーグラフ（半透明・スペース追加） =====
         bar_x = bar_start_x
-        bar_y_pos = y + 70
-        bar_height = 38
+        bar_y_pos = y + 72  # テキストとの間隔を広げる（70→72）
+        bar_height = 35
         bar_width = int(bar_max_width * bar_ratios.get(rank, 0.4))
 
-        # バー背景（暗いグレー・最大幅）
-        draw.rounded_rectangle(
-            [(bar_x, bar_y_pos), (bar_x + bar_max_width, bar_y_pos + bar_height)],
-            radius=10,
-            fill='#1a1a2a'
-        )
+        # バー背景（暗いグレー・最大幅・半透明）
+        bg_layer = Image.new('RGBA', (int(bar_max_width), int(bar_height)), (26, 26, 42, 100))
+        img.paste(bg_layer, (int(bar_x), int(bar_y_pos)), bg_layer)
 
-        # バー本体（グラデーション）
-        draw_gradient_bar(draw, bar_x, bar_y_pos, bar_width, bar_height, colors[0], colors[1])
+        # バー本体（半透明グラデーション・alpha=160で60%程度の透明度）
+        draw_gradient_bar_transparent(img, bar_x, bar_y_pos, bar_width, bar_height, colors[0], colors[1], alpha=160)
 
-        # バーの縁取り
+        # バーの縁取り（細めで目立たせすぎない）
         draw.rounded_rectangle(
             [(bar_x, bar_y_pos), (bar_x + bar_width, bar_y_pos + bar_height)],
-            radius=10,
-            outline=colors[0],
-            width=3
+            radius=8,
+            outline=hex_to_rgba(colors[0], 200),
+            width=2
         )
 
         # ===== %表示（バー右端） =====
@@ -1363,9 +1381,12 @@ def generate_summary_table_image(script: dict, output_path: str):
         size = random.randint(3, 7)
         brightness = random.randint(180, 255)
         draw.ellipse([(x - size, y - size), (x + size, y + size)],
-                     fill=(brightness, brightness, brightness))
+                     fill=(brightness, brightness, brightness, 255))
 
-    img.save(output_path)
+    # RGBAからRGBに変換して保存
+    img_rgb = Image.new('RGB', img.size, '#0f0f23')
+    img_rgb.paste(img, mask=img.split()[3])
+    img_rgb.save(output_path)
     print(f"  ✓ まとめ表画像生成完了")
 
 
