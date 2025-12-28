@@ -1363,14 +1363,16 @@ def generate_summary_table_image(script: dict, output_path: str):
             width=2
         )
 
-        # ===== %表示（バー右端・順位に応じたフォントサイズ） =====
+        # ===== %表示（右端に余白確保・順位に応じたフォントサイズ） =====
         percent_val = percent_values.get(rank, 40)
         percent_text = f"{percent_val}%"
         percent_font = percent_fonts.get(rank, percent_fonts[5])
         percent_bbox = draw.textbbox((0, 0), percent_text, font=percent_font)
         percent_w = percent_bbox[2] - percent_bbox[0]
-        percent_x = bar_x + bar_max_width + 15
-        percent_y = bar_y_pos + (bar_height - (percent_bbox[3] - percent_bbox[1])) // 2
+        percent_h = percent_bbox[3] - percent_bbox[1]
+        # 右端から50px余白を確保してテキストを配置
+        percent_x = VIDEO_WIDTH - 50 - percent_w
+        percent_y = bar_y_pos + (bar_height - percent_h) // 2
 
         draw.text((percent_x + 2, percent_y + 2), percent_text, fill='#000000', font=percent_font)
         draw.text((percent_x, percent_y), percent_text, fill=colors[0], font=percent_font)
