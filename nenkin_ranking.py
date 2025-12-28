@@ -597,14 +597,11 @@ def _process_tts_line_parallel(args: tuple) -> dict:
     text = line["text"]
     voice = VOICE_HIROSHI if speaker == "ヒロシ" else VOICE_KATSUMI
 
-    # スタッガード遅延（API負荷軽減）- インデックスに応じて遅延
-    # 初期遅延: 各ワーカーが少しずつずれて開始
-    initial_delay = (line_index % 8) * 1.0  # 8ワーカーで1秒ずつずらす
-    # 追加遅延: バッチごとにさらに遅延
-    batch_delay = (line_index // 29) * 2.0  # 29キーごとに2秒追加
-    total_delay = initial_delay + batch_delay
-    if total_delay > 0:
-        time.sleep(min(total_delay, 30.0))  # 最大30秒
+    # スタッガード遅延（API負荷軽減）- 各セリフを2秒ずつずらす
+    # 429エラー防止のため、十分な間隔を空ける
+    stagger_delay = line_index * 2.0  # 各セリフを2秒ずつずらす
+    if stagger_delay > 0:
+        time.sleep(min(stagger_delay, 60.0))  # 最大60秒
 
     audio_path = str(temp_dir / f"line_{line_index:04d}.wav")
     max_retries = 3
@@ -651,7 +648,8 @@ def _process_tts_line_parallel(args: tuple) -> dict:
 
         except Exception as e:
             if attempt < max_retries - 1:
-                wait_time = 5 * (attempt + 1)  # より長い指数バックオフ（5秒、10秒）
+                wait_time = 30 * (attempt + 1)  # 十分な待機（30秒、60秒）
+                print(f"    [リトライ] {key_name} セリフ{line_index+1}: {wait_time}秒待機...")
                 time.sleep(wait_time)
             else:
                 # 無音で代替
@@ -707,9 +705,9 @@ def generate_tts_audio(dialogue: list, output_path: str, key_manager: GeminiKeyM
     # 一時ディレクトリを作成
     temp_dir = Path(tempfile.mkdtemp(prefix="tts_parallel_"))
 
-    # 並列処理のワーカー数（APIキー数とセリフ数の小さい方、最大8）
-    # 429エラー対策で同時リクエスト数を制限
-    max_workers = min(len(all_keys), total_lines, 8)
+    # 並列処理のワーカー数（APIキー数とセリフ数の小さい方、最大3）
+    # 429エラー対策で同時リクエスト数を大幅に制限
+    max_workers = min(len(all_keys), total_lines, 3)
     print(f"  [並列処理] max_workers={max_workers}, {len(all_keys)}キー使用")
 
     # タスクを準備（各セリフに異なるAPIキーを割り当て）
