@@ -596,6 +596,46 @@ def extract_all_dialogue(script: dict) -> list:
     return dialogue
 
 
+def generate_chapters(script: dict, timings: list) -> str:
+    """チャプタータイムスタンプを生成"""
+    chapters = []
+
+    # オープニング（0:00から開始）
+    chapters.append("0:00 オープニング")
+
+    # 各ランキングの開始時刻を検出
+    rankings = script.get("rankings", [])
+    sorted_rankings = sorted(rankings, key=lambda x: x.get("rank", 0), reverse=True)
+
+    for ranking in sorted_rankings:
+        rank = ranking.get("rank", 0)
+        title = ranking.get("title", "")
+        # "第{rank}位は" で始まるテキストを探す
+        rank_pattern = f"第{rank}位は"
+
+        for timing in timings:
+            if rank_pattern in timing.get("text", ""):
+                start_sec = timing.get("start", 0)
+                minutes = int(start_sec // 60)
+                seconds = int(start_sec % 60)
+                chapters.append(f"{minutes}:{seconds:02d} 第{rank}位 {title}")
+                break
+
+    # エンディングの開始時刻を検出
+    ending_lines = script.get("ending", [])
+    if ending_lines and timings:
+        ending_text = ending_lines[0].get("text", "")[:10]  # 最初の10文字で検索
+        for timing in timings:
+            if ending_text in timing.get("text", ""):
+                start_sec = timing.get("start", 0)
+                minutes = int(start_sec // 60)
+                seconds = int(start_sec % 60)
+                chapters.append(f"{minutes}:{seconds:02d} エンディング")
+                break
+
+    return "\n".join(chapters)
+
+
 def _process_tts_line_parallel(args: tuple) -> dict:
     """TTS処理用の1セリフ処理関数（順次処理用）"""
     line, api_key, key_name, line_index, temp_dir, total_lines = args
@@ -1117,6 +1157,224 @@ def download_bgm(file_id: str, output_path: str) -> bool:
     return False
 
 
+def generate_summary_table_image(script: dict, output_path: str):
+    """ランキングまとめ表を画像として生成"""
+    from PIL import Image, ImageDraw, ImageFont
+
+    # 画像設定
+    img = Image.new('RGB', (VIDEO_WIDTH, VIDEO_HEIGHT), '#1a1a2e')
+    draw = ImageDraw.Draw(img)
+
+    # フォント設定（日本語フォントを使用）
+    try:
+        # Ubuntu/GitHub Actions環境
+        title_font = ImageFont.truetype("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", 60)
+        rank_font = ImageFont.truetype("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", 44)
+        text_font = ImageFont.truetype("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 36)
+    except:
+        try:
+            # macOS環境
+            title_font = ImageFont.truetype("/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc", 60)
+            rank_font = ImageFont.truetype("/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc", 44)
+            text_font = ImageFont.truetype("/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc", 36)
+        except:
+            title_font = ImageFont.load_default()
+            rank_font = ImageFont.load_default()
+            text_font = ImageFont.load_default()
+
+    # タイトル
+    title = "📊 ランキングまとめ"
+    title_bbox = draw.textbbox((0, 0), title, font=title_font)
+    title_x = (VIDEO_WIDTH - (title_bbox[2] - title_bbox[0])) // 2
+    draw.text((title_x, 50), title, fill='#ffd700', font=title_font)
+
+    # ランキングデータを取得（1位〜5位）
+    rankings = script.get("rankings", [])
+    sorted_rankings = sorted(rankings, key=lambda x: x.get("rank", 0))  # 1位から順に
+
+    # 表の描画
+    start_y = 150
+    row_height = 100
+    colors = ['#ffd700', '#c0c0c0', '#cd7f32', '#87ceeb', '#90ee90']  # 金、銀、銅、水色、緑
+
+    for i, ranking in enumerate(sorted_rankings[:5]):  # 上位5位まで
+        rank = ranking.get("rank", i + 1)
+        title_text = ranking.get("title", "")
+
+        y = start_y + i * row_height
+
+        # 順位の色付き背景
+        rank_bg_color = colors[i] if i < len(colors) else '#ffffff'
+        draw.rounded_rectangle(
+            [(50, y), (130, y + 70)],
+            radius=10,
+            fill=rank_bg_color
+        )
+
+        # 順位テキスト
+        rank_text = f"{rank}"
+        rank_bbox = draw.textbbox((0, 0), rank_text, font=rank_font)
+        rank_x = 90 - (rank_bbox[2] - rank_bbox[0]) // 2
+        draw.text((rank_x, y + 10), rank_text, fill='#1a1a2e', font=rank_font)
+
+        # 位
+        draw.text((100, y + 30), "位", fill='#1a1a2e', font=text_font)
+
+        # タイトル（長い場合は省略）
+        display_title = title_text[:20] + "..." if len(title_text) > 20 else title_text
+        draw.text((160, y + 15), display_title, fill='#ffffff', font=text_font)
+
+    # 下部メッセージ
+    msg = "チャンネル登録よろしくお願いします！"
+    msg_bbox = draw.textbbox((0, 0), msg, font=text_font)
+    msg_x = (VIDEO_WIDTH - (msg_bbox[2] - msg_bbox[0])) // 2
+    draw.text((msg_x, VIDEO_HEIGHT - 100), msg, fill='#87ceeb', font=text_font)
+
+    img.save(output_path)
+    print(f"  ✓ まとめ表画像生成完了")
+
+
+def generate_summary_segment(script: dict, output_path: str, key_manager, bgm_path: str = None) -> float:
+    """まとめセグメント（表画像+音声）を生成"""
+    import tempfile
+    from gtts import gTTS
+
+    print("\n  [まとめセグメント生成中...]")
+
+    with tempfile.TemporaryDirectory(prefix="summary_") as temp_dir:
+        temp_path = Path(temp_dir)
+
+        # 1. まとめ表画像を生成
+        table_image_path = str(temp_path / "summary_table.png")
+        generate_summary_table_image(script, table_image_path)
+
+        # 2. カツミの音声を生成
+        summary_text = "最後に今日のランキングをまとめてみました"
+        audio_path = str(temp_path / "summary_audio.wav")
+
+        # Gemini TTSを試す
+        tts_success = False
+        api_key = key_manager.get_key()
+
+        if api_key and not SKIP_API:
+            try:
+                client = genai.Client(api_key=api_key)
+                response = client.models.generate_content(
+                    model=TTS_MODEL,
+                    contents=summary_text,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["AUDIO"],
+                        speech_config=types.SpeechConfig(
+                            voice_config=types.VoiceConfig(
+                                prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                    voice_name=VOICE_KATSUMI
+                                )
+                            )
+                        )
+                    )
+                )
+                audio_data = response.candidates[0].content.parts[0].inline_data.data
+                audio_segment = AudioSegment(
+                    data=audio_data,
+                    sample_width=2,
+                    frame_rate=24000,
+                    channels=1
+                )
+                audio_segment.export(audio_path, format="wav")
+                tts_success = True
+                print("  ✓ まとめ音声生成完了（Gemini TTS）")
+            except Exception as e:
+                print(f"  ⚠ Gemini TTS失敗、gTTS使用: {str(e)[:30]}")
+
+        # gTTSフォールバック
+        if not tts_success:
+            try:
+                tts = gTTS(text=summary_text, lang='ja')
+                mp3_path = str(temp_path / "summary.mp3")
+                tts.save(mp3_path)
+                audio = AudioSegment.from_mp3(mp3_path)
+                audio.export(audio_path, format="wav")
+                print("  ✓ まとめ音声生成完了（gTTS）")
+            except Exception as e:
+                # 無音で代替
+                silence = AudioSegment.silent(duration=3000)
+                silence.export(audio_path, format="wav")
+                print(f"  ⚠ 音声生成失敗、無音使用")
+
+        # 音声の長さを取得
+        audio = AudioSegment.from_wav(audio_path)
+        audio_duration = len(audio) / 1000.0
+
+        # 表示時間は音声 + 3秒（余韻）
+        display_duration = audio_duration + 3.0
+
+        # 3. 動画セグメント生成
+        if bgm_path and os.path.exists(bgm_path):
+            # BGMミックス
+            af_filter = f"[2:a]volume={BGM_VOLUME}[bgm];[1:a][bgm]amix=inputs=2:duration=first[aout]"
+            cmd = [
+                'ffmpeg', '-y',
+                '-loop', '1', '-i', table_image_path,
+                '-i', audio_path,
+                '-i', bgm_path,
+                '-t', str(display_duration),
+                '-filter_complex', af_filter,
+                '-map', '0:v', '-map', '[aout]',
+                '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+                '-c:a', 'aac', '-b:a', '192k',
+                '-pix_fmt', 'yuv420p',
+                output_path
+            ]
+        else:
+            cmd = [
+                'ffmpeg', '-y',
+                '-loop', '1', '-i', table_image_path,
+                '-i', audio_path,
+                '-t', str(display_duration),
+                '-map', '0:v', '-map', '1:a',
+                '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+                '-c:a', 'aac', '-b:a', '192k',
+                '-pix_fmt', 'yuv420p',
+                output_path
+            ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"  ⚠ まとめセグメント生成失敗: {result.stderr[:200]}")
+            return 0
+
+        print(f"  ✓ まとめセグメント生成完了: {display_duration:.1f}秒")
+        return display_duration
+
+
+def concatenate_videos(main_video: str, summary_video: str, output_path: str):
+    """メイン動画とまとめセグメントを結合"""
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+        f.write(f"file '{main_video}'\n")
+        f.write(f"file '{summary_video}'\n")
+        list_file = f.name
+
+    cmd = [
+        'ffmpeg', '-y',
+        '-f', 'concat', '-safe', '0',
+        '-i', list_file,
+        '-c', 'copy',
+        output_path
+    ]
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    os.unlink(list_file)
+
+    if result.returncode != 0:
+        print(f"  ⚠ 動画結合失敗: {result.stderr[:200]}")
+        return False
+
+    print(f"  ✓ 動画結合完了")
+    return True
+
+
 def generate_video(audio_path: str, subtitle_path: str, bg_path: str, output_path: str, duration: float, bgm_path: str = None):
     """動画を生成（下部セリフ帯のみ、タイトルは字幕で表示、BGMミックス対応）"""
     print("\n[5/7] 動画を生成中...")
@@ -1575,12 +1833,39 @@ def main():
                 print("  ⚠ BGMダウンロード失敗、BGMなしで続行")
 
             # STEP6: 動画生成
+            main_video_path = str(temp_path / "main_ranking.mp4")
+            generate_video(audio_path, subtitle_path, bg_path, main_video_path, duration, bgm_path)
+
+            # STEP6.5: まとめセグメント生成と結合
             video_path = str(temp_path / "ranking.mp4")
-            generate_video(audio_path, subtitle_path, bg_path, video_path, duration, bgm_path)
+            summary_video_path = str(temp_path / "summary_segment.mp4")
+            summary_duration = generate_summary_segment(script, summary_video_path, key_manager, bgm_path)
+
+            if summary_duration > 0:
+                # メイン動画とまとめを結合
+                if concatenate_videos(main_video_path, summary_video_path, video_path):
+                    duration += summary_duration
+                else:
+                    # 結合失敗時はメイン動画をそのまま使用
+                    import shutil
+                    shutil.copy(main_video_path, video_path)
+            else:
+                # まとめセグメント生成失敗時はメイン動画をそのまま使用
+                import shutil
+                shutil.copy(main_video_path, video_path)
+
+            # チャプター生成
+            chapters = generate_chapters(script, timings)
+            print(f"  ✓ チャプター生成完了")
 
             # タイトルと説明文
             title = f"{script.get('title', theme['title'])}（{script.get('hook', '1位は意外にも...')}）【年金口コミぶっちゃけランキング】"
             description = f"""{script.get('description', theme['description'])}
+
+━━━━━━━━━━━━━━━━━━━━
+📑 目次（チャプター）
+━━━━━━━━━━━━━━━━━━━━
+{chapters}
 
 ━━━━━━━━━━━━━━━━━━━━
 🎁 LINE登録で無料プレゼント！
