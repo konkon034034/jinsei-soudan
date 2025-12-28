@@ -1186,10 +1186,11 @@ def generate_summary_table_image(script: dict, output_path: str):
         font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
         if not os.path.exists(font_path):
             font_path = "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc"
-        title_font = ImageFont.truetype(font_path, 72)    # タイトル大きく
-        rank_font = ImageFont.truetype(font_path, 100)    # 順位数字大きく
-        item_font = ImageFont.truetype(font_path, 60)     # 項目タイトル大きく
-        pos_font = ImageFont.truetype(font_path, 48)      # 「位」用
+        title_font = ImageFont.truetype(font_path, 72)
+        rank_font = ImageFont.truetype(font_path, 100)
+        item_font = ImageFont.truetype(font_path, 60)
+        pos_font = ImageFont.truetype(font_path, 48)
+        percent_font = ImageFont.truetype(font_path, 36)
     except:
         try:
             font_path = "/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc"
@@ -1197,11 +1198,13 @@ def generate_summary_table_image(script: dict, output_path: str):
             rank_font = ImageFont.truetype(font_path, 100)
             item_font = ImageFont.truetype(font_path, 60)
             pos_font = ImageFont.truetype(font_path, 48)
+            percent_font = ImageFont.truetype(font_path, 36)
         except:
             title_font = ImageFont.load_default()
             rank_font = ImageFont.load_default()
             item_font = ImageFont.load_default()
             pos_font = ImageFont.load_default()
+            percent_font = ImageFont.load_default()
 
     # ===== タイトルエリア（金色フレーム） =====
     title_text = "本日のランキング TOP5"
@@ -1238,25 +1241,25 @@ def generate_summary_table_image(script: dict, output_path: str):
     # タイトルテキスト
     title_x = (VIDEO_WIDTH - title_width) // 2
     title_y = frame_y + frame_padding - 5
-    # 影
     draw.text((title_x + 3, title_y + 3), title_text, fill='#000000', font=title_font)
-    # 本体（白）
     draw.text((title_x, title_y), title_text, fill='#FFFFFF', font=title_font)
 
     # ===== ランキングカード =====
     rankings = script.get("rankings", [])
     sorted_rankings = sorted(rankings, key=lambda x: x.get("rank", 0))
 
-    # レイアウト設定（上半分に収める）
+    # レイアウト設定
     card_start_y = 160
-    card_height = 115      # カード高さ大きく
+    card_height = 115
     card_spacing = 6
-    card_margin = 35
+    card_margin = 25
     card_width = VIDEO_WIDTH - card_margin * 2
 
-    # バーの最大幅と比率
-    bar_max_width = 550
+    # バー設定（カード幅の90%まで伸ばす）
+    bar_start_x = card_margin + 160  # 順位表示の右側から
+    bar_max_width = card_width - 160 - 100  # 右端に%表示用スペース
     bar_ratios = {1: 1.0, 2: 0.85, 3: 0.70, 4: 0.55, 5: 0.40}
+    percent_values = {1: 100, 2: 85, 3: 70, 4: 55, 5: 40}
 
     # 色設定
     bar_colors = {
@@ -1300,39 +1303,33 @@ def generate_summary_table_image(script: dict, output_path: str):
         rank_bbox = draw.textbbox((0, 0), rank_str, font=rank_font)
         rank_w = rank_bbox[2] - rank_bbox[0]
         rank_h = rank_bbox[3] - rank_bbox[1]
-        rank_x = card_margin + 25
+        rank_x = card_margin + 20
         rank_y = y + (card_height - rank_h) // 2 - 5
 
-        # 順位の影
         draw.text((rank_x + 4, rank_y + 4), rank_str, fill='#000000', font=rank_font)
-        # 順位本体（順位色）
         draw.text((rank_x, rank_y), rank_str, fill=colors[0], font=rank_font)
-
-        # 「位」
-        draw.text((rank_x + rank_w + 8, rank_y + 40), "位", fill='#FFFFFF', font=pos_font)
+        draw.text((rank_x + rank_w + 5, rank_y + 40), "位", fill='#FFFFFF', font=pos_font)
 
         # ===== タイトル（上部） =====
-        text_x = card_margin + 180
+        text_x = bar_start_x
         text_y = y + 12
-        max_chars = 12
+        max_chars = 14
         display_title = item_title[:max_chars] + "…" if len(item_title) > max_chars else item_title
 
-        # タイトル影
         draw.text((text_x + 2, text_y + 2), display_title, fill='#000000', font=item_font)
-        # タイトル本体
         draw.text((text_x, text_y), display_title, fill='#FFFFFF', font=item_font)
 
-        # ===== バーグラフ（下部・太く） =====
-        bar_x = text_x
+        # ===== バーグラフ（長く・太く） =====
+        bar_x = bar_start_x
         bar_y_pos = y + 70
-        bar_height = 35        # バー太く
+        bar_height = 38
         bar_width = int(bar_max_width * bar_ratios.get(rank, 0.4))
 
-        # バー背景（暗いグレー）
+        # バー背景（暗いグレー・最大幅）
         draw.rounded_rectangle(
             [(bar_x, bar_y_pos), (bar_x + bar_max_width, bar_y_pos + bar_height)],
-            radius=8,
-            fill='#2a2a3a'
+            radius=10,
+            fill='#1a1a2a'
         )
 
         # バー本体（グラデーション）
@@ -1341,10 +1338,21 @@ def generate_summary_table_image(script: dict, output_path: str):
         # バーの縁取り
         draw.rounded_rectangle(
             [(bar_x, bar_y_pos), (bar_x + bar_width, bar_y_pos + bar_height)],
-            radius=8,
+            radius=10,
             outline=colors[0],
             width=3
         )
+
+        # ===== %表示（バー右端） =====
+        percent_val = percent_values.get(rank, 40)
+        percent_text = f"{percent_val}%"
+        percent_bbox = draw.textbbox((0, 0), percent_text, font=percent_font)
+        percent_w = percent_bbox[2] - percent_bbox[0]
+        percent_x = bar_x + bar_max_width + 15
+        percent_y = bar_y_pos + (bar_height - (percent_bbox[3] - percent_bbox[1])) // 2
+
+        draw.text((percent_x + 2, percent_y + 2), percent_text, fill='#000000', font=percent_font)
+        draw.text((percent_x, percent_y), percent_text, fill=colors[0], font=percent_font)
 
     # ===== 装飾：キラキラエフェクト（上半分のみ） =====
     import random
