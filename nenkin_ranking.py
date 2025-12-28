@@ -1193,6 +1193,8 @@ def generate_summary_table_image(script: dict, output_path: str):
     draw = ImageDraw.Draw(img)
 
     # フォント設定（大きめ）
+    # %表示のフォントサイズ（重要度順に大→小）
+    percent_sizes = {1: 60, 2: 50, 3: 42, 4: 36, 5: 30}
     try:
         font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
         if not os.path.exists(font_path):
@@ -1201,7 +1203,7 @@ def generate_summary_table_image(script: dict, output_path: str):
         rank_font = ImageFont.truetype(font_path, 100)
         item_font = ImageFont.truetype(font_path, 60)
         pos_font = ImageFont.truetype(font_path, 48)
-        percent_font = ImageFont.truetype(font_path, 36)
+        percent_fonts = {r: ImageFont.truetype(font_path, s) for r, s in percent_sizes.items()}
     except:
         try:
             font_path = "/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc"
@@ -1209,13 +1211,13 @@ def generate_summary_table_image(script: dict, output_path: str):
             rank_font = ImageFont.truetype(font_path, 100)
             item_font = ImageFont.truetype(font_path, 60)
             pos_font = ImageFont.truetype(font_path, 48)
-            percent_font = ImageFont.truetype(font_path, 36)
+            percent_fonts = {r: ImageFont.truetype(font_path, s) for r, s in percent_sizes.items()}
         except:
             title_font = ImageFont.load_default()
             rank_font = ImageFont.load_default()
             item_font = ImageFont.load_default()
             pos_font = ImageFont.load_default()
-            percent_font = ImageFont.load_default()
+            percent_fonts = {r: ImageFont.load_default() for r in range(1, 6)}
 
     # ===== タイトルエリア（金色フレーム） =====
     title_text = "本日のランキング TOP5"
@@ -1361,9 +1363,10 @@ def generate_summary_table_image(script: dict, output_path: str):
             width=2
         )
 
-        # ===== %表示（バー右端） =====
+        # ===== %表示（バー右端・順位に応じたフォントサイズ） =====
         percent_val = percent_values.get(rank, 40)
         percent_text = f"{percent_val}%"
+        percent_font = percent_fonts.get(rank, percent_fonts[5])
         percent_bbox = draw.textbbox((0, 0), percent_text, font=percent_font)
         percent_w = percent_bbox[2] - percent_bbox[0]
         percent_x = bar_x + bar_max_width + 15
