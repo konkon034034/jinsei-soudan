@@ -264,6 +264,11 @@ def get_pending_task():
 
 def update_spreadsheet(row: int, updates: dict):
     """スプレッドシートを更新"""
+    # テストモードではスキップ
+    if TEST_MODE:
+        print(f"  [テスト] スプレッドシート更新スキップ: {list(updates.keys())}")
+        return
+
     service = get_sheets_service()
 
     # 列マッピング
@@ -2286,10 +2291,20 @@ def main():
         key_manager = GeminiKeyManager()
         print(f"Gemini APIキー: {len(key_manager.keys)}個")
 
-        task = get_pending_task()
-        if not task:
-            print("処理対象のタスクがありません")
-            return
+        # テストモードの場合は固定テーマを使用（スプレッドシート不要）
+        if TEST_MODE:
+            print("\n🧪 テストモード: 固定テーマを使用")
+            task = {
+                "row": 0,
+                "theme": "年金生活で得する節約術ランキング〜iDeCoとNISAを賢く活用〜",
+                "mode": "AUTO",
+                "channel": "27",  # シニア口コミ
+            }
+        else:
+            task = get_pending_task()
+            if not task:
+                print("処理対象のタスクがありません")
+                return
 
         print(f"\nタスク発見:")
         print(f"  テーマ: {task['theme']}")
