@@ -2186,16 +2186,25 @@ def process_auto_mode(task: dict, key_manager: GeminiKeyManager):
         chapters_text = format_chapters_for_description(chapter_timestamps)
         description_with_chapters = f"{script['description']}\n\n{chapters_text}"
 
-        # 6. YouTubeアップロード
-        print("[6/6] YouTubeアップロード中...")
-        youtube_url = upload_to_youtube(
-            video_path,
-            script["title"],
-            description_with_chapters,
-            script.get("tags", ["シニア", "老後", "ランキング", "口コミ"]),
-            channel,
-            mode  # TEST → 限定公開, AUTO → 公開
-        )
+        # 6. YouTubeアップロード（テストモードではスキップ）
+        if TEST_MODE:
+            print("[6/6] テストモード: YouTubeアップロードスキップ")
+            # 動画をカレントディレクトリにコピー
+            import shutil
+            final_video = f"test_ranking_{Path(video_path).stem.split('_')[-1]}.mp4"
+            shutil.copy(video_path, final_video)
+            youtube_url = f"[テスト] {final_video}"
+            print(f"  動画保存: {final_video}")
+        else:
+            print("[6/6] YouTubeアップロード中...")
+            youtube_url = upload_to_youtube(
+                video_path,
+                script["title"],
+                description_with_chapters,
+                script.get("tags", ["シニア", "老後", "ランキング", "口コミ"]),
+                channel,
+                mode  # TEST → 限定公開, AUTO → 公開
+            )
 
         elapsed = int(time.time() - start_time)
         update_spreadsheet(row, {
@@ -2204,13 +2213,14 @@ def process_auto_mode(task: dict, key_manager: GeminiKeyManager):
             "processing_time": f"{elapsed}秒"
         })
 
-        send_slack_notification(
-            f"*完全自動モード完了*\n"
-            f"テーマ: {theme}\n"
-            f"タイトル: {script['title']}\n"
-            f"URL: {youtube_url}\n"
-            f"処理時間: {elapsed}秒"
-        )
+        if not TEST_MODE:
+            send_slack_notification(
+                f"*完全自動モード完了*\n"
+                f"テーマ: {theme}\n"
+                f"タイトル: {script['title']}\n"
+                f"URL: {youtube_url}\n"
+                f"処理時間: {elapsed}秒"
+            )
 
         print(f"\n完了: {youtube_url}")
 
