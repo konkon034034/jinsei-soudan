@@ -1720,14 +1720,80 @@ LINEだともっと詳しく届くよ👀
         print(f"  ⚠ 初コメント投稿失敗（スキップ）: {e}")
 
 
-def send_discord_notification(message: str):
-    """Discord通知"""
+def send_discord_error_notification(error_message: str, title: str = ""):
+    """Discord通知（エラー時のみ）"""
     webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
-    if webhook_url:
-        try:
-            requests.post(webhook_url, json={"content": message}, timeout=10)
-        except Exception as e:
-            print(f"  ⚠ Discord通知失敗: {e}")
+    if not webhook_url:
+        return
+    message = f"""❌ **ランキング動画生成エラー**
+━━━━━━━━━━━━━━━━━━
+📺 タイトル: {title if title else '未生成'}
+⚠️ エラー: {error_message}"""
+    try:
+        requests.post(webhook_url, json={"content": message}, timeout=10)
+        print("  ✓ Discord エラー通知送信完了")
+    except Exception as e:
+        print(f"  ⚠ Discord通知失敗: {e}")
+
+
+def send_slack_script_notification(script: dict, scheduled_time: str = "12:00"):
+    """台本をSlackに送信"""
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+    if not webhook_url:
+        print("  ⚠ SLACK_WEBHOOK_URL未設定のため台本通知をスキップ")
+        return
+
+    title = script.get("title", "タイトル未定")
+
+    # 台本テキストを生成
+    script_lines = []
+
+    # オープニング
+    for line in script.get("opening", []):
+        speaker = line.get("speaker", "")
+        text = line.get("text", "")
+        script_lines.append(f"{speaker}: {text}")
+
+    # ランキング
+    for ranking in script.get("rankings", []):
+        rank = ranking.get("rank", "")
+        ranking_title = ranking.get("title", "")
+        script_lines.append(f"--- {rank}位: {ranking_title} ---")
+        for line in ranking.get("dialogue", []):
+            speaker = line.get("speaker", "")
+            text = line.get("text", "")
+            script_lines.append(f"{speaker}: {text}")
+
+    # エンディング
+    for line in script.get("ending", []):
+        speaker = line.get("speaker", "")
+        text = line.get("text", "")
+        script_lines.append(f"{speaker}: {text}")
+
+    script_text = "\n".join(script_lines)
+
+    message = f"""📺 本日の動画台本
+
+【タイトル】{title}
+
+【投稿予定】{scheduled_time} JST
+
+【台本】
+{script_text}"""
+
+    try:
+        response = requests.post(
+            webhook_url,
+            json={"text": message},
+            headers={"Content-Type": "application/json"},
+            timeout=30
+        )
+        if response.status_code in [200, 204]:
+            print("  ✓ Slack台本通知送信完了")
+        else:
+            print(f"  ⚠ Slack通知失敗: {response.status_code}")
+    except Exception as e:
+        print(f"  ⚠ Slack通知エラー: {e}")
 
 
 def generate_community_post_ranking(title: str, key_manager: GeminiKeyManager) -> dict:
@@ -1935,6 +2001,7 @@ def main():
         print("🔴 本番モード（フル版）")
 
     start_time = time.time()
+    title = ""
 
     try:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1948,6 +2015,11 @@ def main():
             key_manager = GeminiKeyManager()
             script = generate_script(theme, key_manager)
             first_comment = script.get("first_comment", "")
+            title = script.get("title", "")
+
+            # STEP2.5: 台本をSlackに送信
+            if not TEST_MODE:
+                send_slack_script_notification(script, scheduled_time="12:00")
 
             # STEP3: セリフ抽出 & TTS生成
             dialogue = extract_all_dialogue(script)
@@ -2060,15 +2132,6 @@ https://konkon034034.github.io/nenkin-shindan/
             print(f"🎬 動画URL: {video_url}")
             print("=" * 50)
 
-            # Discord通知
-            if video_url and not TEST_MODE:
-                send_discord_notification(
-                    f"📊 **ランキング動画投稿完了！**\n\n"
-                    f"📺 タイトル: {title}\n"
-                    f"🔗 URL: {video_url}\n"
-                    f"⏱️ 処理時間: {elapsed:.1f}秒"
-                )
-
             # video_url.txt, video_title.txt に保存（ワークフロー通知用）
             with open("video_url.txt", "w") as f:
                 f.write(video_url)
@@ -2083,6 +2146,8 @@ https://konkon034034.github.io/nenkin-shindan/
 
     except Exception as e:
         print(f"\n❌ エラー: {e}")
+        if not TEST_MODE:
+            send_discord_error_notification(str(e), title)
         import traceback
         traceback.print_exc()
         sys.exit(1)

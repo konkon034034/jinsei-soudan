@@ -4496,34 +4496,17 @@ def post_youtube_comment(video_id: str, comment_text: str) -> bool:
         return False
 
 
-def send_discord_notification(title: str, url: str, video_duration: float, processing_time: float):
-    """Discord通知を送信"""
+def send_discord_error_notification(error_message: str, title: str = ""):
+    """Discord通知を送信（エラー時のみ）"""
     webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
-    print(f"  [DEBUG] DISCORD_WEBHOOK_URL: {'設定済み (' + webhook_url[:30] + '...)' if webhook_url else '未設定'}")
-
     if not webhook_url:
         print("  ⚠ DISCORD_WEBHOOK_URL未設定のため通知をスキップ")
         return
 
-    # 処理時間をフォーマット
-    proc_minutes = int(processing_time // 60)
-    proc_seconds = int(processing_time % 60)
-    proc_time_str = f"{proc_minutes}分{proc_seconds}秒" if proc_minutes > 0 else f"{proc_seconds}秒"
-
-    # 動画長をフォーマット
-    vid_minutes = int(video_duration // 60)
-    vid_seconds = int(video_duration % 60)
-    vid_time_str = f"{vid_minutes}分{vid_seconds}秒" if vid_minutes > 0 else f"{vid_seconds}秒"
-
-    message = f"""🎬 **年金ニュース投稿完了！**
+    message = f"""❌ **年金ニュース生成エラー**
 ━━━━━━━━━━━━━━━━━━
-📺 タイトル: {title}
-🔗 URL: {url}
-📂 再生リスト・ポッドキャストに追加しました
-⏱️ 動画長: {vid_time_str}
-🕐 処理時間: {proc_time_str}"""
-
-    print(f"  [DEBUG] Discord通知メッセージ作成完了")
+📺 タイトル: {title if title else '未生成'}
+⚠️ エラー: {error_message}"""
 
     try:
         response = requests.post(
@@ -4532,13 +4515,75 @@ def send_discord_notification(title: str, url: str, video_duration: float, proce
             headers={"Content-Type": "application/json"},
             timeout=30
         )
-        print(f"  [DEBUG] Discord API レスポンス: status={response.status_code}")
         if response.status_code in [200, 204]:
-            print("  ✓ Discord通知送信完了")
+            print("  ✓ Discord エラー通知送信完了")
         else:
-            print(f"  ⚠ Discord通知失敗: {response.status_code}, body={response.text[:200]}")
+            print(f"  ⚠ Discord通知失敗: {response.status_code}")
     except Exception as e:
-        print(f"  ⚠ Discord通知エラー: {type(e).__name__}: {e}")
+        print(f"  ⚠ Discord通知エラー: {e}")
+
+
+def send_slack_script_notification(script: dict, scheduled_time: str = "11:00"):
+    """台本をSlackに送信"""
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+    if not webhook_url:
+        print("  ⚠ SLACK_WEBHOOK_URL未設定のため台本通知をスキップ")
+        return
+
+    title = script.get("title", "タイトル未定")
+
+    # 台本テキストを生成
+    script_lines = []
+
+    # オープニング
+    for line in script.get("opening", []):
+        speaker = line.get("speaker", "")
+        text = line.get("text", "")
+        script_lines.append(f"{speaker}: {text}")
+
+    # ニュースセクション
+    for section in script.get("news_sections", []):
+        for line in section.get("dialogue", []):
+            speaker = line.get("speaker", "")
+            text = line.get("text", "")
+            script_lines.append(f"{speaker}: {text}")
+
+    # 噂セクション
+    for line in script.get("rumor_section", []):
+        speaker = line.get("speaker", "")
+        text = line.get("text", "")
+        script_lines.append(f"{speaker}: {text}")
+
+    # エンディング
+    for line in script.get("ending", []):
+        speaker = line.get("speaker", "")
+        text = line.get("text", "")
+        script_lines.append(f"{speaker}: {text}")
+
+    script_text = "\n".join(script_lines)
+
+    message = f"""📺 本日の動画台本
+
+【タイトル】{title}
+
+【投稿予定】{scheduled_time} JST
+
+【台本】
+{script_text}"""
+
+    try:
+        response = requests.post(
+            webhook_url,
+            json={"text": message},
+            headers={"Content-Type": "application/json"},
+            timeout=30
+        )
+        if response.status_code in [200, 204]:
+            print("  ✓ Slack台本通知送信完了")
+        else:
+            print(f"  ⚠ Slack通知失敗: {response.status_code}")
+    except Exception as e:
+        print(f"  ⚠ Slack通知エラー: {e}")
 
 
 def generate_community_post(news_data: dict, key_manager: GeminiKeyManager) -> dict:
@@ -4837,6 +4882,11 @@ def main():
     print("\n[2.5/4] 3重ファクトチェック実行中...")
     script = triple_fact_check(script, news_data, key_manager)
 
+    # 2.6 台本をSlackに送信
+    if not TEST_MODE:
+        print("\n[2.6/4] 台本をSlackに送信中...")
+        send_slack_script_notification(script, scheduled_time="11:00")
+
     # セリフ数をカウント
     dialogue_count = len(script.get("opening", []))
     for section in script.get("news_sections", []):
@@ -5005,11 +5055,6 @@ LINE登録で毎日の年金ニュースも届きます📱
             # 処理時間を計算
             processing_time = time.time() - start_time
 
-            # Discord通知を送信（本番成功時のみ）
-            if not TEST_MODE:
-                print("\n[7/7] Discord通知を送信中...")
-                send_discord_notification(title, video_url, video_duration, processing_time)
-
             # 成功をログに記録
             log_to_spreadsheet(
                 status="成功",
@@ -5040,6 +5085,9 @@ LINE登録で毎日の年金ニュースも届きます📱
                 processing_time=processing_time,
                 error_message=str(e)
             )
+            # Discord エラー通知
+            if not TEST_MODE:
+                send_discord_error_notification(str(e), title)
             # ローカルに保存
             import shutil
             output_file = f"nenkin_news_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
