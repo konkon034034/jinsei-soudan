@@ -1551,14 +1551,59 @@ LINEだともっと詳しい情報
         print(f"  ⚠ 初コメント投稿失敗（スキップ）: {e}")
 
 
-def send_discord_notification(message: str):
-    """Discord通知"""
+def send_discord_error_notification(error_message: str, title: str = ""):
+    """Discord通知（エラー時のみ）"""
     webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
-    if webhook_url:
-        try:
-            requests.post(webhook_url, json={"content": message}, timeout=10)
-        except:
-            pass
+    if not webhook_url:
+        return
+    message = f"""❌ **年金ショート動画生成エラー**
+━━━━━━━━━━━━━━━━━━
+📺 タイトル: {title if title else '未生成'}
+⚠️ エラー: {error_message}"""
+    try:
+        requests.post(webhook_url, json={"content": message}, timeout=10)
+        print("  ✓ Discord エラー通知送信完了")
+    except Exception as e:
+        print(f"  ⚠ Discord通知エラー: {e}")
+
+
+def send_slack_script_notification(script: list, title: str, scheduled_time: str = "18:00"):
+    """台本をSlackに送信"""
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+    if not webhook_url:
+        print("  ⚠ SLACK_WEBHOOK_URL未設定のため台本通知をスキップ")
+        return
+
+    # 台本テキストを生成
+    script_lines = []
+    for line in script:
+        speaker = line.get("speaker", "")
+        text = line.get("text", "")
+        script_lines.append(f"{speaker}: {text}")
+    script_text = "\n".join(script_lines)
+
+    message = f"""📺 本日の動画台本
+
+【タイトル】{title}
+
+【投稿予定】{scheduled_time} JST
+
+【台本】
+{script_text}"""
+
+    try:
+        response = requests.post(
+            webhook_url,
+            json={"text": message},
+            headers={"Content-Type": "application/json"},
+            timeout=30
+        )
+        if response.status_code in [200, 204]:
+            print("  ✓ Slack台本通知送信完了")
+        else:
+            print(f"  ⚠ Slack通知失敗: {response.status_code}")
+    except Exception as e:
+        print(f"  ⚠ Slack通知エラー: {e}")
 
 
 def generate_community_post_short(theme_name: str, key_manager: GeminiKeyManager) -> dict:
@@ -1769,66 +1814,74 @@ def main():
     print("=" * 50)
 
     key_manager = GeminiKeyManager()
+    title = ""
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        temp_path = Path(temp_dir)
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
 
-        # STEP1: テーマ選択
-        theme = select_theme()
-        print(f"\n📊 今日のテーマ: {theme['name']}")
+            # STEP1: テーマ選択
+            theme = select_theme()
+            print(f"\n📊 今日のテーマ: {theme['name']}")
 
-        # STEP2: 表データ生成
-        table_data = generate_table_data(theme, key_manager)
+            # STEP2: 表データ生成
+            table_data = generate_table_data(theme, key_manager)
 
-        # STEP3: 表画像生成
-        image_path = str(temp_path / "table.png")
-        generate_table_image(table_data, image_path)
+            # STEP3: 表画像生成
+            image_path = str(temp_path / "table.png")
+            generate_table_image(table_data, image_path)
 
-        # STEP4: 台本生成
-        script_data = generate_script(table_data, key_manager, theme)
-        script = script_data.get("script", [])
-        first_comment = script_data.get("first_comment", "")
+            # STEP4: 台本生成
+            script_data = generate_script(table_data, key_manager, theme)
+            script = script_data.get("script", [])
+            first_comment = script_data.get("first_comment", "")
 
-        # STEP5: TTS生成
-        tts_audio_path = str(temp_path / "tts_audio.wav")
-        tts_duration, timings = generate_tts_audio(script, tts_audio_path, key_manager)
+            # STEP4.5: 台本をSlackに送信
+            if not TEST_MODE:
+                youtube_title = table_data.get('youtube_title', '')
+                title = youtube_title
+                send_slack_script_notification(script, youtube_title, scheduled_time="18:00")
 
-        # STEP5.5: ジングル・BGM追加
-        final_audio_path = str(temp_path / "audio.wav")
-        jingle_duration = process_audio_with_jingle_bgm(tts_audio_path, final_audio_path, temp_path)
+            # STEP5: TTS生成
+            tts_audio_path = str(temp_path / "tts_audio.wav")
+            tts_duration, timings = generate_tts_audio(script, tts_audio_path, key_manager)
 
-        # 最終音声の長さを取得
-        final_audio = AudioSegment.from_file(final_audio_path)
-        duration = len(final_audio) / 1000.0
-        print(f"  最終音声長: {duration:.1f}秒 (ジングル: {jingle_duration:.1f}秒)")
+            # STEP5.5: ジングル・BGM追加
+            final_audio_path = str(temp_path / "audio.wav")
+            jingle_duration = process_audio_with_jingle_bgm(tts_audio_path, final_audio_path, temp_path)
 
-        # 画面下部CTA（ASS字幕で固定表示、12文字以内に切り詰め）
-        screen_cta = table_data.get('screen_cta', '')
-        video_title = screen_cta[:12] if len(screen_cta) > 12 else screen_cta
+            # 最終音声の長さを取得
+            final_audio = AudioSegment.from_file(final_audio_path)
+            duration = len(final_audio) / 1000.0
+            print(f"  最終音声長: {duration:.1f}秒 (ジングル: {jingle_duration:.1f}秒)")
 
-        # 字幕生成（ジングル分だけタイミングをオフセット、タイトル固定表示）
-        subtitle_path = str(temp_path / "subtitles.ass")
-        generate_subtitles(script, duration, subtitle_path, timings, jingle_duration, video_title)
+            # 画面下部CTA（ASS字幕で固定表示、12文字以内に切り詰め）
+            screen_cta = table_data.get('screen_cta', '')
+            video_title = screen_cta[:12] if len(screen_cta) > 12 else screen_cta
 
-        # STEP5.8: 背景画像をダウンロード（gdown + 1080x1920リサイズ）
-        bg_image_path = str(temp_path / "background.png")
-        print(f"\n  背景画像をダウンロード中...")
-        if download_background_image(BACKGROUND_IMAGE_ID, bg_image_path):
-            print(f"  ✓ 背景画像準備完了")
-        else:
-            # フォールバック：黒背景を生成
-            print(f"  ⚠ 背景画像ダウンロード失敗、黒背景を使用")
-            from PIL import Image
-            bg = Image.new('RGB', (VIDEO_WIDTH, VIDEO_HEIGHT), '#000000')
-            bg.save(bg_image_path)
+            # 字幕生成（ジングル分だけタイミングをオフセット、タイトル固定表示）
+            subtitle_path = str(temp_path / "subtitles.ass")
+            generate_subtitles(script, duration, subtitle_path, timings, jingle_duration, video_title)
 
-        # STEP6: 動画生成（背景固定 + 表スクロール）
-        video_path = str(temp_path / "short.mp4")
-        generate_video(image_path, bg_image_path, final_audio_path, subtitle_path, video_path, duration)
+            # STEP5.8: 背景画像をダウンロード（gdown + 1080x1920リサイズ）
+            bg_image_path = str(temp_path / "background.png")
+            print(f"\n  背景画像をダウンロード中...")
+            if download_background_image(BACKGROUND_IMAGE_ID, bg_image_path):
+                print(f"  ✓ 背景画像準備完了")
+            else:
+                # フォールバック：黒背景を生成
+                print(f"  ⚠ 背景画像ダウンロード失敗、黒背景を使用")
+                from PIL import Image
+                bg = Image.new('RGB', (VIDEO_WIDTH, VIDEO_HEIGHT), '#000000')
+                bg.save(bg_image_path)
 
-        # タイトルと説明文
-        title = f"{table_data.get('youtube_title', '')} #Shorts"
-        description = f"""📊 {table_data.get('youtube_title', '')}
+            # STEP6: 動画生成（背景固定 + 表スクロール）
+            video_path = str(temp_path / "short.mp4")
+            generate_video(image_path, bg_image_path, final_audio_path, subtitle_path, video_path, duration)
+
+            # タイトルと説明文
+            title = f"{table_data.get('youtube_title', '')} #Shorts"
+            description = f"""📊 {table_data.get('youtube_title', '')}
 
 年金の気になる情報を分かりやすい表でお届け！
 保存して活用してくださいね。
@@ -1857,44 +1910,46 @@ https://konkon034034.github.io/nenkin-shindan/
 #年金 #年金制度 #老後資金 #お金 #Shorts
 ━━━━━━━━━━━━━━━━━━━━"""
 
-        # STEP7: アップロード
-        import shutil
-        # 動画ファイルを保存（TikTokアップロード用にも使用）
-        output_video = "output_video.mp4"
-        shutil.copy(video_path, output_video)
-        print(f"  動画を保存: {output_video}")
+            # STEP7: アップロード
+            import shutil
+            # 動画ファイルを保存（TikTokアップロード用にも使用）
+            output_video = "output_video.mp4"
+            shutil.copy(video_path, output_video)
+            print(f"  動画を保存: {output_video}")
 
-        if TEST_MODE:
-            print("\n[テストモード] YouTubeアップロードをスキップ")
-            video_url = f"file://{output_video}"
-        else:
-            video_url = upload_to_youtube(video_path, title, description, first_comment)
+            if TEST_MODE:
+                print("\n[テストモード] YouTubeアップロードをスキップ")
+                video_url = f"file://{output_video}"
+            else:
+                video_url = upload_to_youtube(video_path, title, description, first_comment)
 
-        # 完了
-        elapsed = time.time() - start_time
-        print("\n" + "=" * 50)
-        print(f"✅ 完了！ 処理時間: {elapsed:.1f}秒")
-        print(f"📊 テーマ: {theme['name']}")
-        print(f"🎬 動画URL: {video_url}")
-        print("=" * 50)
+            # 完了
+            elapsed = time.time() - start_time
+            print("\n" + "=" * 50)
+            print(f"✅ 完了！ 処理時間: {elapsed:.1f}秒")
+            print(f"📊 テーマ: {theme['name']}")
+            print(f"🎬 動画URL: {video_url}")
+            print("=" * 50)
 
-        # 動画URL・タイトルをファイルに保存（ワークフロー通知用）
-        youtube_title = table_data.get('youtube_title', '')
-        with open("video_url.txt", "w") as f:
-            f.write(video_url)
-        with open("video_title.txt", "w") as f:
-            f.write(youtube_title)
+            # 動画URL・タイトルをファイルに保存（ワークフロー通知用）
+            youtube_title = table_data.get('youtube_title', '')
+            with open("video_url.txt", "w") as f:
+                f.write(video_url)
+            with open("video_title.txt", "w") as f:
+                f.write(youtube_title)
 
-        # Discord通知（本番成功時のみ）
-        if video_url and not TEST_MODE:
-            send_discord_notification(f"📊 年金データ表ショート動画を投稿しました！\n\n{video_url}")
+            # コミュニティ投稿案（本番のみ）
+            if not TEST_MODE:
+                theme_name = table_data.get('screen_theme', theme.get('name', ''))
+                community_post = generate_community_post_short(theme_name, key_manager)
+                if community_post:
+                    send_community_post_to_slack_short(community_post)
 
-        # コミュニティ投稿案（本番のみ）
+    except Exception as e:
+        print(f"❌ エラー発生: {e}")
         if not TEST_MODE:
-            theme_name = table_data.get('screen_theme', theme.get('name', ''))
-            community_post = generate_community_post_short(theme_name, key_manager)
-            if community_post:
-                send_community_post_to_slack_short(community_post)
+            send_discord_error_notification(str(e), title)
+        raise
 
 
 if __name__ == "__main__":
