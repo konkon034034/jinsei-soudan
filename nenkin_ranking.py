@@ -590,18 +590,14 @@ def extract_all_dialogue(script: dict) -> list:
 
 
 def _process_tts_line_parallel(args: tuple) -> dict:
-    """並列TTS処理用の1セリフ処理関数（ThreadPoolExecutor用）"""
+    """TTS処理用の1セリフ処理関数（順次処理用）"""
     line, api_key, key_name, line_index, temp_dir, total_lines = args
 
     speaker = line["speaker"]
     text = line["text"]
     voice = VOICE_HIROSHI if speaker == "ヒロシ" else VOICE_KATSUMI
 
-    # スタッガード遅延（API負荷軽減）- 各セリフを2秒ずつずらす
-    # 429エラー防止のため、十分な間隔を空ける
-    stagger_delay = line_index * 2.0  # 各セリフを2秒ずつずらす
-    if stagger_delay > 0:
-        time.sleep(min(stagger_delay, 60.0))  # 最大60秒
+    # Note: 遅延は呼び出し元で制御（順次処理のため関数内では遅延なし）
 
     audio_path = str(temp_dir / f"line_{line_index:04d}.wav")
     max_retries = 3
@@ -700,52 +696,48 @@ def generate_tts_audio(dialogue: list, output_path: str, key_manager: GeminiKeyM
         raise RuntimeError("APIキーがありません")
 
     total_lines = len(dialogue)
-    print(f"  合計 {total_lines} セリフを{len(all_keys)}個のAPIキーで並列生成")
+    print(f"  合計 {total_lines} セリフを{len(all_keys)}個のAPIキーで順次生成")
 
     # 一時ディレクトリを作成
-    temp_dir = Path(tempfile.mkdtemp(prefix="tts_parallel_"))
+    temp_dir = Path(tempfile.mkdtemp(prefix="tts_sequential_"))
 
-    # 並列処理のワーカー数（APIキー数とセリフ数の小さい方、最大3）
-    # 429エラー対策で同時リクエスト数を大幅に制限
-    max_workers = min(len(all_keys), total_lines, 3)
-    print(f"  [並列処理] max_workers={max_workers}, {len(all_keys)}キー使用")
-
-    # タスクを準備（各セリフに異なるAPIキーを割り当て）
-    tasks = []
-    for i, line in enumerate(dialogue):
-        api_key, key_name = all_keys[i % len(all_keys)]
-        tasks.append((line, api_key, key_name, i, temp_dir, total_lines))
-
-    # ThreadPoolExecutorで並列処理
+    # 順次処理で各セリフを処理（429エラー対策）
     results = [None] * total_lines
     success_count = 0
     fail_count = 0
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(_process_tts_line_parallel, task): task[3] for task in tasks}
+    # セリフ間の遅延（秒）- レート制限回避用
+    DELAY_BETWEEN_LINES = 3.0
 
-        for future in as_completed(futures):
-            line_index = futures[future]
-            try:
-                result = future.result()
-                results[result["index"]] = result
-                if result["success"]:
-                    success_count += 1
-                else:
-                    fail_count += 1
-                    if "error" in result:
-                        print(f"  ⚠ TTS失敗 [{result['index']+1}] ({result['speaker']}): {result['error']}")
+    print(f"  [順次処理] {len(all_keys)}キー使用、{DELAY_BETWEEN_LINES}秒間隔")
 
-                # 進捗表示（20セリフごと）
-                completed = success_count + fail_count
-                if completed % 20 == 0 or completed == total_lines:
-                    print(f"  [{completed}/{total_lines}] 完了 (成功:{success_count}, 失敗:{fail_count})")
+    for i, line in enumerate(dialogue):
+        # APIキーをローテーション
+        api_key, key_name = all_keys[i % len(all_keys)]
+        task = (line, api_key, key_name, i, temp_dir, total_lines)
 
-            except Exception as e:
+        try:
+            result = _process_tts_line_parallel(task)
+            results[result["index"]] = result
+            if result["success"]:
+                success_count += 1
+                print(f"  ✓ [{i+1}/{total_lines}] {result['speaker']}: {len(result.get('text', '')[:20])}文字")
+            else:
                 fail_count += 1
-                print(f"  ✗ 例外 [{line_index+1}]: {str(e)[:50]}")
+                if "error" in result:
+                    # エラー詳細を短く表示
+                    error_short = result['error'][:60] if len(result['error']) > 60 else result['error']
+                    print(f"  ✗ [{i+1}/{total_lines}] {result['speaker']}: {error_short}")
+        except Exception as e:
+            fail_count += 1
+            print(f"  ✗ 例外 [{i+1}]: {str(e)[:50]}")
+            results[i] = {"success": False, "index": i, "speaker": line["speaker"], "text": line["text"]}
 
-    print(f"  [並列処理完了] {success_count}/{total_lines} 成功")
+        # 次のリクエストまで待機（最後以外）
+        if i < total_lines - 1:
+            time.sleep(DELAY_BETWEEN_LINES)
+
+    print(f"  [順次処理完了] {success_count}/{total_lines} 成功")
 
     # 音声を順番に結合してタイミングを計算
     combined = AudioSegment.empty()
