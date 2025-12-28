@@ -1158,77 +1158,113 @@ def download_bgm(file_id: str, output_path: str) -> bool:
 
 
 def generate_summary_table_image(script: dict, output_path: str):
-    """ランキングまとめ表を画像として生成"""
+    """ランキングまとめ表を画像として生成（TV風シンプルデザイン）"""
     from PIL import Image, ImageDraw, ImageFont
 
-    # 画像設定
+    # 画像設定（ダークネイビー背景）
     img = Image.new('RGB', (VIDEO_WIDTH, VIDEO_HEIGHT), '#1a1a2e')
     draw = ImageDraw.Draw(img)
 
     # フォント設定（日本語フォントを使用）
     try:
         # Ubuntu/GitHub Actions環境
-        title_font = ImageFont.truetype("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", 60)
-        rank_font = ImageFont.truetype("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", 44)
-        text_font = ImageFont.truetype("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 36)
+        font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
+        if not os.path.exists(font_path):
+            font_path = "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc"
+        title_font = ImageFont.truetype(font_path, 52)
+        rank_font = ImageFont.truetype(font_path, 40)
+        text_font = ImageFont.truetype(font_path, 32)
     except:
         try:
             # macOS環境
-            title_font = ImageFont.truetype("/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc", 60)
-            rank_font = ImageFont.truetype("/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc", 44)
-            text_font = ImageFont.truetype("/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc", 36)
+            font_path = "/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc"
+            title_font = ImageFont.truetype(font_path, 52)
+            rank_font = ImageFont.truetype(font_path, 40)
+            text_font = ImageFont.truetype(font_path, 32)
         except:
             title_font = ImageFont.load_default()
             rank_font = ImageFont.load_default()
             text_font = ImageFont.load_default()
 
-    # タイトル
-    title = "📊 ランキングまとめ"
+    # ===== タイトル（白文字 + 黄色下線） =====
+    title = "本日のランキングまとめ"
     title_bbox = draw.textbbox((0, 0), title, font=title_font)
-    title_x = (VIDEO_WIDTH - (title_bbox[2] - title_bbox[0])) // 2
-    draw.text((title_x, 50), title, fill='#ffd700', font=title_font)
+    title_width = title_bbox[2] - title_bbox[0]
+    title_x = (VIDEO_WIDTH - title_width) // 2
+    title_y = 60
 
-    # ランキングデータを取得（1位〜5位）
+    # タイトルテキスト（白）
+    draw.text((title_x, title_y), title, fill='#FFFFFF', font=title_font)
+
+    # 黄色の下線
+    underline_y = title_y + (title_bbox[3] - title_bbox[1]) + 10
+    draw.rectangle(
+        [(title_x, underline_y), (title_x + title_width, underline_y + 4)],
+        fill='#FFD700'
+    )
+
+    # ===== ランキング表示 =====
     rankings = script.get("rankings", [])
-    sorted_rankings = sorted(rankings, key=lambda x: x.get("rank", 0))  # 1位から順に
+    sorted_rankings = sorted(rankings, key=lambda x: x.get("rank", 0))
 
-    # 表の描画
-    start_y = 150
+    # レイアウト設定
+    start_y = 180
     row_height = 100
-    colors = ['#ffd700', '#c0c0c0', '#cd7f32', '#87ceeb', '#90ee90']  # 金、銀、銅、水色、緑
+    left_margin = 60
+    bar_max_width = 480  # バーの最大幅
 
-    for i, ranking in enumerate(sorted_rankings[:5]):  # 上位5位まで
+    # バーの色設定（順位別）
+    bar_colors = {
+        1: '#FFD700',  # 金
+        2: '#C0C0C0',  # 銀
+        3: '#CD7F32',  # 銅
+    }
+    default_bar_color = '#4a5568'  # 4位以下はグレー
+
+    # メダル絵文字
+    medals = {1: '🥇', 2: '🥈', 3: '🥉'}
+
+    for i, ranking in enumerate(sorted_rankings[:5]):
         rank = ranking.get("rank", i + 1)
         title_text = ranking.get("title", "")
 
         y = start_y + i * row_height
 
-        # 順位の色付き背景
-        rank_bg_color = colors[i] if i < len(colors) else '#ffffff'
+        # バーの幅を計算（順位が下がるほど短く）
+        bar_width = int(bar_max_width * (1.0 - (rank - 1) * 0.12))
+
+        # バーの色
+        bar_color = bar_colors.get(rank, default_bar_color)
+
+        # ===== 順位表示 =====
+        if rank <= 3:
+            # メダル + 順位
+            rank_text = f"{medals[rank]} {rank}位"
+        else:
+            # 順位のみ
+            rank_text = f"   {rank}位"
+
+        draw.text((left_margin, y), rank_text, fill='#FFFFFF', font=rank_font)
+
+        # ===== タイトルテキスト =====
+        text_x = left_margin + 130
+        # 長いタイトルは省略
+        max_chars = 16
+        display_title = title_text[:max_chars] + "…" if len(title_text) > max_chars else title_text
+        draw.text((text_x, y + 5), display_title, fill='#FFFFFF', font=text_font)
+
+        # ===== TV風バーグラフ =====
+        bar_x = VIDEO_WIDTH - left_margin - bar_max_width
+        bar_y = y + 50
+        bar_height = 24
+
+        # バー描画（右寄せ）
+        bar_start_x = bar_x + (bar_max_width - bar_width)
         draw.rounded_rectangle(
-            [(50, y), (130, y + 70)],
-            radius=10,
-            fill=rank_bg_color
+            [(bar_start_x, bar_y), (bar_start_x + bar_width, bar_y + bar_height)],
+            radius=4,
+            fill=bar_color
         )
-
-        # 順位テキスト
-        rank_text = f"{rank}"
-        rank_bbox = draw.textbbox((0, 0), rank_text, font=rank_font)
-        rank_x = 90 - (rank_bbox[2] - rank_bbox[0]) // 2
-        draw.text((rank_x, y + 10), rank_text, fill='#1a1a2e', font=rank_font)
-
-        # 位
-        draw.text((100, y + 30), "位", fill='#1a1a2e', font=text_font)
-
-        # タイトル（長い場合は省略）
-        display_title = title_text[:20] + "..." if len(title_text) > 20 else title_text
-        draw.text((160, y + 15), display_title, fill='#ffffff', font=text_font)
-
-    # 下部メッセージ
-    msg = "チャンネル登録よろしくお願いします！"
-    msg_bbox = draw.textbbox((0, 0), msg, font=text_font)
-    msg_x = (VIDEO_WIDTH - (msg_bbox[2] - msg_bbox[0])) // 2
-    draw.text((msg_x, VIDEO_HEIGHT - 100), msg, fill='#87ceeb', font=text_font)
 
     img.save(output_path)
     print(f"  ✓ まとめ表画像生成完了")
