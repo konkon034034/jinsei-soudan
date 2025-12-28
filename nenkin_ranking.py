@@ -25,6 +25,7 @@ import requests
 from google import genai
 from google.genai import types
 from pydub import AudioSegment
+from gtts import gTTS
 
 # ===== 設定 =====
 TEST_MODE = os.environ.get("TEST_MODE", "false").lower() == "true"
@@ -648,18 +649,37 @@ def _process_tts_line_parallel(args: tuple) -> dict:
                 print(f"    [リトライ] {key_name} セリフ{line_index+1}: {wait_time}秒待機...")
                 time.sleep(wait_time)
             else:
-                # 無音で代替
-                silence = AudioSegment.silent(duration=1000)
-                silence.export(audio_path, format="wav")
-                return {
-                    "index": line_index,
-                    "success": False,
-                    "path": audio_path,
-                    "duration": 1.0,
-                    "speaker": speaker,
-                    "text": text,
-                    "error": str(e)[:50]
-                }
+                # gTTSフォールバック
+                try:
+                    gtts_path = str(temp_dir / f"gtts_{line_index:04d}.mp3")
+                    tts = gTTS(text=text, lang='ja')
+                    tts.save(gtts_path)
+                    # mp3をwavに変換
+                    gtts_audio = AudioSegment.from_mp3(gtts_path)
+                    gtts_audio.export(audio_path, format="wav")
+                    duration = len(gtts_audio) / 1000.0
+                    return {
+                        "index": line_index,
+                        "success": True,  # gTTS成功
+                        "path": audio_path,
+                        "duration": duration,
+                        "speaker": speaker,
+                        "text": text,
+                        "fallback": "gtts"
+                    }
+                except Exception as gtts_e:
+                    # gTTSも失敗なら無音で代替
+                    silence = AudioSegment.silent(duration=1000)
+                    silence.export(audio_path, format="wav")
+                    return {
+                        "index": line_index,
+                        "success": False,
+                        "path": audio_path,
+                        "duration": 1.0,
+                        "speaker": speaker,
+                        "text": text,
+                        "error": f"Gemini:{str(e)[:30]}, gTTS:{str(gtts_e)[:20]}"
+                    }
 
     return {"index": line_index, "success": False, "path": None, "duration": 0}
 
@@ -721,7 +741,8 @@ def generate_tts_audio(dialogue: list, output_path: str, key_manager: GeminiKeyM
             results[result["index"]] = result
             if result["success"]:
                 success_count += 1
-                print(f"  ✓ [{i+1}/{total_lines}] {result['speaker']}: {len(result.get('text', '')[:20])}文字")
+                fallback_info = " (gTTS)" if result.get("fallback") == "gtts" else ""
+                print(f"  ✓ [{i+1}/{total_lines}] {result['speaker']}: {len(result.get('text', '')[:20])}文字{fallback_info}")
             else:
                 fail_count += 1
                 if "error" in result:
