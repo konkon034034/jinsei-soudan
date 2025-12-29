@@ -2915,9 +2915,9 @@ def generate_qr_background(output_path: str):
 
     レイアウト:
     - 背景: 真っ黒
-    - 左上: QRコード（画面幅の25%程度、小さめ）
+    - 左下: QRコード（YouTubeUIと被らない位置）
     - QRコードの右: テキスト
-    - 下部: 字幕用に空けておく
+    - 上部: メインテキスト
     """
     import os
     from pathlib import Path
@@ -2946,78 +2946,94 @@ def generate_qr_background(output_path: str):
     if font is None:
         font = ImageFont.load_default()
 
-    # QRコード画像を読み込み（左上に配置）
-    qr_path = Path(__file__).parent / "assets" / "line_qr.png"
     shadow_offset = 2
+
+    # QRコード生成（qrcodeライブラリ使用、ファイルがなくても動作）
+    qr_path = Path(__file__).parent / "assets" / "line_qr.png"
+    qr_img = None
+    qr_size = 200  # 少し小さめ
 
     if qr_path.exists():
         qr_img = Image.open(qr_path)
-
-        # QRコードをリサイズ（画面幅の25%、小さめ）
-        qr_size = int(VIDEO_WIDTH * 0.25)  # 480px (1920*0.25)
         qr_img = qr_img.resize((qr_size, qr_size), Image.LANCZOS)
-
-        # QRコードを左上に配置（マージン40px）
-        qr_x = 40
-        qr_y = 40
-
-        # QRコードを貼り付け
-        img.paste(qr_img, (qr_x, qr_y))
-        print(f"    [QR背景] QRコード配置完了 ({qr_size}x{qr_size}px) 位置: 左上({qr_x}, {qr_y})")
-
-        # QRコードの右側にメインテキストを配置
-        text = "LINE登録で"
-        text2 = "最新年金ニュースが"
-        text3 = "毎日届く！"
-
-        text_x = qr_x + qr_size + 40  # QRコードの右40px
-        text_y = qr_y + 20  # QRコードの上端から少し下
-        line_height = font_size + 15
-
-        # テキスト描画（白、影付き）
-        draw.text((text_x + shadow_offset, text_y + shadow_offset), text, font=font, fill=(50, 50, 50))
-        draw.text((text_x, text_y), text, font=font, fill=(255, 255, 255))
-
-        draw.text((text_x + shadow_offset, text_y + line_height + shadow_offset), text2, font=font, fill=(50, 50, 50))
-        draw.text((text_x, text_y + line_height), text2, font=font, fill=(255, 255, 255))
-
-        draw.text((text_x + shadow_offset, text_y + line_height * 2 + shadow_offset), text3, font=font, fill=(50, 50, 50))
-        draw.text((text_x, text_y + line_height * 2), text3, font=font, fill=(255, 255, 255))
-
-        # QRコードの下にサブテキストを追加（35px）
-        sub_font_size = 35
-        sub_font = None
-        for fp in font_paths:
-            if os.path.exists(fp):
-                try:
-                    sub_font = ImageFont.truetype(fp, sub_font_size)
-                    break
-                except Exception:
-                    continue
-        if sub_font is None:
-            sub_font = ImageFont.load_default()
-
-        sub_text_x = qr_x  # QRコードと同じ左位置
-        sub_text_y = qr_y + qr_size + 15  # QRコードの下15px
-        sub_line_height = sub_font_size + 10
-
-        # 1行目: プレゼント告知
-        sub_text1 = "🎁 友だち登録でプレゼント！"
-        draw.text((sub_text_x + shadow_offset, sub_text_y + shadow_offset), sub_text1, font=sub_font, fill=(50, 50, 50))
-        draw.text((sub_text_x, sub_text_y), sub_text1, font=sub_font, fill=(255, 255, 255))
-
-        # 2行目: NISAガイド
-        sub_text2 = "『新NISA超入門ガイド』無料配布中"
-        draw.text((sub_text_x + shadow_offset, sub_text_y + sub_line_height + shadow_offset), sub_text2, font=sub_font, fill=(50, 50, 50))
-        draw.text((sub_text_x, sub_text_y + sub_line_height), sub_text2, font=sub_font, fill=(255, 255, 255))
-
-        # 3行目: スマホ案内
-        sub_text3 = "スマホの方は概要欄からどうぞ！"
-        draw.text((sub_text_x + shadow_offset, sub_text_y + sub_line_height * 2 + shadow_offset), sub_text3, font=sub_font, fill=(50, 50, 50))
-        draw.text((sub_text_x, sub_text_y + sub_line_height * 2), sub_text3, font=sub_font, fill=(255, 255, 255))
     else:
-        print(f"    [QR背景] ⚠ QRコード画像が見つかりません: {qr_path}")
-        # QRコードがない場合はテキストだけ表示
+        # qrcodeライブラリで生成
+        try:
+            import qrcode
+            qr = qrcode.QRCode(version=1, box_size=8, border=2)
+            qr.add_data("https://lin.ee/SrziaPE")
+            qr.make(fit=True)
+            qr_img = qr.make_image(fill_color="white", back_color="black")
+            qr_img = qr_img.resize((qr_size, qr_size), Image.LANCZOS)
+        except Exception as e:
+            print(f"    [QR背景] ⚠ QRコード生成失敗: {e}")
+
+    # QRコードを左下に配置（YouTubeUIと被らない位置）
+    qr_x = 50
+    qr_y = VIDEO_HEIGHT - qr_size - 180  # 下から180px上（シークバー回避）
+
+    if qr_img:
+        img.paste(qr_img, (qr_x, qr_y))
+        print(f"    [QR背景] QRコード配置完了 ({qr_size}x{qr_size}px) 位置: 左下({qr_x}, {qr_y})")
+
+    # QRコードの右側にテキストを配置
+    text_x = qr_x + qr_size + 30
+    text_y = qr_y + 20
+    line_height = font_size + 15
+
+    text_lines = ["年金情報をLINEでお届け", "友だち登録はこちら→"]
+    for i, text in enumerate(text_lines):
+        y = text_y + i * line_height
+        draw.text((text_x + shadow_offset, y + shadow_offset), text, font=font, fill=(50, 50, 50))
+        draw.text((text_x, y), text, font=font, fill=(255, 255, 255))
+
+    # 上部にメインメッセージ
+    main_font_size = 70
+    main_font = None
+    for fp in font_paths:
+        if os.path.exists(fp):
+            try:
+                main_font = ImageFont.truetype(fp, main_font_size)
+                break
+            except Exception:
+                continue
+    if main_font is None:
+        main_font = font
+
+    main_text = "ご視聴ありがとうございました！"
+    main_bbox = draw.textbbox((0, 0), main_text, font=main_font)
+    main_w = main_bbox[2] - main_bbox[0]
+    main_x = (VIDEO_WIDTH - main_w) // 2
+    main_y = 150
+
+    draw.text((main_x + shadow_offset, main_y + shadow_offset), main_text, font=main_font, fill=(50, 50, 50))
+    draw.text((main_x, main_y), main_text, font=main_font, fill=(255, 255, 255))
+
+    # サブテキスト
+    sub_font_size = 40
+    sub_font = None
+    for fp in font_paths:
+        if os.path.exists(fp):
+            try:
+                sub_font = ImageFont.truetype(fp, sub_font_size)
+                break
+            except Exception:
+                continue
+    if sub_font is None:
+        sub_font = font
+
+    sub_lines = [
+        "チャンネル登録・高評価お願いします",
+        "🎁 友だち登録で『新NISA超入門ガイド』プレゼント中"
+    ]
+    sub_y = 260
+    for i, sub_text in enumerate(sub_lines):
+        sub_bbox = draw.textbbox((0, 0), sub_text, font=sub_font)
+        sub_w = sub_bbox[2] - sub_bbox[0]
+        sub_x = (VIDEO_WIDTH - sub_w) // 2
+        y = sub_y + i * (sub_font_size + 20)
+        draw.text((sub_x + shadow_offset, y + shadow_offset), sub_text, font=sub_font, fill=(50, 50, 50))
+        draw.text((sub_x, y), sub_text, font=sub_font, fill=(255, 255, 255))
 
     img.save(output_path)
     print(f"    [QR背景] 控室用背景生成完了: {output_path}")

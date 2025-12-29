@@ -1388,7 +1388,7 @@ def generate_summary_table_image(script: dict, output_path: str):
         draw.ellipse([(x - size, y - size), (x + size, y + size)],
                      fill=(brightness, brightness, brightness, 255))
 
-    # ===== LINE QRコード（右下） =====
+    # ===== LINE QRコード（左下・YouTubeUIと被らない位置） =====
     try:
         import qrcode
         qr = qrcode.QRCode(version=1, box_size=5, border=2)
@@ -1397,23 +1397,21 @@ def generate_summary_table_image(script: dict, output_path: str):
         qr_img = qr.make_image(fill_color="white", back_color="#0f0f23").convert('RGBA')
         qr_img = qr_img.resize((150, 150), Image.Resampling.LANCZOS)
 
-        # QRコード位置（右下、余白確保）
-        qr_x = VIDEO_WIDTH - 180
-        qr_y = VIDEO_HEIGHT - 220
+        # QRコード位置（左下、YouTubeUIと被らない）
+        qr_x = 50
+        qr_y = VIDEO_HEIGHT - 200
         img.paste(qr_img, (qr_x, qr_y), qr_img)
 
-        # 誘導文（QRコードの下）
+        # 誘導文（QRコードの右横）
         draw = ImageDraw.Draw(img)
         try:
-            guide_font = ImageFont.truetype(font_path, 24)
+            guide_font = ImageFont.truetype(font_path, 28)
         except:
             guide_font = ImageFont.load_default()
 
         guide_text = "年金情報をLINEでお届け"
-        guide_bbox = draw.textbbox((0, 0), guide_text, font=guide_font)
-        guide_w = guide_bbox[2] - guide_bbox[0]
-        guide_x = qr_x + (150 - guide_w) // 2
-        guide_y = qr_y + 155
+        guide_x = qr_x + 160
+        guide_y = qr_y + 60
 
         draw.text((guide_x + 1, guide_y + 1), guide_text, fill='#000000', font=guide_font)
         draw.text((guide_x, guide_y), guide_text, fill='#FFFFFF', font=guide_font)
