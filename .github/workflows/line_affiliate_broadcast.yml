@@ -48,3 +48,25 @@ jobs:
           TEST_MODE: ${{ github.event_name == 'schedule' && 'false' || inputs.test_mode }}
         run: |
           python line_affiliate_broadcast.py
+
+      - name: Discord通知（成功）
+        if: success()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{\"content\": \"✅ **${{ github.workflow }}** 成功！\n⏰ $(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M:%S')\"}"
+          fi
+
+      - name: Discord通知（失敗）
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{\"content\": \"❌ **${{ github.workflow }}** 失敗\n🔗 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}"
+          fi
