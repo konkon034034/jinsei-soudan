@@ -1388,6 +1388,38 @@ def generate_summary_table_image(script: dict, output_path: str):
         draw.ellipse([(x - size, y - size), (x + size, y + size)],
                      fill=(brightness, brightness, brightness, 255))
 
+    # ===== LINE QRコード（右下） =====
+    try:
+        import qrcode
+        qr = qrcode.QRCode(version=1, box_size=5, border=2)
+        qr.add_data("https://lin.ee/SrziaPE")
+        qr.make(fit=True)
+        qr_img = qr.make_image(fill_color="white", back_color="#0f0f23").convert('RGBA')
+        qr_img = qr_img.resize((150, 150), Image.Resampling.LANCZOS)
+
+        # QRコード位置（右下、余白確保）
+        qr_x = VIDEO_WIDTH - 180
+        qr_y = VIDEO_HEIGHT - 220
+        img.paste(qr_img, (qr_x, qr_y), qr_img)
+
+        # 誘導文（QRコードの下）
+        draw = ImageDraw.Draw(img)
+        try:
+            guide_font = ImageFont.truetype(font_path, 24)
+        except:
+            guide_font = ImageFont.load_default()
+
+        guide_text = "年金情報をLINEでお届け"
+        guide_bbox = draw.textbbox((0, 0), guide_text, font=guide_font)
+        guide_w = guide_bbox[2] - guide_bbox[0]
+        guide_x = qr_x + (150 - guide_w) // 2
+        guide_y = qr_y + 155
+
+        draw.text((guide_x + 1, guide_y + 1), guide_text, fill='#000000', font=guide_font)
+        draw.text((guide_x, guide_y), guide_text, fill='#FFFFFF', font=guide_font)
+    except Exception as e:
+        print(f"  ⚠ QRコード生成スキップ: {e}")
+
     # RGBAからRGBに変換して保存
     img_rgb = Image.new('RGB', img.size, '#0f0f23')
     img_rgb.paste(img, mask=img.split()[3])
@@ -1471,8 +1503,8 @@ def generate_summary_segment(script: dict, output_path: str, key_manager, bgm_pa
 
         # 3. 動画セグメント生成
         if bgm_path and os.path.exists(bgm_path):
-            # BGMミックス
-            af_filter = f"[2:a]volume={BGM_VOLUME}[bgm];[1:a][bgm]amix=inputs=2:duration=first[aout]"
+            # BGMミックス（ループ再生で最後まで流す）
+            af_filter = f"[2:a]volume={BGM_VOLUME},aloop=loop=-1:size=2e+09[bgm];[1:a][bgm]amix=inputs=2:duration=first[aout]"
             cmd = [
                 'ffmpeg', '-y',
                 '-loop', '1', '-i', table_image_path,
