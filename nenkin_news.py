@@ -4046,9 +4046,9 @@ def upload_to_youtube(video_path: str, title: str, description: str, tags: list)
     print(f"チャンネル: TOKEN_23")
     print(f"タイトル: {title}")
     print(f"公開設定: 公開")
-    if playlist_results["playlist"]:
+    if playlist_results.get("playlist"):
         print(f"再生リスト: 聞くだけでわかる年金のお話")
-    if playlist_results["podcast"]:
+    if playlist_results.get("podcast"):
         print(f"ポッドキャスト: 得する年金ニュースラジオ")
     print("=" * 40)
 
