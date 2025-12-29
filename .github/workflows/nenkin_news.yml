@@ -213,8 +213,7 @@ jobs:
               VIDEO_TITLE=$(cat video_title.txt)
             fi
             # jqでJSONを正しく構築
-            MESSAGE="🌅 おはようございます！
-今日の年金ニュースを投稿しました！
+            MESSAGE="🎬 今日の年金ニュースを投稿しました！
 
 📺 ${VIDEO_URL}"
             JSON_PAYLOAD=$(jq -n --arg msg "$MESSAGE" '{"messages": [{"type": "text", "text": $msg}]}')
