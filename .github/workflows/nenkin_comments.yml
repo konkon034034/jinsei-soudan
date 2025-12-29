@@ -1,4 +1,4 @@
-name: 年金ニュース コメント管理
+name: 年金ニュース コメント自動返信
 
 on:
   schedule:
@@ -29,7 +29,7 @@ jobs:
           pip install --upgrade pip
           pip install google-generativeai google-auth google-api-python-client requests
 
-      - name: コメント管理を実行
+      - name: コメント自動返信を実行
         env:
           GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -38,7 +38,7 @@ jobs:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN_23: ${{ secrets.YOUTUBE_REFRESH_TOKEN_23 }}
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           python nenkin_comments.py
 
