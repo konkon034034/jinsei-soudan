@@ -1798,6 +1798,53 @@ https://studio.youtube.com/channel/UCcjf76-saCvRAkETlieeokw/community"""
         print(f"  ⚠ Slack送信エラー: {e}")
 
 
+def send_first_comment_to_slack_short(title: str, topic: str = ""):
+    """初コメント案をSlackに送信（カツミの人格で）
+
+    Args:
+        title: 動画タイトル
+        topic: トピック/テーマ
+    """
+    webhook_url = os.environ.get("SLACK_WEBHOOK_COMMENT")
+    if not webhook_url:
+        print("  ⚠ SLACK_WEBHOOK_COMMENT未設定のためスキップ")
+        return
+
+    # カツミの人格で初コメントを作成
+    comment_templates = [
+        f"ショート動画ご覧いただきありがとうございます✨\n\n{topic}について、もっと詳しく知りたい方はチャンネルの他の動画もチェックしてくださいね🙏",
+        f"カツミです！\n\nこの動画が参考になったら、ぜひチャンネル登録お願いします😊\n\n{topic}に関する質問もコメント欄でお待ちしています！",
+        f"最後までご視聴ありがとうございます！\n\n{topic}、意外と知らない方も多いですよね。\n\nコメントで感想教えてください✨",
+    ]
+
+    import random
+    comment = random.choice(comment_templates)
+
+    message = f"""💬 *【初コメント案】ショート動画*
+
+📱 {title}
+
+━━━━━━━━━━━━━━━━━━━━
+
+{comment}
+
+━━━━━━━━━━━━━━━━━━━━
+
+※ カツミの人格で書いています
+※ 動画公開後すぐにコメント欄に投稿してください"""
+
+    try:
+        payload = {"text": message}
+        response = requests.post(webhook_url, json=payload, timeout=30)
+
+        if response.status_code == 200:
+            print("  ✓ 初コメント案をSlackに送信完了")
+        else:
+            print(f"  ⚠ Slack送信失敗: {response.status_code}")
+    except Exception as e:
+        print(f"  ⚠ Slack送信エラー: {e}")
+
+
 def main():
     """メイン処理"""
     start_time = time.time()
@@ -1944,6 +1991,9 @@ https://konkon034034.github.io/nenkin-shindan/
                 community_post = generate_community_post_short(theme_name, key_manager)
                 if community_post:
                     send_community_post_to_slack_short(community_post)
+
+                # 初コメント案を送信
+                send_first_comment_to_slack_short(title, theme_name)
 
     except Exception as e:
         print(f"❌ エラー発生: {e}")

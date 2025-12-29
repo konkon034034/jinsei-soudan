@@ -2035,6 +2035,53 @@ https://studio.youtube.com/channel/UCcjf76-saCvRAkETlieeokw/community"""
         print(f"  ⚠ Slack送信エラー: {e}")
 
 
+def send_first_comment_to_slack_ranking(title: str, theme: str = ""):
+    """初コメント案をSlackに送信（カツミの人格で）
+
+    Args:
+        title: 動画タイトル
+        theme: ランキングのテーマ
+    """
+    webhook_url = os.environ.get("SLACK_WEBHOOK_COMMENT")
+    if not webhook_url:
+        print("  ⚠ SLACK_WEBHOOK_COMMENT未設定のためスキップ")
+        return
+
+    # カツミの人格で初コメントを作成
+    comment_templates = [
+        f"今日のランキングはいかがでしたか？✨\n\n{theme}、皆さんの予想と比べてどうでしたか？\n\n「これは意外だった！」「納得！」など、感想をコメントで教えてください🙏",
+        f"カツミです！今日も最後までご視聴ありがとうございます😊\n\n{theme}について、もっと詳しく知りたい項目があればコメントで教えてください！\n\n次回のランキング動画の参考にさせていただきます✨",
+        f"ランキング動画ご覧いただきありがとうございます！\n\n{theme}、1位は予想通りでしたか？\n\n皆さんが気になっているテーマがあればコメントで教えてくださいね🙏",
+    ]
+
+    import random
+    comment = random.choice(comment_templates)
+
+    message = f"""💬 *【初コメント案】ランキング動画*
+
+🏆 {title}
+
+━━━━━━━━━━━━━━━━━━━━
+
+{comment}
+
+━━━━━━━━━━━━━━━━━━━━
+
+※ カツミの人格で書いています
+※ 動画公開後すぐにコメント欄に投稿してください"""
+
+    try:
+        payload = {"text": message}
+        response = requests.post(webhook_url, json=payload, timeout=30)
+
+        if response.status_code == 200:
+            print("  ✓ 初コメント案をSlackに送信完了")
+        else:
+            print(f"  ⚠ Slack送信失敗: {response.status_code}")
+    except Exception as e:
+        print(f"  ⚠ Slack送信エラー: {e}")
+
+
 def main():
     """メイン処理"""
     print("=" * 50)
@@ -2189,6 +2236,10 @@ https://konkon034034.github.io/nenkin-shindan/
                 community_post = generate_community_post_ranking(title, key_manager)
                 if community_post:
                     send_community_post_to_slack_ranking(community_post)
+
+                # 初コメント案を送信
+                theme_name = script.get("title", "") if script else title
+                send_first_comment_to_slack_ranking(title, theme_name)
 
     except Exception as e:
         print(f"\n❌ エラー: {e}")

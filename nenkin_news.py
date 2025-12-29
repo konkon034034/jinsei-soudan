@@ -4846,6 +4846,58 @@ https://studio.youtube.com/channel/UCcjf76-saCvRAkETlieeokw/community"""
         print(f"  ⚠ Slack送信エラー: {e}")
 
 
+def send_first_comment_to_slack(title: str, topics: list = None):
+    """初コメント案をSlackに送信（カツミの人格で）
+
+    Args:
+        title: 動画タイトル
+        topics: ニューストピックのリスト
+    """
+    webhook_url = os.environ.get("SLACK_WEBHOOK_COMMENT")
+    if not webhook_url:
+        print("  ⚠ SLACK_WEBHOOK_COMMENT未設定のためスキップ")
+        return
+
+    # トピックがあれば最初のものを使用
+    topic_text = ""
+    if topics and len(topics) > 0:
+        topic_text = topics[0].get("title", "") if isinstance(topics[0], dict) else str(topics[0])
+
+    # カツミの人格で初コメントを作成
+    comment_templates = [
+        f"今日もご視聴ありがとうございます✨\n\n{topic_text}について、皆さんはどう思われますか？\n\nコメント欄で教えていただけると嬉しいです🙏",
+        f"カツミです！今日の動画はいかがでしたか？\n\n{topic_text}、気になっていた方も多いのではないでしょうか。\n\n感想やご質問があればお気軽にコメントください😊",
+        f"ご視聴いただきありがとうございます！\n\n今日は{topic_text}についてお伝えしました。\n\n「ここがよくわからなかった」「もっと詳しく知りたい」など、何でもコメントお待ちしています✨",
+    ]
+
+    import random
+    comment = random.choice(comment_templates)
+
+    message = f"""💬 *【初コメント案】年金ニュース*
+
+📺 {title}
+
+━━━━━━━━━━━━━━━━━━━━
+
+{comment}
+
+━━━━━━━━━━━━━━━━━━━━
+
+※ カツミの人格で書いています
+※ 動画公開後すぐにコメント欄に投稿してください"""
+
+    try:
+        payload = {"text": message}
+        response = requests.post(webhook_url, json=payload, timeout=30)
+
+        if response.status_code == 200:
+            print("  ✓ 初コメント案をSlackに送信完了")
+        else:
+            print(f"  ⚠ Slack送信失敗: {response.status_code}")
+    except Exception as e:
+        print(f"  ⚠ Slack送信エラー: {e}")
+
+
 def main():
     """メイン処理"""
     start_time = time.time()  # 処理開始時刻
@@ -5090,6 +5142,10 @@ LINE登録で毎日の年金ニュースも届きます📱
                 community_post = generate_community_post(news_data, key_manager)
                 if community_post:
                     send_community_post_to_slack(community_post, title, video_url)
+
+                # 初コメント案を送信
+                topics = news_data.get("news", []) if news_data else []
+                send_first_comment_to_slack(title, topics)
 
         except Exception as e:
             print(f"❌ YouTube投稿エラー: {e}")
