@@ -966,7 +966,7 @@ WrapStyle: 0
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Title,Noto Sans CJK JP,{title_font_size},{title_color},&H000000FF,{title_outline},&H80000000,1,0,0,0,100,100,0,0,1,4,2,8,30,30,{title_margin_v},1
-Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_color},&H000000FF,{topic_outline},&H80808080,1,0,0,0,100,100,0,0,3,15,0,8,30,30,{topic_margin_v},1
+Style: Topic,Noto Sans CJK JP,{topic_font_size},{topic_color},&H000000FF,{topic_outline},&HDC140F23,1,0,0,0,100,100,0,0,3,15,0,8,30,30,{topic_margin_v},1
 Style: Point,Noto Sans CJK JP,{point_font_size},{point_color},&H000000FF,{point_outline},&H00000000,0,0,0,0,100,100,0,0,1,2,1,7,100,100,0,1
 Style: PointImportant,Noto Sans CJK JP,{point_important_font_size},{point_important_color},&H000000FF,{point_important_outline},&H00000000,1,0,0,0,100,100,0,0,1,3,2,7,100,100,0,1
 Style: PointTestimonial,Noto Sans CJK JP,{point_font_size},{point_testimonial_color},&H000000FF,{point_testimonial_outline},&H00000000,1,0,0,0,100,100,0,0,1,2,1,7,100,100,0,1
@@ -1548,11 +1548,11 @@ def generate_video(audio_path: str, subtitle_path: str, bg_path: str, output_pat
 
     # ffmpegフィルタチェーン:
     # 1. 背景画像をスケール
-    # 2. 下部にグレー帯を常時描画（rgba(128,128,128,0.5)）
+    # 2. 下部にボルドー帯を常時描画（rgba(45,15,20,0.78)）
     # 3. ASS字幕を重ねる
     vf_filter = (
         f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},"
-        f"drawbox=x=0:y={bar_y}:w={VIDEO_WIDTH}:h={bar_height}:color=0x808080@0.5:t=fill,"
+        f"drawbox=x=0:y={bar_y}:w={VIDEO_WIDTH}:h={bar_height}:color=0x2D0F14@0.78:t=fill,"
         f"ass={subtitle_path}:fontsdir=/usr/share/fonts"
     )
 
