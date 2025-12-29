@@ -36,3 +36,25 @@ jobs:
           git add competitor_videos.json
           git diff --staged --quiet || git commit -m "Update: 競合チャンネル動画リスト更新 $(date +'%Y-%m-%d')"
           git push
+
+      - name: Discord通知（成功）
+        if: success()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{\"content\": \"✅ **${{ github.workflow }}** 成功！\n⏰ $(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M:%S')\"}"
+          fi
+
+      - name: Discord通知（失敗）
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{\"content\": \"❌ **${{ github.workflow }}** 失敗\n🔗 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}"
+          fi

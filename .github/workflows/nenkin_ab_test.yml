@@ -72,7 +72,18 @@ jobs:
         run: |
           python nenkin_ab_test.py register "${{ github.event.inputs.video_id }}" "${{ github.event.inputs.title_a }}" "${{ github.event.inputs.title_b }}"
 
-      - name: エラー時にDiscord通知
+      - name: Discord通知（成功）
+        if: success()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{\"content\": \"✅ **${{ github.workflow }}** 成功！\n⏰ $(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M:%S')\"}"
+          fi
+
+      - name: Discord通知（失敗）
         if: failure()
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -80,7 +91,5 @@ jobs:
           if [ -n "$DISCORD_WEBHOOK_URL" ]; then
             curl -X POST "$DISCORD_WEBHOOK_URL" \
               -H "Content-Type: application/json" \
-              -d "{
-                \"content\": \"❌ **A/Bテストに失敗しました**\\n\\n🔗 ワークフロー: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
-              }"
+              -d "{\"content\": \"❌ **${{ github.workflow }}** 失敗\n🔗 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}"
           fi
