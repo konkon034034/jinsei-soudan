@@ -2,8 +2,10 @@ name: 年金ニュース ショート動画 v2
 
 on:
   schedule:
-    # 毎日 JST 13:00 に実行 (UTC 4:00)
-    - cron: '0 4 * * *'
+    # 1本目: 毎日 JST 10:00 に実行 (UTC 1:00)
+    - cron: '0 1 * * *'
+    # 2本目: 毎日 JST 15:00 に実行 (UTC 6:00)
+    - cron: '0 6 * * *'
   workflow_dispatch:
     inputs:
       test_mode:
@@ -180,22 +182,38 @@ jobs:
         run: |
           if [ -n "$LINE_CHANNEL_ACCESS_TOKEN" ] && [ -f "video_url.txt" ]; then
             VIDEO_URL=$(cat video_url.txt)
+            # file:// や YouTube URL以外はスキップ
+            if [[ "$VIDEO_URL" == file://* ]] || [[ "$VIDEO_URL" != https://*youtube.com/* ]]; then
+              echo "YouTube URLではないためLINE通知をスキップ: $VIDEO_URL"
+              exit 0
+            fi
             VIDEO_TITLE=""
             if [ -f "video_title.txt" ]; then
               VIDEO_TITLE=$(cat video_title.txt)
             fi
-            curl -X POST "https://api.line.me/v2/bot/message/broadcast" \
+            # jqでJSONを正しく構築
+            MESSAGE="🍵 お昼のひとときに♪
+
+📱 ${VIDEO_TITLE}
+
+▶️ ${VIDEO_URL}"
+            JSON_PAYLOAD=$(jq -n --arg msg "$MESSAGE" '{"messages": [{"type": "text", "text": $msg}]}')
+            echo "送信するJSON: $JSON_PAYLOAD"
+            RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "https://api.line.me/v2/bot/message/broadcast" \
               -H "Authorization: Bearer $LINE_CHANNEL_ACCESS_TOKEN" \
               -H "Content-Type: application/json" \
-              -d '{
-                "messages": [
-                  {
-                    "type": "text",
-                    "text": "🍵 お昼のひとときに♪\n\n📱 '"$VIDEO_TITLE"'\n\n▶️ '"$VIDEO_URL"'"
-                  }
-                ]
-              }'
-            echo "LINE通知を送信しました"
+              -d "$JSON_PAYLOAD")
+            HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+            BODY=$(echo "$RESPONSE" | sed '$d')
+            echo "HTTPステータス: $HTTP_CODE"
+            echo "レスポンス: $BODY"
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "LINE通知を送信しました"
+            else
+              echo "LINE通知に失敗しました"
+            fi
+          else
+            echo "LINE_CHANNEL_ACCESS_TOKENまたはvideo_url.txtがありません"
           fi
 
       - name: エラー時にDiscord通知
