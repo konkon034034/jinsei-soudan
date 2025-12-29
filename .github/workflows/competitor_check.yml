@@ -1,0 +1,38 @@
+name: 競合チャンネル監視
+
+on:
+  schedule:
+    # 毎日朝6時（JST）= UTC 21:00（前日）
+    - cron: '0 21 * * *'
+  workflow_dispatch:  # 手動実行用
+
+jobs:
+  check-competitors:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install yt-dlp requests
+
+      - name: Run competitor check
+        env:
+          SLACK_WEBHOOK_SCRIPT: ${{ secrets.SLACK_WEBHOOK_SCRIPT }}
+        run: |
+          python competitor_monitor.py
+
+      - name: Commit updated data
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add competitor_videos.json
+          git diff --staged --quiet || git commit -m "Update: 競合チャンネル動画リスト更新 $(date +'%Y-%m-%d')"
+          git push
