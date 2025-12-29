@@ -1283,13 +1283,13 @@ def generate_summary_table_image(script: dict, output_path: str):
         5: ('#4169e1', '#6699ff'),  # 青系
     }
 
-    # テキスト色グラデーション（明るい→やや明るい）
+    # テキスト色（バーと同じ色で統一）
     text_colors = {
-        1: '#FFFFFF',  # 真っ白
-        2: '#F0F0F0',  # やや白
-        3: '#E0E0E0',  # 少し薄い
-        4: '#D0D0D0',  # 薄め
-        5: '#C0C0C0',  # さらに薄い
+        1: '#ff4444',  # 赤
+        2: '#ff8c00',  # オレンジ
+        3: '#ffd700',  # 黄色
+        4: '#32cd32',  # 緑
+        5: '#4169e1',  # 青
     }
 
     for i, ranking in enumerate(sorted_rankings[:5]):
