@@ -14,6 +14,11 @@ import os
 import re
 
 
+# ===== キャラクターアイコン =====
+KATSUMI_ICON = "assets/icons/katsumi_icon.png"
+HIROSHI_ICON = "assets/icons/hiroshi_icon.png"
+
+
 # ===== 読み方辞書（TTS用） =====
 # 全ファイル共通で使用
 READING_DICT = {
@@ -133,6 +138,7 @@ CHARACTERS = {
     "カツミ": {
         "voice": FISH_VOICE_KATSUMI,
         "voice_name": "女性アナウンサー（ベテラン）",
+        "icon": KATSUMI_ICON,
         "color": "#FFE4B5",  # モカシン（オレンジ系）
         "color_rgb": (255, 228, 181),
         "role": "メインMC",
@@ -159,6 +165,7 @@ CHARACTERS = {
     "ヒロシ": {
         "voice": FISH_VOICE_HIROSHI,
         "voice_name": "おじさん（極道風）",
+        "icon": HIROSHI_ICON,
         "color": "#6495ED",  # コーンフラワーブルー
         "color_rgb": (100, 149, 237),
         "role": "サブMC・ツッコミ担当",
