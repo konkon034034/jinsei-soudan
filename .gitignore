@@ -19,6 +19,17 @@ output/backgrounds/*
 !output/temp/.gitkeep
 !output/backgrounds/.gitkeep
 
+# Generated files
+*.mp4
+*.wav
+*.ass
+*.mp3
+outputTEMP_*
+TEMP_MPY_*
+artifacts_*/
+video_url.txt
+video_title.txt
+
 # IDE
 .idea/
 .vscode/
@@ -32,8 +43,4 @@ output/backgrounds/*
 credentials/
 service_account.json
 service_account.txt
-*.mp4
 *.pptx
-output/
-*.mp4
-TEMP_MPY_*
