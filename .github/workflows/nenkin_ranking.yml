@@ -143,6 +143,16 @@ jobs:
         run: |
           if [ -n "$LINE_CHANNEL_ACCESS_TOKEN" ] && [ -f "video_url.txt" ]; then
             VIDEO_URL=$(cat video_url.txt)
+            # file:// で始まる場合はテストモードなのでスキップ
+            if [[ "$VIDEO_URL" == file://* ]]; then
+              echo "テストモード（file://）のためLINE通知をスキップ"
+              exit 0
+            fi
+            # YouTube URLでない場合もスキップ
+            if [[ "$VIDEO_URL" != https://youtube.com/* ]] && [[ "$VIDEO_URL" != https://www.youtube.com/* ]]; then
+              echo "YouTube URLではないためLINE通知をスキップ: $VIDEO_URL"
+              exit 0
+            fi
             VIDEO_TITLE=""
             if [ -f "video_title.txt" ]; then
               VIDEO_TITLE=$(cat video_title.txt)
