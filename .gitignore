@@ -28,6 +28,7 @@ output/backgrounds/*
 
 # Credentials
 *.json
+!competitor_videos.json
 credentials/
 service_account.json
 service_account.txt
