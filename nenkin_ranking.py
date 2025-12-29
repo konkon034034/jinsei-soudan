@@ -1784,9 +1784,9 @@ def send_discord_error_notification(error_message: str, title: str = ""):
 
 def send_slack_script_notification(script: dict, scheduled_time: str = "12:00"):
     """台本をSlackに送信"""
-    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+    webhook_url = os.environ.get("SLACK_WEBHOOK_SCRIPT")
     if not webhook_url:
-        print("  ⚠ SLACK_WEBHOOK_URL未設定のため台本通知をスキップ")
+        print("  ⚠ SLACK_WEBHOOK_SCRIPT未設定のため台本通知をスキップ")
         return
 
     title = script.get("title", "タイトル未定")
@@ -1997,9 +1997,9 @@ def send_community_post_to_slack_ranking(post_data: dict):
     if not post_data:
         return
 
-    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+    webhook_url = os.environ.get("SLACK_WEBHOOK_COMMUNITY")
     if not webhook_url:
-        print("  ⚠ SLACK_WEBHOOK_URL未設定のためスキップ")
+        print("  ⚠ SLACK_WEBHOOK_COMMUNITY未設定のためスキップ")
         return
 
     question = post_data.get("question", "")
