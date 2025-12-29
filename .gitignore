@@ -14,6 +14,8 @@ output/audio/*
 output/video/*
 output/temp/*
 output/backgrounds/*
+output/hibari_video/*
+output/ranking_test/*
 !output/audio/.gitkeep
 !output/video/.gitkeep
 !output/temp/.gitkeep
@@ -24,11 +26,20 @@ output/backgrounds/*
 *.wav
 *.ass
 *.mp3
+*.png
+*.jpg
 outputTEMP_*
 TEMP_MPY_*
 artifacts_*/
 video_url.txt
 video_title.txt
+
+# Test/temp scripts
+test_*.py
+thumbnail_*.py
+simple_test.py
+create_knowledge.py
+qr_overlay.png
 
 # IDE
 .idea/
