@@ -22,6 +22,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
+import anthropic
 from google import genai
 from google.genai import types
 from pydub import AudioSegment
@@ -2082,6 +2083,348 @@ def send_first_comment_to_slack_ranking(title: str, theme: str = ""):
         print(f"  ⚠ Slack送信エラー: {e}")
 
 
+# ===== 3重ファクトチェック（Gemini + Web検索 + Claude） =====
+
+def extract_facts_from_script_ranking(script: dict) -> list:
+    """台本から事実確認が必要な情報を抽出"""
+    facts = []
+
+    def extract_from_lines(lines: list, context: str = ""):
+        for line in lines:
+            text = line.get("text", "")
+            # 数値、制度名、金額などを含む文を抽出
+            if any(keyword in text for keyword in [
+                "万円", "円", "％", "%", "歳", "年", "月", "日",
+                "年金", "届出", "申請", "制度", "支給", "受給",
+                "保険", "税金", "控除", "給付", "手続き"
+            ]):
+                facts.append({
+                    "text": text,
+                    "context": context,
+                    "speaker": line.get("speaker", "")
+                })
+
+    # オープニング
+    extract_from_lines(script.get("opening", []), "オープニング")
+
+    # ランキング
+    for ranking in script.get("rankings", []):
+        rank = ranking.get("rank", 0)
+        title = ranking.get("title", "")
+        extract_from_lines(ranking.get("dialogue", []), f"第{rank}位: {title}")
+
+    # エンディング
+    extract_from_lines(script.get("ending", []), "エンディング")
+
+    return facts[:20]  # 最大20件
+
+
+def gemini_fact_check_ranking(script: dict, key_manager) -> dict:
+    """Gemini APIでファクトチェック（グラウンディング機能）"""
+    print("  [1/3] Gemini ファクトチェック...")
+
+    if SKIP_API:
+        return {"errors": [], "checked": True}
+
+    facts = extract_facts_from_script_ranking(script)
+    if not facts:
+        return {"errors": [], "checked": True}
+
+    facts_text = "\n".join([f"- {f['text']} (場所: {f['context']})" for f in facts[:10]])
+
+    prompt = f"""以下の年金に関する情報をファクトチェックしてください。
+
+【チェック対象】
+{facts_text}
+
+【確認事項】
+- 金額、年齢、期間などの数値は正確か
+- 制度名、届出名は正しいか
+- 法律・制度の内容は最新の情報と一致するか
+
+【出力形式】JSON
+{{
+    "errors": [
+        {{
+            "original": "誤った記述",
+            "correct": "正しい情報",
+            "reason": "修正理由"
+        }}
+    ],
+    "verified": true/false
+}}
+
+誤りがなければ空配列を返してください。"""
+
+    try:
+        client = genai.Client(api_key=key_manager.get_key())
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.1,
+                response_mime_type="application/json",
+                tools=[types.Tool(google_search=types.GoogleSearch())]
+            )
+        )
+
+        result_text = response.text.strip()
+        if "```json" in result_text:
+            result_text = result_text.split("```json")[1].split("```")[0]
+        elif "```" in result_text:
+            result_text = result_text.split("```")[1].split("```")[0]
+
+        result = json.loads(result_text)
+        errors = result.get("errors", [])
+        print(f"    ✓ 完了 - エラー: {len(errors)}件")
+        return result
+
+    except Exception as e:
+        print(f"    ⚠ エラー: {str(e)[:50]}")
+        return {"errors": [], "checked": False}
+
+
+def web_search_fact_check_ranking(script: dict, key_manager) -> dict:
+    """Gemini Web検索でファクトチェック"""
+    print("  [2/3] Web検索 ファクトチェック...")
+
+    if SKIP_API:
+        return {"errors": [], "checked": True}
+
+    facts = extract_facts_from_script_ranking(script)
+    if not facts:
+        return {"errors": [], "checked": True}
+
+    # 重要な事実を3つ選んで検証
+    key_facts = facts[:3]
+    facts_text = "\n".join([f"- {f['text']}" for f in key_facts])
+
+    prompt = f"""以下の年金に関する記述を、最新の公式情報と照合してください。
+
+【検証対象】
+{facts_text}
+
+【検索して確認】
+- 厚生労働省、日本年金機構の公式情報
+- 最新の法改正情報
+- 正確な金額・期間・条件
+
+【出力形式】JSON
+{{
+    "errors": [
+        {{
+            "original": "誤った記述",
+            "correct": "正しい情報（出典付き）",
+            "source": "情報源URL or 公式機関名"
+        }}
+    ],
+    "sources_checked": ["確認した情報源リスト"]
+}}"""
+
+    try:
+        client = genai.Client(api_key=key_manager.get_key())
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.1,
+                response_mime_type="application/json",
+                tools=[types.Tool(google_search=types.GoogleSearch())]
+            )
+        )
+
+        result_text = response.text.strip()
+        if "```json" in result_text:
+            result_text = result_text.split("```json")[1].split("```")[0]
+        elif "```" in result_text:
+            result_text = result_text.split("```")[1].split("```")[0]
+
+        result = json.loads(result_text)
+        errors = result.get("errors", [])
+        print(f"    ✓ 完了 - エラー: {len(errors)}件")
+        return result
+
+    except Exception as e:
+        print(f"    ⚠ エラー: {str(e)[:50]}")
+        return {"errors": [], "checked": False}
+
+
+def claude_fact_check_ranking(script: dict) -> dict:
+    """Claude APIでファクトチェック（最終確認）"""
+    print("  [3/3] Claude ファクトチェック...")
+
+    if SKIP_API:
+        return {"errors": [], "checked": True}
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        print("    ⚠ ANTHROPIC_API_KEY未設定")
+        return {"errors": [], "checked": False}
+
+    facts = extract_facts_from_script_ranking(script)
+    if not facts:
+        return {"errors": [], "checked": True}
+
+    facts_text = "\n".join([f"- {f['text']} (場所: {f['context']})" for f in facts[:15]])
+
+    prompt = f"""あなたは年金制度の専門家です。以下の記述を厳密にチェックしてください。
+
+【チェック対象】
+{facts_text}
+
+【確認ポイント】
+1. 金額・数値の正確性（特に年金額、保険料、期間）
+2. 制度名・届出名の正確性
+3. 申請条件・対象者の正確性
+4. 時効・期限の正確性
+5. 最新の法改正との整合性
+
+【重要】
+- 2024年・2025年の最新情報に基づいてチェック
+- 曖昧な表現でも、誤解を招く可能性があればエラーとして報告
+- 誤りがなければ空の配列を返す
+
+【出力形式】JSON
+{{
+    "errors": [
+        {{
+            "original": "誤った記述",
+            "correct": "正しい情報",
+            "severity": "high/medium/low",
+            "reason": "修正理由"
+        }}
+    ]
+}}"""
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=2000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        result_text = response.content[0].text.strip()
+        if "```json" in result_text:
+            result_text = result_text.split("```json")[1].split("```")[0]
+        elif "```" in result_text:
+            result_text = result_text.split("```")[1].split("```")[0]
+
+        result = json.loads(result_text)
+        errors = result.get("errors", [])
+        high_errors = [e for e in errors if e.get("severity") == "high"]
+        print(f"    ✓ 完了 - エラー: {len(errors)}件 (重大: {len(high_errors)}件)")
+        return result
+
+    except Exception as e:
+        print(f"    ⚠ エラー: {str(e)[:50]}")
+        return {"errors": [], "checked": False}
+
+
+def fix_script_errors_ranking(script: dict, errors: list, key_manager) -> dict:
+    """検出されたエラーを修正"""
+    if not errors:
+        return script
+
+    print(f"\n  📝 {len(errors)}件のエラーを修正中...")
+
+    if SKIP_API:
+        return script
+
+    errors_text = "\n".join([
+        f"- 誤: {e.get('original', '')}\n  正: {e.get('correct', '')}\n  理由: {e.get('reason', e.get('source', ''))}"
+        for e in errors[:10]
+    ])
+
+    script_json = json.dumps(script, ensure_ascii=False, indent=2)
+
+    prompt = f"""以下のランキング台本の誤りを修正してください。
+
+【台本（JSON）】
+{script_json}
+
+【修正すべきエラー】
+{errors_text}
+
+【指示】
+- 上記のエラーを全て修正
+- 台本の構造・フォーマットは維持
+- 会話の自然さを保ちながら正しい情報に修正
+- 修正後の完全な台本をJSONで出力"""
+
+    try:
+        client = genai.Client(api_key=key_manager.get_key())
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.3,
+                response_mime_type="application/json"
+            )
+        )
+
+        result_text = response.text.strip()
+        if "```json" in result_text:
+            result_text = result_text.split("```json")[1].split("```")[0]
+        elif "```" in result_text:
+            result_text = result_text.split("```")[1].split("```")[0]
+
+        fixed_script = json.loads(result_text)
+        print(f"  ✓ 修正完了")
+        return fixed_script
+
+    except Exception as e:
+        print(f"  ⚠ 修正エラー: {str(e)[:50]}")
+        return script
+
+
+def triple_fact_check_ranking(script: dict, key_manager) -> dict:
+    """3重ファクトチェックを実行"""
+    print("\n🔍 3重ファクトチェック開始...")
+
+    if SKIP_API:
+        print("  [SKIP_API] ファクトチェックをスキップ")
+        return script
+
+    all_errors = []
+
+    # 1. Gemini ファクトチェック
+    gemini_result = gemini_fact_check_ranking(script, key_manager)
+    all_errors.extend(gemini_result.get("errors", []))
+
+    # 2. Web検索 ファクトチェック
+    web_result = web_search_fact_check_ranking(script, key_manager)
+    all_errors.extend(web_result.get("errors", []))
+
+    # 3. Claude ファクトチェック
+    claude_result = claude_fact_check_ranking(script)
+    all_errors.extend(claude_result.get("errors", []))
+
+    # 重複を除去（originalが同じものを除外）
+    seen = set()
+    unique_errors = []
+    for error in all_errors:
+        original = error.get("original", "")
+        if original and original not in seen:
+            seen.add(original)
+            unique_errors.append(error)
+
+    print(f"\n📊 ファクトチェック結果: {len(unique_errors)}件のエラー検出")
+
+    if unique_errors:
+        for i, error in enumerate(unique_errors[:5], 1):
+            print(f"  {i}. {error.get('original', '')[:40]}...")
+            print(f"     → {error.get('correct', '')[:40]}...")
+
+        # エラーを修正
+        script = fix_script_errors_ranking(script, unique_errors, key_manager)
+    else:
+        print("  ✓ エラーなし")
+
+    print("✅ 3重ファクトチェック完了\n")
+    return script
+
+
 def main():
     """メイン処理"""
     print("=" * 50)
@@ -2109,6 +2452,10 @@ def main():
             script = generate_script(theme, key_manager)
             first_comment = script.get("first_comment", "")
             title = script.get("title", "")
+
+            # STEP2.3: 3重ファクトチェック
+            print("\n[2.3/7] 3重ファクトチェック実行中...")
+            script = triple_fact_check_ranking(script, key_manager)
 
             # STEP2.5: 台本をSlackに送信
             if not TEST_MODE:
