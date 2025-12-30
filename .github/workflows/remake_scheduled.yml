@@ -1,0 +1,58 @@
+name: リメイク動画自動処理
+
+on:
+  repository_dispatch:
+    types: [remake_video]
+  schedule:
+    # 毎日 AM 2:00 JST (= 17:00 UTC)
+    - cron: '0 17 * * *'
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: 'YouTube URL'
+        required: false
+
+env:
+  TZ: Asia/Tokyo
+
+jobs:
+  remake:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install google-genai pillow requests
+
+      - name: Get video URL
+        id: url
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "url=${{ github.event.client_payload.url }}" >> $GITHUB_OUTPUT
+          elif [ -n "${{ github.event.inputs.video_url }}" ]; then
+            echo "url=${{ github.event.inputs.video_url }}" >> $GITHUB_OUTPUT
+          else
+            echo "url=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Analyze video
+        if: steps.url.outputs.url != ''
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python youtube_analyzer.py "${{ steps.url.outputs.url }}" -o remake_data.json
+          cat remake_data.json
+
+      - name: Notify Discord
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          curl -X POST "$DISCORD_WEBHOOK" \
+            -H "Content-Type: application/json" \
+            -d '{"content":"🎬 リメイク処理完了: ${{ steps.url.outputs.url }}"}'
