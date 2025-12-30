@@ -1,0 +1,76 @@
+name: 口コミランキング アップロードテスト
+
+on:
+  workflow_dispatch:
+    inputs:
+      auto_delete:
+        description: 'アップロード後に自動削除'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  test-upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Python環境をセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 依存関係をインストール
+        run: |
+          pip install google-auth google-api-python-client requests
+
+      - name: FFmpegをインストール
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: テスト動画を作成
+        run: |
+          cd kuchikomi_ranking
+          ffmpeg -y -f lavfi -i color=c=black:s=1920x1080:d=5 \
+            -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 \
+            -vf "drawtext=text='口コミランキング テスト':fontsize=60:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2" \
+            -shortest -c:v libx264 -c:a aac -pix_fmt yuv420p test_upload.mp4
+
+      - name: YouTubeにアップロードテスト
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN_27: ${{ secrets.YOUTUBE_REFRESH_TOKEN_27 }}
+          AUTO_DELETE: ${{ github.event.inputs.auto_delete }}
+        run: |
+          cd kuchikomi_ranking
+          python test_youtube_upload.py
+
+      - name: Discord通知（成功）
+        if: success()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{\"content\": \"✅ **口コミランキング アップロードテスト** 成功！\n⏰ $(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M:%S')\"}"
+          fi
+
+      - name: Discord通知（失敗）
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{\"content\": \"❌ **口コミランキング アップロードテスト** 失敗\n🔗 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}"
+          fi
