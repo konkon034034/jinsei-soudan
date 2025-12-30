@@ -212,10 +212,8 @@ jobs:
             if [ -f "video_title.txt" ]; then
               VIDEO_TITLE=$(cat video_title.txt)
             fi
-            # jqでJSONを正しく構築
-            MESSAGE="🎬 今日の年金ニュースを投稿しました！
-
-📺 ${VIDEO_URL}"
+            # jqでJSONを正しく構築（単一行）
+            MESSAGE="🎬 今日の年金ニュースを投稿しました！ 📺 ${VIDEO_URL}"
             JSON_PAYLOAD=$(jq -n --arg msg "$MESSAGE" '{"messages": [{"type": "text", "text": $msg}]}')
             echo "送信するJSON: $JSON_PAYLOAD"
             RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "https://api.line.me/v2/bot/message/broadcast" \

@@ -51,7 +51,7 @@ jobs:
       - name: Python依存関係をインストール
         run: |
           pip install --upgrade pip
-          pip install google-genai pydub pillow google-auth google-api-python-client requests gdown qrcode[pil]
+          pip install google-genai pydub pillow google-auth google-api-python-client requests gdown qrcode[pil] anthropic
 
       - name: ショート動画を生成
         env:
@@ -191,10 +191,8 @@ jobs:
             if [ -f "video_title.txt" ]; then
               VIDEO_TITLE=$(cat video_title.txt)
             fi
-            # jqでJSONを正しく構築
-            MESSAGE="📱 ショート動画を投稿しました！
-
-${VIDEO_URL}"
+            # jqでJSONを正しく構築（単一行）
+            MESSAGE="📱 ショート動画を投稿しました！ ${VIDEO_URL}"
             JSON_PAYLOAD=$(jq -n --arg msg "$MESSAGE" '{"messages": [{"type": "text", "text": $msg}]}')
             echo "送信するJSON: $JSON_PAYLOAD"
             RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "https://api.line.me/v2/bot/message/broadcast" \
