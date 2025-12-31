@@ -450,6 +450,10 @@ class GeminiKeyManager:
         idx = index % len(self.keys)
         return self.keys[idx], self.key_names[idx]
 
+    def get_working_key(self):
+        """動作中のキーを取得（get_keyのエイリアス）"""
+        return self.get_key()
+
 
 def download_from_drive(file_id: str, output_path: str) -> bool:
     """Google Driveからファイルをダウンロード（gdown使用）"""
