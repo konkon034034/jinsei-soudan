@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Modal GPU 動画エンコーダー
-- T4 GPU で h264_nvenc を使用して高速エンコード
+- A10G GPU で h264_nvenc を使用して高速エンコード（T4比3-4倍速）
 """
 
 import modal
@@ -23,7 +23,7 @@ image = modal.Image.debian_slim().apt_install(
 )
 
 
-@app.function(gpu="T4", image=image, timeout=600)
+@app.function(gpu="A10G", image=image, timeout=600)
 def encode_video_gpu(bg_base64: str, audio_base64: str, ass_content: str, output_name: str, backroom_start_sec: float = None, qr_bg_base64: str = None) -> bytes:
     """
     GPU (h264_nvenc) で動画をエンコード
@@ -196,7 +196,7 @@ def main():
     print("Modal GPU Video Encoder")
     print("=" * 50)
     print("利用可能な関数:")
-    print("  - encode_video_gpu: T4 GPU (h264_nvenc)")
+    print("  - encode_video_gpu: A10G GPU (h264_nvenc)")
     print("  - encode_video_cpu: CPU (libx264)")
     print("")
     print("使用例:")
