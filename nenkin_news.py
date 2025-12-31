@@ -15,7 +15,7 @@ import requests
 import subprocess
 import wave
 import base64
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 # Note: 順次処理に変更したため ThreadPoolExecutor は未使用だが、将来のために残す
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -412,6 +412,124 @@ def log_to_spreadsheet(status: str, title: str = "", url: str = "", news_count: 
         print(f"  ⚠ ログ記録エラー: {e}")
 
 
+# ===== 使用済みニュース管理（重複防止） =====
+USED_NEWS_SHEET_NAME = "使用済みニュース"
+
+
+def get_used_news_titles(days: int = 7) -> list:
+    """過去N日分の使用済みニュースタイトルを取得
+
+    Args:
+        days: 何日前まで取得するか（デフォルト7日）
+
+    Returns:
+        使用済みニュースタイトルのリスト
+    """
+    try:
+        creds = get_google_credentials()
+        service = build('sheets', 'v4', credentials=creds)
+
+        # シートが存在するか確認
+        spreadsheet = service.spreadsheets().get(spreadsheetId=LOG_SPREADSHEET_ID).execute()
+        existing_sheets = [s['properties']['title'] for s in spreadsheet['sheets']]
+
+        if USED_NEWS_SHEET_NAME not in existing_sheets:
+            print(f"  [重複チェック] シート '{USED_NEWS_SHEET_NAME}' が存在しません（新規作成予定）")
+            return []
+
+        # データ取得
+        result = service.spreadsheets().values().get(
+            spreadsheetId=LOG_SPREADSHEET_ID,
+            range=f"{USED_NEWS_SHEET_NAME}!A2:B1000"
+        ).execute()
+
+        values = result.get('values', [])
+        if not values:
+            return []
+
+        # 過去N日分のみ取得
+        cutoff_date = datetime.now() - timedelta(days=days)
+        used_titles = []
+
+        for row in values:
+            if len(row) >= 2:
+                date_str = row[0]
+                title = row[1]
+                try:
+                    news_date = datetime.strptime(date_str.split()[0], '%Y-%m-%d')
+                    if news_date >= cutoff_date:
+                        used_titles.append(title)
+                except:
+                    # 日付パースエラーは無視して追加
+                    used_titles.append(title)
+
+        print(f"  [重複チェック] 過去{days}日分: {len(used_titles)}件の使用済みニュース")
+        return used_titles
+
+    except Exception as e:
+        print(f"  ⚠ 使用済みニュース取得エラー: {e}")
+        return []
+
+
+def save_used_news_titles(news_titles: list):
+    """使用したニュースタイトルをスプレッドシートに保存
+
+    Args:
+        news_titles: ニュースタイトルのリスト
+    """
+    if not news_titles:
+        return
+
+    try:
+        creds = get_google_credentials()
+        service = build('sheets', 'v4', credentials=creds)
+
+        # シートが存在するか確認、なければ作成
+        spreadsheet = service.spreadsheets().get(spreadsheetId=LOG_SPREADSHEET_ID).execute()
+        existing_sheets = [s['properties']['title'] for s in spreadsheet['sheets']]
+
+        if USED_NEWS_SHEET_NAME not in existing_sheets:
+            # シート作成
+            request = {
+                "requests": [{
+                    "addSheet": {
+                        "properties": {"title": USED_NEWS_SHEET_NAME}
+                    }
+                }]
+            }
+            service.spreadsheets().batchUpdate(
+                spreadsheetId=LOG_SPREADSHEET_ID,
+                body=request
+            ).execute()
+
+            # ヘッダー追加
+            headers = ["日時", "ニュースタイトル"]
+            service.spreadsheets().values().update(
+                spreadsheetId=LOG_SPREADSHEET_ID,
+                range=f"{USED_NEWS_SHEET_NAME}!A1:B1",
+                valueInputOption="RAW",
+                body={"values": [headers]}
+            ).execute()
+            print(f"  [重複チェック] シート '{USED_NEWS_SHEET_NAME}' を作成しました")
+
+        # データ追加
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        rows = [[now, title] for title in news_titles]
+
+        service.spreadsheets().values().append(
+            spreadsheetId=LOG_SPREADSHEET_ID,
+            range=f"{USED_NEWS_SHEET_NAME}!A:B",
+            valueInputOption="RAW",
+            insertDataOption="INSERT_ROWS",
+            body={"values": rows}
+        ).execute()
+
+        print(f"  [重複チェック] {len(news_titles)}件のニュースタイトルを保存")
+
+    except Exception as e:
+        print(f"  ⚠ 使用済みニュース保存エラー: {e}")
+
+
 # ===== 控室トーク保存（ショート動画用） =====
 GREEN_ROOM_SHEET_NAME = "控室トーク"
 
@@ -510,8 +628,13 @@ def search_pension_news(key_manager: GeminiKeyManager) -> dict:
     # google-genai クライアントを使用（Web検索対応）
     client = genai_tts.Client(api_key=api_key)
 
+    # 過去7日分の使用済みニュースを取得（重複防止）
+    used_titles = get_used_news_titles(days=7)
+    used_titles_text = ""
+    if used_titles:
+        used_titles_text = "\n\n【除外するニュース（過去7日間に使用済み）】\n以下のタイトルと類似するニュースは除外してください：\n" + "\n".join([f"- {t}" for t in used_titles[:20]])  # 最大20件
+
     # 今日の日付を取得
-    from datetime import datetime, timedelta
     today = datetime.now()
     today_str = f"{today.year}年{today.month}月{today.day}日"
     three_days_ago = today - timedelta(days=3)
@@ -589,6 +712,7 @@ def search_pension_news(key_manager: GeminiKeyManager) -> dict:
 - 公式ソースからのニュースを5〜8件
 - 噂・未確定情報も2〜3件含める（reliabilityをlowに）
 - URLは可能な限り含める
+{used_titles_text}
 """
 
     try:
@@ -610,12 +734,32 @@ def search_pension_news(key_manager: GeminiKeyManager) -> dict:
             data = json.loads(json_match.group())
             news_list = data.get("news", [])
 
+            # 使用済みニュースを除外（類似度チェック）
+            filtered_news = []
+            for news in news_list:
+                title = news.get("title", "")
+                is_duplicate = False
+                for used_title in used_titles:
+                    # 類似度チェック: 70%以上一致で重複とみなす
+                    if len(title) > 0 and len(used_title) > 0:
+                        common = set(title) & set(used_title)
+                        similarity = len(common) / max(len(set(title)), len(set(used_title)))
+                        if similarity > 0.7:
+                            print(f"    [重複除外] {title[:30]}...")
+                            is_duplicate = True
+                            break
+                if not is_duplicate:
+                    filtered_news.append(news)
+
+            if len(news_list) != len(filtered_news):
+                print(f"  [重複チェック] {len(news_list) - len(filtered_news)}件のニュースを除外")
+
             # 信頼度で分類
             confirmed = []
             rumor = []
             sources = []
 
-            for news in news_list:
+            for news in filtered_news:
                 source = news.get("source", "")
                 url = news.get("url", "")
                 reliability = news.get("reliability", "low")
@@ -1800,8 +1944,8 @@ def match_stt_to_script(whisper_segments: list, dialogue: list, total_duration: 
                     best_match_idx = j
                     best_match_end = k
 
-        # タイミングを取得
-        if best_ratio > 0.3 and best_match_idx < len(whisper_timings):
+        # タイミングを取得（閾値0.5に引き上げて精度向上）
+        if best_ratio > 0.5 and best_match_idx < len(whisper_timings):
             start_time = whisper_timings[best_match_idx][0]
             end_time = whisper_timings[min(best_match_end, len(whisper_timings) - 1)][1]
             current_whisper_idx = best_match_end + 1
@@ -1827,6 +1971,40 @@ def match_stt_to_script(whisper_segments: list, dialogue: list, total_duration: 
             "section": section,
         })
         current_time = end_time
+
+    # 字幕重なり修正: end時間が次のstart時間を超えている場合は調整
+    segments = fix_subtitle_overlap(segments)
+
+    return segments
+
+
+def fix_subtitle_overlap(segments: list, gap: float = 0.05) -> list:
+    """字幕の重なりを修正
+
+    Args:
+        segments: タイミング付きセグメントリスト
+        gap: 字幕間の最小ギャップ（秒）
+
+    Returns:
+        重なりを修正したセグメントリスト
+    """
+    if len(segments) < 2:
+        return segments
+
+    fixed_count = 0
+    for i in range(len(segments) - 1):
+        current = segments[i]
+        next_seg = segments[i + 1]
+
+        # 現在のend時間が次のstart時間を超えている場合
+        if current["end"] > next_seg["start"] - gap:
+            # end時間を次のstart時間の少し前に調整
+            old_end = current["end"]
+            current["end"] = max(current["start"] + 0.1, next_seg["start"] - gap)
+            fixed_count += 1
+
+    if fixed_count > 0:
+        print(f"    [字幕調整] {fixed_count}箇所の重なりを修正")
 
     return segments
 
@@ -2535,9 +2713,13 @@ def generate_dialogue_audio_parallel(dialogue: list, output_path: str, temp_dir:
     if error_summary != "エラーなし":
         print(f"    [エラー集計] {error_summary}")
 
-    if not successful_chunks:
-        # フォールバック：gTTSで全体を生成
-        print("    [フォールバック] gTTSで音声生成")
+    # 一部でもチャンクが失敗した場合、声の統一のため全てgTTSで再生成
+    if failed_count > 0 or not successful_chunks:
+        # フォールバック：gTTSで全体を生成（声の統一を保証）
+        if failed_count > 0 and successful_chunks:
+            print(f"    [フォールバック] {failed_count}チャンク失敗のため、声の統一のためgTTSで全音声を再生成")
+        else:
+            print("    [フォールバック] gTTSで音声生成")
         all_text = "。".join([fix_reading(line["text"]) for line in dialogue])
         fallback_path = str(temp_dir / "fallback.wav")
         if generate_gtts_fallback(all_text, fallback_path):
@@ -5158,6 +5340,15 @@ LINE登録で毎日の年金ニュースも届きます📱
                 news_count=news_count,
                 processing_time=processing_time
             )
+
+            # 使用済みニュースタイトルを保存（重複防止用）
+            used_news_titles = []
+            for section in script.get("news_sections", []):
+                news_title = section.get("news_title", "")
+                if news_title:
+                    used_news_titles.append(news_title)
+            if used_news_titles:
+                save_used_news_titles(used_news_titles)
 
             # コメント内容を表示
             if first_comment:
