@@ -1449,7 +1449,7 @@ def upload_to_youtube(video_path: str, title: str, description: str, first_comme
 
         client_id = os.environ.get("YOUTUBE_CLIENT_ID")
         client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
-        refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_23")
+        refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_4")
 
         if not all([client_id, client_secret, refresh_token]):
             print("  ⚠ YouTube認証情報が不足しています")
