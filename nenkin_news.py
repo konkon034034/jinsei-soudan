@@ -252,8 +252,42 @@ def load_reading_dict_from_spreadsheet() -> dict:
         return _reading_dict_cache
 
 
+def _number_to_japanese(num: int) -> str:
+    """数字を日本語読みに変換（1-31対応）"""
+    readings = {
+        1: "いち", 2: "に", 3: "さん", 4: "よん", 5: "ご",
+        6: "ろく", 7: "なな", 8: "はち", 9: "きゅう", 10: "じゅう",
+        11: "じゅういち", 12: "じゅうに", 13: "じゅうさん", 14: "じゅうよん", 15: "じゅうご",
+        16: "じゅうろく", 17: "じゅうなな", 18: "じゅうはち", 19: "じゅうきゅう", 20: "にじゅう",
+        21: "にじゅういち", 22: "にじゅうに", 23: "にじゅうさん", 24: "にじゅうよん", 25: "にじゅうご",
+        26: "にじゅうろく", 27: "にじゅうなな", 28: "にじゅうはち", 29: "にじゅうきゅう", 30: "さんじゅう",
+        31: "さんじゅういち"
+    }
+    return readings.get(num, str(num))
+
+
+def _convert_date_to_reading(text: str) -> str:
+    """日付パターン（N月M日）を読み仮名に変換"""
+    import re
+
+    def replace_date(match):
+        month = int(match.group(1))
+        day = int(match.group(2))
+        month_reading = _number_to_japanese(month)
+        day_reading = _number_to_japanese(day)
+        return f"{month_reading}がつ{day_reading}にち"
+
+    # 「12月31日」→「じゅうにがつさんじゅういちにち」
+    text = re.sub(r'(\d{1,2})月(\d{1,2})日', replace_date, text)
+    return text
+
+
 def fix_reading(text: str) -> str:
     """読み方辞書でテキストを変換（TTS用）"""
+    # まず日付パターンを変換
+    text = _convert_date_to_reading(text)
+
+    # 次に辞書ベースの置換
     reading_dict = load_reading_dict_from_spreadsheet()
     for word, reading in reading_dict.items():
         text = text.replace(word, reading)
