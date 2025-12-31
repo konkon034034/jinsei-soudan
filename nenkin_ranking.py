@@ -648,7 +648,7 @@ def _process_tts_line_parallel(args: tuple) -> dict:
     # Note: 遅延は呼び出し元で制御（順次処理のため関数内では遅延なし）
 
     audio_path = str(temp_dir / f"line_{line_index:04d}.wav")
-    max_retries = 3
+    max_retries = 2  # 早めにgTTSフォールバック（90秒→10秒に短縮）
 
     for attempt in range(max_retries):
         try:
@@ -692,7 +692,7 @@ def _process_tts_line_parallel(args: tuple) -> dict:
 
         except Exception as e:
             if attempt < max_retries - 1:
-                wait_time = 30 * (attempt + 1)  # 十分な待機（30秒、60秒）
+                wait_time = 10 * (attempt + 1)  # 短縮待機（10秒）→すぐgTTSへ
                 print(f"    [リトライ] {key_name} セリフ{line_index+1}: {wait_time}秒待機...")
                 time.sleep(wait_time)
             else:
