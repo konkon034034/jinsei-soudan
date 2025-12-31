@@ -42,17 +42,6 @@ jobs:
         run: |
           python nenkin_comments.py
 
-      - name: Slack通知（成功）
-        if: success()
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        run: |
-          if [ -n "$SLACK_WEBHOOK_URL" ]; then
-            curl -X POST "$SLACK_WEBHOOK_URL" \
-              -H "Content-Type: application/json" \
-              -d "{\"text\": \"✅ *${{ github.workflow }}* 成功！\n⏰ $(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M:%S')\"}"
-          fi
-
       - name: Slack通知（失敗）
         if: failure()
         env:
