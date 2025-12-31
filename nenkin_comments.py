@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-年金ニュース コメント管理自動化システム
+年金ニュース コメント管理システム
 - TOKEN_23（年金ニュースチャンネル）用
-- 完全自動返信（1日5件上限）
-- 返信時にDiscord通知
+- 自動返信なし（手動対応）
+- Slack通知でAI返信案を送信
 """
 
 import os
@@ -456,9 +456,10 @@ LINE誘導の例:
 
 def send_slack_comment_notification(comment: dict, ai_reply: str, video_title: str = ""):
     """Slackにコメント返信案を送信（アクション必要な通知）"""
-    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+    # SLACK_WEBHOOK_COMMENT を優先、なければ SLACK_WEBHOOK_URL を使用
+    webhook_url = os.environ.get("SLACK_WEBHOOK_COMMENT") or os.environ.get("SLACK_WEBHOOK_URL")
     if not webhook_url:
-        print("  ⚠ SLACK_WEBHOOK_URL未設定")
+        print("  ⚠ SLACK_WEBHOOK_COMMENT または SLACK_WEBHOOK_URL が未設定")
         return False
 
     # コメントテキストを短縮
@@ -575,49 +576,45 @@ def reply_to_comment(youtube, parent_comment_id: str, reply_text: str) -> bool:
 
 
 def main():
-    """メイン処理"""
+    """メイン処理（Slack通知のみ、自動返信なし）"""
     print("=" * 50)
-    print("年金ニュース コメント自動返信システム")
+    print("年金ニュース コメント管理システム")
     print("=" * 50)
     print(f"実行時刻: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"1日の自動返信上限: {DAILY_REPLY_LIMIT}件")
+    print("モード: 手動対応（Slack通知のみ）")
     print("=" * 50)
 
-    # 通常モード（自動返信）
     key_manager = GeminiKeyManager()
 
     # クライアント初期化
-    print("\n[1/5] API初期化中...")
+    print("\n[1/4] API初期化中...")
     youtube = get_youtube_client()
     sheets = get_sheets_client()
     print("  ✓ YouTube API 接続完了")
     print("  ✓ Google Sheets 接続完了")
 
     # チャンネルID取得
-    print("\n[2/5] チャンネル情報取得中...")
+    print("\n[2/4] チャンネル情報取得中...")
     channel_id = get_channel_id(youtube)
     print(f"  ✓ チャンネルID: {channel_id}")
 
-    # 今日の返信件数確認
-    print("\n[3/5] 今日の返信件数確認中...")
-    today_reply_count = get_today_reply_count(sheets)
-    remaining_replies = max(0, DAILY_REPLY_LIMIT - today_reply_count)
-    print(f"  ✓ 今日の返信件数: {today_reply_count}/{DAILY_REPLY_LIMIT}")
-    print(f"  ✓ 残り自動返信可能数: {remaining_replies}")
-
     # 処理済みコメントID取得
-    print("\n[4/5] 処理済みコメント確認中...")
+    print("\n[3/4] 処理済みコメント確認中...")
     processed_ids = get_processed_comment_ids(sheets)
     print(f"  ✓ 処理済みコメント数: {len(processed_ids)}")
 
     # コメント取得
-    print("\n[5/5] コメント取得中...")
+    print("\n[4/4] コメント取得中...")
     all_comments = get_all_comments(youtube, channel_id)
     print(f"  ✓ 取得コメント数: {len(all_comments)}")
 
-    # 新しいコメントをフィルタ
-    new_comments = [c for c in all_comments if c["comment_id"] not in processed_ids]
-    print(f"  ✓ 新規コメント数: {len(new_comments)}")
+    # 新しいコメントをフィルタ（自分のコメントを除外）
+    new_comments = [
+        c for c in all_comments
+        if c["comment_id"] not in processed_ids
+        and c["author_channel_id"] != channel_id  # カツミ（チャンネルオーナー）のコメントを除外
+    ]
+    print(f"  ✓ 新規コメント数（自分除く）: {len(new_comments)}")
 
     if not new_comments:
         print("\n新しいコメントはありません")
@@ -628,60 +625,40 @@ def main():
     print(f"新規コメント {len(new_comments)} 件を処理中...")
     print("=" * 50)
 
-    replied_count = 0
+    notified_count = 0
 
     for i, comment in enumerate(new_comments, 1):
         print(f"\n[{i}/{len(new_comments)}] {comment['author']}")
         print(f"  コメント: {comment['text'][:50]}...")
 
-        # 自分自身のコメントはスキップ
-        if comment["author_channel_id"] == channel_id:
-            print("  → 自分のコメントのためスキップ")
-            mark_comment_processed(sheets, comment["comment_id"], comment["author"], False, "")
-            continue
-
-        # AI返信生成
+        # AI返信案を生成
         print("  返信案を生成中...")
         ai_reply = generate_reply(comment["text"], comment["author"], key_manager)
 
         if not ai_reply:
             print("  ⚠ 返信生成に失敗")
-            mark_comment_processed(sheets, comment["comment_id"], comment["author"], False, "")
+            mark_comment_processed(sheets, comment["comment_id"], comment["author"], False, "生成失敗")
             continue
 
         print(f"  返信案: {ai_reply[:50]}...")
         video_title = comment.get("video_title", "年金ニュース")
 
-        # 上限チェック
-        if remaining_replies > 0:
-            # 自動返信実行
-            print("  🚀 自動返信中...")
-            success = reply_to_comment(youtube, comment["comment_id"], ai_reply)
-
-            if success:
-                replied_count += 1
-                remaining_replies -= 1
-                print(f"  ✓ 自動返信完了！（本日 {today_reply_count + replied_count}/{DAILY_REPLY_LIMIT}）")
-
-                # Discord通知
-                send_discord_reply_notification(comment, ai_reply, video_title)
-
-                # 処理済みとして記録（返信済み）
-                mark_comment_processed(sheets, comment["comment_id"], comment["author"], True, ai_reply)
-            else:
-                print("  ⚠ 返信投稿に失敗")
-                mark_comment_processed(sheets, comment["comment_id"], comment["author"], False, ai_reply)
+        # Slack通知を送信（自動返信はしない）
+        print("  📤 Slack通知を送信中...")
+        if send_slack_comment_notification(comment, ai_reply, video_title):
+            notified_count += 1
+            # 処理済みとして記録（返信はまだ=False）
+            mark_comment_processed(sheets, comment["comment_id"], comment["author"], False, ai_reply)
         else:
-            # 上限到達 - 通知のみ
-            print(f"  ⚠ 上限到達のため手動対応が必要")
-            send_discord_limit_notification(comment, ai_reply, video_title)
+            print("  ⚠ Slack通知送信に失敗")
             mark_comment_processed(sheets, comment["comment_id"], comment["author"], False, ai_reply)
 
         # API制限対策
         time.sleep(2)
 
     print("\n" + "=" * 50)
-    print(f"処理完了! 自動返信: {replied_count}件")
+    print(f"処理完了! Slack通知: {notified_count}件")
+    print("（手動で返信してください）")
     print("=" * 50)
 
 
