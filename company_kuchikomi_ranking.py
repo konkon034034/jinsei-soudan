@@ -240,7 +240,7 @@ def create_rank_card(rank, percent, topic=""):
     orange_red = (255, 107, 53)  # #FF6B35
 
     # === 第X位（上部中央、影付き）===
-    title_font = get_font(140)
+    title_font = get_font(150)  # 140 -> 150
     title_text = f"第{rank}位"
     bbox = draw.textbbox((0, 0), title_text, font=title_font)
     title_x = (WIDTH - (bbox[2] - bbox[0])) // 2
@@ -263,7 +263,7 @@ def create_rank_card(rank, percent, topic=""):
     label_text = "支持率"
     label_bbox = draw.textbbox((0, 0), label_text, font=label_font)
     label_x = (WIDTH - (label_bbox[2] - label_bbox[0])) // 2
-    label_y = title_y + 160
+    label_y = title_y + 200  # 160 -> 200（第X位から200px下）
     draw.text((label_x, label_y), label_text, fill=text_brown, font=label_font)
 
     # === グラフバー ===
@@ -308,7 +308,7 @@ def create_rank_card(rank, percent, topic=""):
         img.paste(bar_img, (bar_x, bar_y), bar_img)
 
     # === パーセント（派手に）===
-    percent_font = get_font(100)
+    percent_font = get_font(100)  # そのまま100px
     percent_text = f"{percent}%"
     percent_bbox = draw.textbbox((0, 0), percent_text, font=percent_font)
     percent_x = (WIDTH - (percent_bbox[2] - percent_bbox[0])) // 2
@@ -326,24 +326,39 @@ def create_rank_card(rank, percent, topic=""):
     if topic:
         topic_font = get_font(96)  # 2倍サイズ
         topic_text = f"「{topic}」"
-        topic_bbox = draw.textbbox((0, 0), topic_text, font=topic_font)
-        topic_x = (WIDTH - (topic_bbox[2] - topic_bbox[0])) // 2
+
+        # タイトルが18文字以上の場合は2行に分割
+        if len(topic) >= 18:
+            # 中間で分割
+            mid = len(topic) // 2
+            line1 = f"「{topic[:mid]}"
+            line2 = f"{topic[mid:]}」"
+            topic_lines = [line1, line2]
+        else:
+            topic_lines = [topic_text]
+
         topic_y = percent_y + 130
+        line_spacing = 110  # 行間
 
-        # 影（ぼかし効果）
-        for i in range(6, 0, -1):
-            alpha = int(40 * (7 - i) / 6)
-            shadow_color = (0, 0, 0)
-            draw.text((topic_x + i, topic_y + i), topic_text, fill=shadow_color, font=topic_font)
+        for idx, line in enumerate(topic_lines):
+            topic_bbox = draw.textbbox((0, 0), line, font=topic_font)
+            topic_x = (WIDTH - (topic_bbox[2] - topic_bbox[0])) // 2
+            current_y = topic_y + idx * line_spacing
 
-        # 白縁取り（太め 4px）
-        for ox in range(-4, 5):
-            for oy in range(-4, 5):
-                if ox != 0 or oy != 0:
-                    draw.text((topic_x + ox, topic_y + oy), topic_text, fill=(255, 255, 255), font=topic_font)
+            # 影（ぼかし効果）
+            for i in range(6, 0, -1):
+                alpha = int(40 * (7 - i) / 6)
+                shadow_color = (0, 0, 0)
+                draw.text((topic_x + i, current_y + i), line, fill=shadow_color, font=topic_font)
 
-        # メイン文字（オレンジレッド #FF4500）
-        draw.text((topic_x, topic_y), topic_text, fill=(255, 69, 0), font=topic_font)
+            # 白縁取り（太め 4px）
+            for ox in range(-4, 5):
+                for oy in range(-4, 5):
+                    if ox != 0 or oy != 0:
+                        draw.text((topic_x + ox, current_y + oy), line, fill=(255, 255, 255), font=topic_font)
+
+            # メイン文字（オレンジレッド #FF4500）
+            draw.text((topic_x, current_y), line, fill=(255, 69, 0), font=topic_font)
 
     # === キャラクター（下部配置）===
     char_size = 300
@@ -824,21 +839,43 @@ def create_kuchikomi_talk_frame(num, kuchikomi_text, theme_title, speaker, talk_
     if talk_subtitle:
         talk_font = get_font(48)
         speaker_name = "カツミ" if speaker == "katsumi" else "ヒロシ"
-        full_text = f"{speaker_name}：{talk_subtitle}"
+
+        # 話者名の色
+        name_color = (233, 30, 99) if speaker == "katsumi" else (33, 150, 243)  # カツミ=ピンク、ヒロシ=水色
+        body_color = (255, 255, 255)  # 本文は白
 
         # 折り返し処理（キャラ分の余白を確保）
         sub_max_width = WIDTH - char_size * 2 - 100
+        full_text = f"{speaker_name}：{talk_subtitle}"
         sub_lines = wrap_text(full_text, talk_font, sub_max_width, draw)
         total_sub_height = len(sub_lines) * int(48 * 1.3)
         sub_start_y = subtitle_y + (subtitle_height - total_sub_height) // 2
 
         for i, line in enumerate(sub_lines):
-            bbox = draw.textbbox((0, 0), line, font=talk_font)
-            sub_x = (WIDTH - (bbox[2] - bbox[0])) // 2
+            sub_x = 50
             sub_y = sub_start_y + i * int(48 * 1.3)
-            draw_text_with_effects(draw, (sub_x, sub_y), line, talk_font,
-                                   DESIGN["subtitle_text"], None, shadow=True,
-                                   shadow_strength=1, shadow_alpha=25)
+
+            # 最初の行は話者名と本文を分けて描画
+            if i == 0 and "：" in line:
+                parts = line.split("：", 1)
+                # 話者名部分（影付き）
+                for offset in range(1, 2):
+                    draw.text((sub_x + offset, sub_y + offset), parts[0] + "：", font=talk_font, fill=(0, 0, 0, 25))
+                draw.text((sub_x, sub_y), parts[0] + "：", fill=name_color, font=talk_font)
+
+                # 本文部分の開始位置を計算
+                name_bbox = draw.textbbox((0, 0), parts[0] + "：", font=talk_font)
+                body_x = sub_x + (name_bbox[2] - name_bbox[0])
+
+                # 本文部分（影付き）
+                for offset in range(1, 2):
+                    draw.text((body_x + offset, sub_y + offset), parts[1], font=talk_font, fill=(0, 0, 0, 25))
+                draw.text((body_x, sub_y), parts[1], fill=body_color, font=talk_font)
+            else:
+                # 2行目以降は本文のみ（白）
+                for offset in range(1, 2):
+                    draw.text((sub_x + offset, sub_y + offset), line, font=talk_font, fill=(0, 0, 0, 25))
+                draw.text((sub_x, sub_y), line, fill=body_color, font=talk_font)
 
     # === キャラクター（create_animated_kuchikomi_frameと同じ位置に統一）===
     # 固定位置（口コミ読み上げ画面と同じ）
@@ -1058,7 +1095,7 @@ def create_talk_with_topic_frame(rank, percent, topic, speaker, subtitle_text, t
 
     # === 静的な背景（完成状態のランキングカード）===
     # 第X位
-    title_font = get_font(140)
+    title_font = get_font(150)
     title_text = f"第{rank}位"
     bbox = draw.textbbox((0, 0), title_text, font=title_font)
     title_w = bbox[2] - bbox[0]
@@ -1074,14 +1111,14 @@ def create_talk_with_topic_frame(rank, percent, topic, speaker, subtitle_text, t
     label_text = "支持率"
     label_bbox = draw.textbbox((0, 0), label_text, font=label_font)
     label_x = (WIDTH - (label_bbox[2] - label_bbox[0])) // 2
-    label_y = 210
+    label_y = 250
     draw.text((label_x, label_y), label_text, fill=text_brown, font=label_font)
 
     # グラフバー（100%表示）
     bar_max_width = int(WIDTH * 0.8)
     bar_height = 50
     bar_x = (WIDTH - bar_max_width) // 2
-    bar_y = 260
+    bar_y = 300
 
     draw.rounded_rectangle([bar_x, bar_y, bar_x + bar_max_width, bar_y + bar_height],
                           radius=25, fill=(200, 200, 200, 100))
@@ -1149,25 +1186,50 @@ def create_talk_with_topic_frame(rank, percent, topic, speaker, subtitle_text, t
         subtitle_font = get_font(48)
         # 話者名＋テキスト
         speaker_name = "カツミ" if speaker == "katsumi" else "ヒロシ"
-        full_text = f"{speaker_name}：{subtitle_text}"
+
+        # 話者名の色
+        name_color = (233, 30, 99) if speaker == "katsumi" else (33, 150, 243)  # カツミ=ピンク、ヒロシ=水色
+        body_color = (255, 255, 255)  # 本文は白
 
         # 折り返し処理
         max_text_width = WIDTH - 100
+        full_text = f"{speaker_name}：{subtitle_text}"
         lines = wrap_text(full_text, subtitle_font, max_text_width, draw)
         line_spacing = int(48 * 1.3)
         total_height = len(lines) * line_spacing
         start_y = subtitle_y + (subtitle_height - total_height) // 2
 
         for i, line in enumerate(lines):
-            bbox = draw.textbbox((0, 0), line, font=subtitle_font)
-            line_x = (WIDTH - (bbox[2] - bbox[0])) // 2
+            line_x = 50
             line_y = start_y + i * line_spacing
-            # 白縁取り
-            for ox in range(-2, 3):
-                for oy in range(-2, 3):
-                    if ox != 0 or oy != 0:
-                        draw.text((line_x + ox, line_y + oy), line, fill=(0, 0, 0), font=subtitle_font)
-            draw.text((line_x, line_y), line, fill=(255, 255, 255), font=subtitle_font)
+
+            # 最初の行は話者名と本文を分けて描画
+            if i == 0 and "：" in line:
+                parts = line.split("：", 1)
+                # 話者名部分（黒縁取り）
+                for ox in range(-2, 3):
+                    for oy in range(-2, 3):
+                        if ox != 0 or oy != 0:
+                            draw.text((line_x + ox, line_y + oy), parts[0] + "：", fill=(0, 0, 0), font=subtitle_font)
+                draw.text((line_x, line_y), parts[0] + "：", fill=name_color, font=subtitle_font)
+
+                # 本文部分の開始位置を計算
+                name_bbox = draw.textbbox((0, 0), parts[0] + "：", font=subtitle_font)
+                body_x = line_x + (name_bbox[2] - name_bbox[0])
+
+                # 本文部分（黒縁取り）
+                for ox in range(-2, 3):
+                    for oy in range(-2, 3):
+                        if ox != 0 or oy != 0:
+                            draw.text((body_x + ox, line_y + oy), parts[1], fill=(0, 0, 0), font=subtitle_font)
+                draw.text((body_x, line_y), parts[1], fill=body_color, font=subtitle_font)
+            else:
+                # 2行目以降は本文のみ（白）
+                for ox in range(-2, 3):
+                    for oy in range(-2, 3):
+                        if ox != 0 or oy != 0:
+                            draw.text((line_x + ox, line_y + oy), line, fill=(0, 0, 0), font=subtitle_font)
+                draw.text((line_x, line_y), line, fill=body_color, font=subtitle_font)
 
     # === キャラクター（揺れなし）===
     char_size = 160
@@ -1277,8 +1339,7 @@ def create_kuchikomi_frame(num, text, speaker, theme_title, subtitle=None):
         sub_start_y = subtitle_y + (subtitle_height - total_sub_height) // 2
 
         for i, line in enumerate(sub_lines):
-            bbox = draw.textbbox((0, 0), line, font=subtitle_font)
-            sub_x = (WIDTH - (bbox[2] - bbox[0])) // 2
+            sub_x = 50
             sub_y = sub_start_y + i * int(DESIGN["subtitle_size"] * 1.2)
             draw_text_with_effects(draw, (sub_x, sub_y), line, subtitle_font,
                                    DESIGN["subtitle_text"], None, shadow=True,
@@ -1502,6 +1563,36 @@ def generate_kuchikomi_with_gemini(theme, count):
 - 料理、家事、子育ての話題が多い → どちらかの文脈で判断
 - 迷った場合は交互でOK
 
+【キャラクター設定】
+talk_linesでの掛け合いは以下のキャラ設定に沿って:
+
+【カツミ】63歳女性（勝間和代風）
+- 独善的で西洋的な視点
+- データや数字で論破する
+- 口調例：
+  - 「それは完全に自己責任よね」
+  - 「海外では当たり前だけど、日本は遅れてるわ」
+  - 「私に言わせれば、情報弱者なのよ」
+  - 「損してる人は単純に勉強不足ね」
+  - 「合理的に考えれば、答えは明白よ」
+
+【ヒロシ】47歳男性（ひろゆき風）
+- ぶっちゃけで身も蓋もない
+- 冷めた目で本質をつく
+- 口調例：
+  - 「それってあなたの感想ですよね」
+  - 「なんかそれ、データあるんですか？」
+  - 「結局、運ゲーじゃないですか」
+  - 「でもそれ、やる意味あります？」
+  - 「嘘くさいっすね」
+
+【重要】上品に！
+- 汚い言葉や攻撃的な表現は使わない
+- 「〜かもしれませんね」「〜という見方もありますが」で和らげる
+- ユーモアを交えて、笑いながら言う感じ
+- 視聴者が気分悪くならないように
+- 二人の掛け合いで面白く
+
 出力形式（JSON）:
 {{
   "kuchikomi": [
@@ -1512,10 +1603,10 @@ def generate_kuchikomi_with_gemini(theme, count):
       "reader": "katsumi",
       "gender_reason": "「主人が〜」という表現があるため女性と判定",
       "talk_lines": [
-        {{"speaker": "katsumi", "text": "そうよね〜、これ私もわかるわ"}},
-        {{"speaker": "hiroshi", "text": "俺も同じこと思ったわ"}},
-        {{"speaker": "katsumi", "text": "やっぱり〜？みんな同じなのね"}},
-        {{"speaker": "hiroshi", "text": "うん、共感するよな〜"}}
+        {{"speaker": "katsumi", "text": "それは完全に自己責任よね"}},
+        {{"speaker": "hiroshi", "text": "でもそれ、やる意味あります？"}},
+        {{"speaker": "katsumi", "text": "合理的に考えれば、答えは明白よ"}},
+        {{"speaker": "hiroshi", "text": "それってあなたの感想ですよね"}}
       ]
     }},
     ...
@@ -1527,7 +1618,7 @@ def generate_kuchikomi_with_gemini(theme, count):
 - readerは口コミ内容の性別に基づいて決定
 - talk_linesは口コミ読み上げ後の2人の掛け合い（2〜4往復、4〜8セリフ程度）
 - talk_linesの各セリフは短く自然に（10〜25文字程度）
-- 「わかる〜」「そうそう」「だよね〜」など共感ベースのセリフ
+- カツミとヒロシのキャラ設定に沿ったセリフにする
 - 具体的なエピソードを含めてリアルに
 - 共感を呼ぶ内容に
 """
