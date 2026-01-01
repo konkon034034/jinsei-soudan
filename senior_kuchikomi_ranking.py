@@ -898,17 +898,20 @@ def create_kuchikomi_talk_frame(num, kuchikomi_text, theme_title, speaker, talk_
     hiroshi_x = WIDTH - char_size - 30
     char_y = HEIGHT - subtitle_height - char_size + 20
 
+    # 話し手の揺れアニメーション（軽い上下動き）
+    speaker_wobble = int(math.sin(t * 8) * 5)  # 8Hzで±5px揺れ
+
     # カツミ（左）
     katsumi_path = ASSETS_DIR / "katsumi.png"
     if katsumi_path.exists():
         katsumi_img = Image.open(katsumi_path).convert('RGBA')
-        # 話し手なら少し大きく
+        # 話し手なら少し大きく＋揺れる
         if speaker == "katsumi":
             scale = 1.1
             new_size = int(char_size * scale)
             katsumi_img = katsumi_img.resize((new_size, new_size), Image.Resampling.LANCZOS)
             paste_x = katsumi_x - (new_size - char_size) // 2
-            paste_y = char_y - (new_size - char_size)
+            paste_y = char_y - (new_size - char_size) + speaker_wobble
         else:
             katsumi_img = katsumi_img.resize((char_size, char_size), Image.Resampling.LANCZOS)
             paste_x = katsumi_x
@@ -924,7 +927,7 @@ def create_kuchikomi_talk_frame(num, kuchikomi_text, theme_title, speaker, talk_
             new_size = int(char_size * scale)
             hiroshi_img = hiroshi_img.resize((new_size, new_size), Image.Resampling.LANCZOS)
             paste_x = hiroshi_x - (new_size - char_size) // 2
-            paste_y = char_y - (new_size - char_size)
+            paste_y = char_y - (new_size - char_size) + speaker_wobble
         else:
             hiroshi_img = hiroshi_img.resize((char_size, char_size), Image.Resampling.LANCZOS)
             paste_x = hiroshi_x
