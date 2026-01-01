@@ -27,6 +27,9 @@ output/ranking_test/*
 *.ass
 *.mp3
 *.png
+!assets/katsumi.png
+!assets/hiroshi.png
+!assets/icons/*.png
 *.jpg
 outputTEMP_*
 TEMP_MPY_*
