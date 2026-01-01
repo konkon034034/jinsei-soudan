@@ -107,6 +107,12 @@ def draw_text_with_effects(draw, pos, text, font, fill, outline_color=None, shad
 def get_font(size=48, bold=False):
     """日本語フォントを取得"""
     font_paths = [
+        # Linux (GitHub Actions) - Noto CJK fonts
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        # macOS
         "/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc",
         "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
         "/Library/Fonts/Arial Unicode.ttf",
