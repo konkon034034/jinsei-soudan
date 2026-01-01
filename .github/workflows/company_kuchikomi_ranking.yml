@@ -114,7 +114,7 @@ jobs:
           # YouTube認証（別のチャンネル用トークン）
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          YOUTUBE_REFRESH_TOKEN_28: ${{ secrets.YOUTUBE_REFRESH_TOKEN_28 }}
+          YOUTUBE_REFRESH_TOKEN_26: ${{ secrets.YOUTUBE_REFRESH_TOKEN_26 }}
         run: |
           echo "=== 会社口コミランキング動画生成 ==="
           python company_kuchikomi_ranking.py --script latest
@@ -128,7 +128,7 @@ jobs:
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          YOUTUBE_REFRESH_TOKEN_28: ${{ secrets.YOUTUBE_REFRESH_TOKEN_28 }}
+          YOUTUBE_REFRESH_TOKEN_26: ${{ secrets.YOUTUBE_REFRESH_TOKEN_26 }}
         run: |
           echo "=== YouTubeアップロード ==="
 
