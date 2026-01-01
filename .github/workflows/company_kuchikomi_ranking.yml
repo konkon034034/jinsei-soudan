@@ -1,0 +1,182 @@
+name: 会社口コミランキング動画自動生成
+
+on:
+  schedule:
+    # 毎日 JST 8:00 に実行 (UTC 23:00 前日)
+    - cron: '0 23 * * *'
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'テストモード（YTアップロードスキップ）'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      skip_scraper:
+        description: 'スクレイパーをスキップ（既存の台本を使用）'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  generate-video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Python環境をセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: システム依存関係をインストール
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-cjk fonts-noto-cjk-extra
+
+      - name: Python依存関係をインストール
+        run: |
+          pip install --upgrade pip
+          pip install google-genai google-generativeai pydub pillow google-auth google-api-python-client requests youtube-transcript-api moviepy numpy qrcode[pil]
+
+      - name: 競合チャンネルから台本生成
+        if: ${{ github.event.inputs.skip_scraper != 'true' }}
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          echo "=== 会社口コミ競合チャンネルから台本生成 ==="
+          python company_kuchikomi_scraper.py
+
+          echo ""
+          echo "=== 生成された台本 ==="
+          ls -la company_scripts/
+
+      - name: 会社口コミランキング動画を生成
+        env:
+          TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Gemini API Keys (1-42) for TTS rotation
+          GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
+          GEMINI_API_KEY_4: ${{ secrets.GEMINI_API_KEY_4 }}
+          GEMINI_API_KEY_5: ${{ secrets.GEMINI_API_KEY_5 }}
+          GEMINI_API_KEY_6: ${{ secrets.GEMINI_API_KEY_6 }}
+          GEMINI_API_KEY_7: ${{ secrets.GEMINI_API_KEY_7 }}
+          GEMINI_API_KEY_8: ${{ secrets.GEMINI_API_KEY_8 }}
+          GEMINI_API_KEY_9: ${{ secrets.GEMINI_API_KEY_9 }}
+          GEMINI_API_KEY_10: ${{ secrets.GEMINI_API_KEY_10 }}
+          GEMINI_API_KEY_11: ${{ secrets.GEMINI_API_KEY_11 }}
+          GEMINI_API_KEY_12: ${{ secrets.GEMINI_API_KEY_12 }}
+          GEMINI_API_KEY_13: ${{ secrets.GEMINI_API_KEY_13 }}
+          GEMINI_API_KEY_14: ${{ secrets.GEMINI_API_KEY_14 }}
+          GEMINI_API_KEY_15: ${{ secrets.GEMINI_API_KEY_15 }}
+          GEMINI_API_KEY_16: ${{ secrets.GEMINI_API_KEY_16 }}
+          GEMINI_API_KEY_17: ${{ secrets.GEMINI_API_KEY_17 }}
+          GEMINI_API_KEY_18: ${{ secrets.GEMINI_API_KEY_18 }}
+          GEMINI_API_KEY_19: ${{ secrets.GEMINI_API_KEY_19 }}
+          GEMINI_API_KEY_20: ${{ secrets.GEMINI_API_KEY_20 }}
+          GEMINI_API_KEY_21: ${{ secrets.GEMINI_API_KEY_21 }}
+          GEMINI_API_KEY_22: ${{ secrets.GEMINI_API_KEY_22 }}
+          GEMINI_API_KEY_23: ${{ secrets.GEMINI_API_KEY_23 }}
+          GEMINI_API_KEY_24: ${{ secrets.GEMINI_API_KEY_24 }}
+          GEMINI_API_KEY_25: ${{ secrets.GEMINI_API_KEY_25 }}
+          GEMINI_API_KEY_26: ${{ secrets.GEMINI_API_KEY_26 }}
+          GEMINI_API_KEY_27: ${{ secrets.GEMINI_API_KEY_27 }}
+          GEMINI_API_KEY_28: ${{ secrets.GEMINI_API_KEY_28 }}
+          GEMINI_API_KEY_29: ${{ secrets.GEMINI_API_KEY_29 }}
+          GEMINI_API_KEY_30: ${{ secrets.GEMINI_API_KEY_30 }}
+          GEMINI_API_KEY_31: ${{ secrets.GEMINI_API_KEY_31 }}
+          GEMINI_API_KEY_32: ${{ secrets.GEMINI_API_KEY_32 }}
+          GEMINI_API_KEY_33: ${{ secrets.GEMINI_API_KEY_33 }}
+          GEMINI_API_KEY_34: ${{ secrets.GEMINI_API_KEY_34 }}
+          GEMINI_API_KEY_35: ${{ secrets.GEMINI_API_KEY_35 }}
+          GEMINI_API_KEY_36: ${{ secrets.GEMINI_API_KEY_36 }}
+          GEMINI_API_KEY_37: ${{ secrets.GEMINI_API_KEY_37 }}
+          GEMINI_API_KEY_38: ${{ secrets.GEMINI_API_KEY_38 }}
+          GEMINI_API_KEY_39: ${{ secrets.GEMINI_API_KEY_39 }}
+          GEMINI_API_KEY_40: ${{ secrets.GEMINI_API_KEY_40 }}
+          GEMINI_API_KEY_41: ${{ secrets.GEMINI_API_KEY_41 }}
+          GEMINI_API_KEY_42: ${{ secrets.GEMINI_API_KEY_42 }}
+          # YouTube認証（別のチャンネル用トークン）
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN_28: ${{ secrets.YOUTUBE_REFRESH_TOKEN_28 }}
+        run: |
+          echo "=== 会社口コミランキング動画生成 ==="
+          python company_kuchikomi_ranking.py --script latest
+
+          echo ""
+          echo "=== 生成された動画 ==="
+          ls -la output/
+
+      - name: YouTubeにアップロード
+        if: success() && github.event.inputs.test_mode != 'true'
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN_28: ${{ secrets.YOUTUBE_REFRESH_TOKEN_28 }}
+        run: |
+          echo "=== YouTubeアップロード ==="
+
+          # 最新の動画ファイルを取得
+          VIDEO_FILE=$(ls -t output/*.mp4 2>/dev/null | head -1)
+
+          if [ -z "$VIDEO_FILE" ]; then
+            echo "動画ファイルが見つかりません"
+            exit 1
+          fi
+
+          echo "動画ファイル: $VIDEO_FILE"
+
+          # アップロードスクリプトを実行
+          python upload_youtube.py "$VIDEO_FILE"
+
+      - name: テスト用アーティファクトをアップロード
+        if: ${{ github.event.inputs.test_mode == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: company-kuchikomi-video-${{ github.run_id }}
+          path: |
+            output/*.mp4
+            company_scripts/*.json
+          retention-days: 3
+
+      - name: 成功時にSlack通知
+        if: success() && github.event.inputs.test_mode != 'true'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -X POST "$SLACK_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"text\": \"会社口コミランキング動画を投稿しました\n\nワークフロー: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+              }"
+          fi
+
+      - name: エラー時にSlack通知
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -X POST "$SLACK_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"text\": \"会社口コミランキング動画生成に失敗しました\n\nワークフロー: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+              }"
+          fi

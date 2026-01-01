@@ -1,0 +1,66 @@
+{
+  "exportDate": "2026-01-01T12:00:00.000Z",
+  "totalChannels": 10,
+  "channels": [
+    {
+      "handle": "@salatame",
+      "name": "サラタメのホワイト転職",
+      "url": "https://www.youtube.com/@salatame",
+      "category": "転職"
+    },
+    {
+      "handle": "@suenagayudai",
+      "name": "末永雄大 / すべらない転職エージェント",
+      "url": "https://www.youtube.com/@suenagayudai",
+      "category": "転職"
+    },
+    {
+      "handle": "@meganetenshoku",
+      "name": "メガネ転職コンサル",
+      "url": "https://www.youtube.com/@meganetenshoku",
+      "category": "転職"
+    },
+    {
+      "handle": "@3utsu",
+      "name": "Utsuさん",
+      "url": "https://www.youtube.com/@3utsu",
+      "category": "転職・キャリア"
+    },
+    {
+      "handle": "@yutoriman",
+      "name": "俺たち天下のゆとりーマン",
+      "url": "https://www.youtube.com/@yutoriman",
+      "category": "職場あるある"
+    },
+    {
+      "handle": "@tosakyodai",
+      "name": "土佐兄弟",
+      "url": "https://www.youtube.com/@tosakyodai",
+      "category": "職場あるある"
+    },
+    {
+      "handle": "@yuikatohiroshi",
+      "name": "ユイカとヒロシ",
+      "url": "https://www.youtube.com/@yuikatohiroshi",
+      "category": "会社あるある"
+    },
+    {
+      "handle": "@blackkigyou",
+      "name": "ブラック企業で生き抜く社畜を見守るチャンネル",
+      "url": "https://www.youtube.com/@blackkigyou",
+      "category": "ブラック企業"
+    },
+    {
+      "handle": "@taishokudaikou",
+      "name": "退職代行モームリ",
+      "url": "https://www.youtube.com/@taishokudaikou",
+      "category": "退職"
+    },
+    {
+      "handle": "@tensyokutube",
+      "name": "転職の思考法",
+      "url": "https://www.youtube.com/@tensyokutube",
+      "category": "転職"
+    }
+  ]
+}
