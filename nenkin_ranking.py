@@ -2555,13 +2555,21 @@ https://konkon034034.github.io/nenkin-shindan/
 """
 
             # STEP7: YouTube投稿
-            if TEST_MODE:
-                # テストモード: ファイル保存のみ
+            # SKIP_UPLOAD環境変数でアップロードをスキップ
+            skip_upload = os.environ.get("SKIP_UPLOAD", "").lower() == "true"
+
+            if TEST_MODE or skip_upload:
+                # テストモード or 承認待ち: ファイル保存のみ
                 output_video = f"ranking_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
                 import shutil
                 shutil.copy(video_path, output_video)
-                print(f"\n  動画を保存: {output_video}")
+                if skip_upload:
+                    print(f"\n[承認待ち] YouTubeアップロードをスキップ（SKIP_UPLOAD=true）")
+                else:
+                    print(f"\n[テストモード] YouTubeアップロードをスキップ")
+                print(f"  動画を保存: {output_video}")
                 video_url = f"file://{output_video}"
+                print("  ✓ Artifactsから動画をダウンロードして確認してください")
             else:
                 video_url = upload_to_youtube(video_path, title, description, first_comment)
 

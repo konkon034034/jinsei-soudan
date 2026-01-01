@@ -2084,6 +2084,12 @@ def main():
         print()
         print(f"完了! 出力ファイル: {output_path}")
 
+        # 通知用にファイル出力
+        with open("video_url.txt", "w") as f:
+            f.write(f"file://{output_path}")
+        with open("video_title.txt", "w") as f:
+            f.write(theme["title"])
+
 
 if __name__ == "__main__":
     main()

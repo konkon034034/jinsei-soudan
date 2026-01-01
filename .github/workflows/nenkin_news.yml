@@ -45,6 +45,14 @@ on:
           - 'Puck'
           - 'Fenrir'
           - 'Charon'
+      auto_upload:
+        description: 'YouTubeに自動アップロード'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 env:
   PYTHON_VERSION: '3.11'
@@ -155,6 +163,7 @@ jobs:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          SKIP_UPLOAD: ${{ github.event.inputs.auto_upload != 'true' && 'true' || 'false' }}
         run: |
           python nenkin_news.py
 
@@ -165,33 +174,39 @@ jobs:
           name: nenkin-news-${{ github.run_id }}
           path: |
             *.mp4
-          retention-days: 3
+          retention-days: 7
           if-no-files-found: ignore
 
       - name: 成功時にDiscord通知
-        if: false  # 通知無効化
+        if: success()
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          AUTO_UPLOAD: ${{ github.event.inputs.auto_upload || 'false' }}
         run: |
           if [ -n "$DISCORD_WEBHOOK_URL" ]; then
             # 動画URLを読み込み
             VIDEO_URL=""
+            VIDEO_TITLE=""
             if [ -f "video_url.txt" ]; then
               VIDEO_URL=$(cat video_url.txt)
             fi
+            if [ -f "video_title.txt" ]; then
+              VIDEO_TITLE=$(cat video_title.txt)
+            fi
 
-            # 動画URLがある場合は含める
-            if [ -n "$VIDEO_URL" ]; then
+            # auto_upload=trueの場合（YouTube投稿済み）
+            if [ "$AUTO_UPLOAD" = "true" ] && [[ "$VIDEO_URL" == https://*youtube.com/* ]]; then
               curl -X POST "$DISCORD_WEBHOOK_URL" \
                 -H "Content-Type: application/json" \
                 -d "{
-                  \"content\": \"✅ **年金ニュース投稿完了！**\n━━━━━━━━━━━━━━━━━━\n\n📺 動画URL: ${VIDEO_URL}\n🎤 TTS: ${{ github.event.inputs.tts_mode || 'gemini' }}\n🧪 テストモード: ${{ github.event.inputs.test_mode || 'false' }}\n🖥️ Modal GPU: ${{ github.event.inputs.use_modal_gpu || 'auto' }}\n\n━━━━━━━━━━━━━━━━━━\"
+                  \"content\": \"✅ **年金ニュース投稿完了！**\n━━━━━━━━━━━━━━━━━━\n\n📺 動画URL: ${VIDEO_URL}\n📝 タイトル: ${VIDEO_TITLE}\n🎤 TTS: ${{ github.event.inputs.tts_mode || 'gemini' }}\n\n━━━━━━━━━━━━━━━━━━\"
                 }"
             else
+              # 承認待ち（動画生成のみ）
               curl -X POST "$DISCORD_WEBHOOK_URL" \
                 -H "Content-Type: application/json" \
                 -d "{
-                  \"content\": \"⚠️ **年金ニュース動画生成完了（投稿なし）**\n━━━━━━━━━━━━━━━━━━\n\n📺 動画は生成されましたがYouTube投稿に失敗しました\n🔗 ワークフロー: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\n━━━━━━━━━━━━━━━━━━\"
+                  \"content\": \"🎬 **年金ニュース動画生成完了（確認待ち）**\n━━━━━━━━━━━━━━━━━━\n\n📝 タイトル: ${VIDEO_TITLE}\n🎤 TTS: ${{ github.event.inputs.tts_mode || 'gemini' }}\n\n📥 **Artifactsから動画をダウンロード:**\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\n✅ 確認後、auto_upload=trueで再実行してください\n\n━━━━━━━━━━━━━━━━━━\"
                 }"
             fi
           fi

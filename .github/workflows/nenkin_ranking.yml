@@ -22,6 +22,14 @@ on:
         options:
           - 'false'
           - 'true'
+      auto_upload:
+        description: 'YouTubeに自動アップロード'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 env:
   PYTHON_VERSION: '3.11'
@@ -107,31 +115,49 @@ jobs:
           # 通知
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SKIP_UPLOAD: ${{ github.event.inputs.auto_upload != 'true' && 'true' || 'false' }}
         run: |
           python nenkin_ranking.py
 
-      - name: テスト用アーティファクトをアップロード
-        if: ${{ github.event.inputs.test_mode == 'true' }}
+      - name: 成果物をアップロード
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ranking-video-test-${{ github.run_id }}
+          name: nenkin-ranking-${{ github.run_id }}
           path: |
             *.mp4
             *.mp3
             *.ass
-          retention-days: 3
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: 成功時にDiscord通知
-        if: false  # 通知無効化
+        if: success()
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          AUTO_UPLOAD: ${{ github.event.inputs.auto_upload || 'false' }}
         run: |
           if [ -n "$DISCORD_WEBHOOK_URL" ]; then
-            if [ "${{ github.event.inputs.test_mode }}" = "true" ]; then
+            VIDEO_URL=""
+            VIDEO_TITLE=""
+            if [ -f "video_url.txt" ]; then
+              VIDEO_URL=$(cat video_url.txt)
+            fi
+            if [ -f "video_title.txt" ]; then
+              VIDEO_TITLE=$(cat video_title.txt)
+            fi
+
+            if [ "$AUTO_UPLOAD" = "true" ] && [[ "$VIDEO_URL" == https://*youtube.com/* ]]; then
               curl -X POST "$DISCORD_WEBHOOK_URL" \
                 -H "Content-Type: application/json" \
                 -d "{
-                  \"content\": \"🧪 **ランキング動画テスト完了**\\n\\n📦 アーティファクト: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+                  \"content\": \"✅ **年金ランキング動画投稿完了！**\n━━━━━━━━━━━━━━━━━━\n\n📺 動画URL: ${VIDEO_URL}\n📝 タイトル: ${VIDEO_TITLE}\n\n━━━━━━━━━━━━━━━━━━\"
+                }"
+            else
+              curl -X POST "$DISCORD_WEBHOOK_URL" \
+                -H "Content-Type: application/json" \
+                -d "{
+                  \"content\": \"🎬 **年金ランキング動画生成完了（確認待ち）**\n━━━━━━━━━━━━━━━━━━\n\n📝 タイトル: ${VIDEO_TITLE}\n\n📥 **Artifactsから動画をダウンロード:**\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\n✅ 確認後、auto_upload=trueで再実行してください\n\n━━━━━━━━━━━━━━━━━━\"
                 }"
             fi
           fi
