@@ -51,6 +51,7 @@ qr_overlay.png
 # Credentials
 *.json
 !competitor_videos.json
+!youtube_channels.json
 credentials/
 service_account.json
 service_account.txt
