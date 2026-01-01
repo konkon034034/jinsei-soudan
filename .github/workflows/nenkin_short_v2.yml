@@ -117,7 +117,8 @@ jobs:
           # 通知
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          SKIP_UPLOAD: ${{ github.event.inputs.auto_upload != 'true' && 'true' || 'false' }}
+          # schedule実行時は自動アップロード、手動実行時はauto_uploadフラグで制御
+          SKIP_UPLOAD: ${{ github.event_name == 'schedule' && 'false' || (github.event.inputs.auto_upload != 'true' && 'true' || 'false') }}
         run: |
           python nenkin_short_v2.py
 
