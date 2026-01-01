@@ -259,11 +259,11 @@ def create_rank_card(rank, percent, topic=""):
     draw.text((title_x, title_y), title_text, fill=text_brown, font=title_font)
 
     # === 支持率ラベル ===
-    label_font = get_font(28)
+    label_font = get_font(32)  # フォントサイズ拡大
     label_text = "支持率"
     label_bbox = draw.textbbox((0, 0), label_text, font=label_font)
     label_x = (WIDTH - (label_bbox[2] - label_bbox[0])) // 2
-    label_y = title_y + 200  # 160 -> 200（第X位から200px下）
+    label_y = title_y + 250  # 間隔を100px以上に拡大
     draw.text((label_x, label_y), label_text, fill=text_brown, font=label_font)
 
     # === グラフバー ===
@@ -465,11 +465,11 @@ def create_animated_rank_card_frame(rank, percent, topic, t):
 
     # === 支持率ラベル ===
     if label_alpha > 0:
-        label_font = get_font(28)
+        label_font = get_font(32)  # フォントサイズ拡大
         label_text = "支持率"
         label_bbox = draw.textbbox((0, 0), label_text, font=label_font)
         label_x = (WIDTH - (label_bbox[2] - label_bbox[0])) // 2
-        label_y = 210
+        label_y = 260  # 間隔を100px以上に拡大
         alpha_color = tuple(int(c * label_alpha) for c in text_brown)
         draw.text((label_x, label_y), label_text, fill=text_brown, font=label_font)
 
@@ -477,7 +477,7 @@ def create_animated_rank_card_frame(rank, percent, topic, t):
     bar_max_width = int(WIDTH * 0.8)
     bar_height = 50
     bar_x = (WIDTH - bar_max_width) // 2
-    bar_y = 260
+    bar_y = 310  # 位置調整
 
     # バー背景
     draw.rounded_rectangle(

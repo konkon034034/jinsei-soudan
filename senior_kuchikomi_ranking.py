@@ -259,11 +259,11 @@ def create_rank_card(rank, percent, topic=""):
     draw.text((title_x, title_y), title_text, fill=text_brown, font=title_font)
 
     # === 支持率ラベル ===
-    label_font = get_font(28)
+    label_font = get_font(32)  # フォントサイズ拡大
     label_text = "支持率"
     label_bbox = draw.textbbox((0, 0), label_text, font=label_font)
     label_x = (WIDTH - (label_bbox[2] - label_bbox[0])) // 2
-    label_y = title_y + 200
+    label_y = title_y + 250  # 間隔を100px以上に拡大
     draw.text((label_x, label_y), label_text, fill=text_brown, font=label_font)
 
     # === グラフバー ===
@@ -465,11 +465,11 @@ def create_animated_rank_card_frame(rank, percent, topic, t):
 
     # === 支持率ラベル ===
     if label_alpha > 0:
-        label_font = get_font(28)
+        label_font = get_font(32)  # フォントサイズ拡大
         label_text = "支持率"
         label_bbox = draw.textbbox((0, 0), label_text, font=label_font)
         label_x = (WIDTH - (label_bbox[2] - label_bbox[0])) // 2
-        label_y = 210
+        label_y = 260  # 間隔を100px以上に拡大
         alpha_color = tuple(int(c * label_alpha) for c in text_brown)
         draw.text((label_x, label_y), label_text, fill=text_brown, font=label_font)
 
@@ -477,7 +477,7 @@ def create_animated_rank_card_frame(rank, percent, topic, t):
     bar_max_width = int(WIDTH * 0.8)
     bar_height = 50
     bar_x = (WIDTH - bar_max_width) // 2
-    bar_y = 260
+    bar_y = 310  # 位置調整
 
     # バー背景
     draw.rounded_rectangle(
@@ -1329,23 +1329,51 @@ def create_kuchikomi_frame(num, text, speaker, theme_title, subtitle=None):
                        fill=(0, 0, 0, max(alpha, 0)))
     draw.rectangle([0, subtitle_y, WIDTH, HEIGHT], fill=hex_to_rgb(DESIGN["subtitle_bg"]))
 
-    # 字幕テキスト（折り返し対応）
+    # 字幕テキスト（折り返し対応・左揃え・話者名色分け）
     if subtitle:
         # キャラ分の余白を確保（左右にキャラがいるので中央部分を使う）
         sub_max_width = WIDTH - char_size * 2 - 80  # キャラ分の余白
         sub_lines = wrap_text(subtitle, subtitle_font, sub_max_width, draw)
 
-        # 字幕を中央に配置
+        # 字幕を左揃えで配置
         total_sub_height = len(sub_lines) * int(DESIGN["subtitle_size"] * 1.2)
         sub_start_y = subtitle_y + (subtitle_height - total_sub_height) // 2
+        sub_x = char_size + 50  # 左キャラの右側から開始
+
+        # 話者名の検出と色分け
+        speaker_name = None
+        speaker_color = None
+        if subtitle.startswith("カツミ：") or subtitle.startswith("カツミ:"):
+            speaker_name = "カツミ"
+            speaker_color = (233, 30, 99)  # ピンク #E91E63
+        elif subtitle.startswith("ヒロシ：") or subtitle.startswith("ヒロシ:"):
+            speaker_name = "ヒロシ"
+            speaker_color = (33, 150, 243)  # 水色 #2196F3
 
         for i, line in enumerate(sub_lines):
-            bbox = draw.textbbox((0, 0), line, font=subtitle_font)
-            sub_x = (WIDTH - (bbox[2] - bbox[0])) // 2
             sub_y = sub_start_y + i * int(DESIGN["subtitle_size"] * 1.2)
-            draw_text_with_effects(draw, (sub_x, sub_y), line, subtitle_font,
-                                   DESIGN["subtitle_text"], None, shadow=True,
-                                   shadow_strength=1, shadow_alpha=25)
+
+            # 最初の行のみ話者名を色分け
+            if i == 0 and speaker_name and line.startswith(speaker_name):
+                speaker_text = f"{speaker_name}："
+                bbox_speaker = draw.textbbox((0, 0), speaker_text, font=subtitle_font)
+                speaker_width = bbox_speaker[2] - bbox_speaker[0]
+
+                # 話者名部分（ピンクまたは水色）
+                draw_text_with_effects(draw, (sub_x, sub_y), speaker_text, subtitle_font,
+                                       speaker_color, None, shadow=True,
+                                       shadow_strength=1, shadow_alpha=25)
+
+                # 本文部分（白）
+                remaining_text = line[len(speaker_name) + 1:]
+                draw_text_with_effects(draw, (sub_x + speaker_width, sub_y), remaining_text, subtitle_font,
+                                       (255, 255, 255), None, shadow=True,
+                                       shadow_strength=1, shadow_alpha=25)
+            else:
+                # 2行目以降は全て白
+                draw_text_with_effects(draw, (sub_x, sub_y), line, subtitle_font,
+                                       (255, 255, 255), None, shadow=True,
+                                       shadow_strength=1, shadow_alpha=25)
 
     # キャラクター位置（字幕帯の中、下部に配置）
     char_y = subtitle_y + (subtitle_height - char_size) // 2 + 10  # 字幕帯内で少し下
