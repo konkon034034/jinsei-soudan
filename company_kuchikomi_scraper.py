@@ -271,6 +271,12 @@ def process_channel(channel: dict) -> Optional[dict]:
     channel_name = channel.get("name") or channel.get("channel_name", "Unknown")
     handle = channel.get("handle")
 
+    # URLからハンドルを抽出（@username形式）
+    url = channel.get("url", "")
+    if not handle and "/@" in url:
+        # https://www.youtube.com/@社畜の嘆き-q6u → @社畜の嘆き-q6u
+        handle = "@" + url.split("/@")[-1].rstrip("/")
+
     print(f"\n処理中: {channel_name}")
 
     # channel_idがなければhandleから取得
