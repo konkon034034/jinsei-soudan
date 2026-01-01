@@ -120,7 +120,8 @@ jobs:
           # シニア口コミ専用 - TOKEN_27のみ
           YOUTUBE_REFRESH_TOKEN_27: ${{ secrets.YOUTUBE_REFRESH_TOKEN_27 }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          SKIP_UPLOAD: ${{ github.event.inputs.auto_upload != 'true' && 'true' || 'false' }}
+          # schedule実行時は自動アップロード、手動実行時はauto_uploadフラグで制御
+          SKIP_UPLOAD: ${{ github.event_name == 'schedule' && 'false' || (github.event.inputs.auto_upload != 'true' && 'true' || 'false') }}
         run: |
           python asadora_ranking.py
 
