@@ -1,66 +1,28 @@
 {
-  "exportDate": "2026-01-01T12:00:00.000Z",
-  "totalChannels": 10,
   "channels": [
-    {
-      "handle": "@salatame",
-      "name": "サラタメのホワイト転職",
-      "url": "https://www.youtube.com/@salatame",
-      "category": "転職"
-    },
-    {
-      "handle": "@suenagayudai",
-      "name": "末永雄大 / すべらない転職エージェント",
-      "url": "https://www.youtube.com/@suenagayudai",
-      "category": "転職"
-    },
-    {
-      "handle": "@meganetenshoku",
-      "name": "メガネ転職コンサル",
-      "url": "https://www.youtube.com/@meganetenshoku",
-      "category": "転職"
-    },
-    {
-      "handle": "@3utsu",
-      "name": "Utsuさん",
-      "url": "https://www.youtube.com/@3utsu",
-      "category": "転職・キャリア"
-    },
-    {
-      "handle": "@yutoriman",
-      "name": "俺たち天下のゆとりーマン",
-      "url": "https://www.youtube.com/@yutoriman",
-      "category": "職場あるある"
-    },
-    {
-      "handle": "@tosakyodai",
-      "name": "土佐兄弟",
-      "url": "https://www.youtube.com/@tosakyodai",
-      "category": "職場あるある"
-    },
-    {
-      "handle": "@yuikatohiroshi",
-      "name": "ユイカとヒロシ",
-      "url": "https://www.youtube.com/@yuikatohiroshi",
-      "category": "会社あるある"
-    },
-    {
-      "handle": "@blackkigyou",
-      "name": "ブラック企業で生き抜く社畜を見守るチャンネル",
-      "url": "https://www.youtube.com/@blackkigyou",
-      "category": "ブラック企業"
-    },
-    {
-      "handle": "@taishokudaikou",
-      "name": "退職代行モームリ",
-      "url": "https://www.youtube.com/@taishokudaikou",
-      "category": "退職"
-    },
-    {
-      "handle": "@tensyokutube",
-      "name": "転職の思考法",
-      "url": "https://www.youtube.com/@tensyokutube",
-      "category": "転職"
-    }
+    {"name": "社畜の嘆き", "url": "https://www.youtube.com/@社畜の嘆き-q6u"},
+    {"name": "企業社員のリアルな口コミ", "url": "https://www.youtube.com/@企業社員のリアルな口コミ-e4q"},
+    {"name": "OpenWork クチコミ解説", "url": "https://www.youtube.com/@公式OpenWorkクチコミ解説"},
+    {"name": "ブラックorホワイト", "url": "https://www.youtube.com/@shigotozukan-ppp"},
+    {"name": "シニア応援団", "url": "https://www.youtube.com/@albertemmanuel2303"},
+    {"name": "社畜ジャーナル", "url": "https://www.youtube.com/@社畜ジャーナル"},
+    {"name": "社畜ガールみふぁ", "url": "https://www.youtube.com/@mifa-syatiku-ch"},
+    {"name": "会社人間ジャパン", "url": "https://www.youtube.com/@kaisha_ningen"},
+    {"name": "皆の口コミ", "url": "https://www.youtube.com/@minkuchi"},
+    {"name": "口コミジャパン", "url": "https://www.youtube.com/@口コミジャパン"},
+    {"name": "労働者の本音", "url": "https://www.youtube.com/@worker-real-intention"},
+    {"name": "ジョブ子さん", "url": "https://www.youtube.com/@仕事の口コミ"},
+    {"name": "ももこ【会社の口コミ】", "url": "https://www.youtube.com/@ももこ会社の口コミ"},
+    {"name": "会社の口コミ", "url": "https://www.youtube.com/@会社の口コミ"},
+    {"name": "リアルな口コミ社畜チャンネル", "url": "https://www.youtube.com/@リアルな口コミチャンネル"},
+    {"name": "仕事の鬼チャンネル", "url": "https://www.youtube.com/@shigoto-oni"},
+    {"name": "ねぎ女", "url": "https://www.youtube.com/@ねぎ女-世間の口コミ"},
+    {"name": "ひろゆき会社の口コミ", "url": "https://www.youtube.com/@hiroyuki-kutikomi"},
+    {"name": "転職の勇者", "url": "https://www.youtube.com/@転職の勇者"},
+    {"name": "会社の口コミ・評判ちゃんねる", "url": "https://www.youtube.com/@BlackCompanyReviews"},
+    {"name": "求人ライターM", "url": "https://www.youtube.com/@求人ライターM"},
+    {"name": "アットホームな職場です", "url": "https://www.youtube.com/@home-shokuba"},
+    {"name": "ウララちゃん【会社の口コミ】", "url": "https://www.youtube.com/@ウララちゃん会社の口コミ"},
+    {"name": "社畜ジャパン", "url": "https://www.youtube.com/@社畜ジャパン"}
   ]
 }
