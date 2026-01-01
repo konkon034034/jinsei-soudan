@@ -524,23 +524,39 @@ def create_animated_rank_card_frame(rank, percent, topic, t):
                     draw.text((percent_x + ox, percent_y + oy), percent_text, fill=(255, 255, 255), font=percent_font)
         draw.text((percent_x, percent_y), percent_text, fill=orange_red, font=percent_font)
 
-    # === トピック名 ===
+    # === トピック名（自動改行対応） ===
     if topic and topic_alpha > 0:
         topic_font = get_font(96)
         topic_text = f"「{topic}」"
-        topic_bbox = draw.textbbox((0, 0), topic_text, font=topic_font)
-        topic_x = (WIDTH - (topic_bbox[2] - topic_bbox[0])) // 2
-        topic_y = 500  # バー位置調整に合わせて下にずらす（450→500）
+        max_topic_width = int(WIDTH * 0.9)  # 画面幅の90%まで
 
-        # 影
-        for i in range(6, 0, -1):
-            draw.text((topic_x + i, topic_y + i), topic_text, fill=(0, 0, 0), font=topic_font)
-        # 白縁取り
-        for ox in range(-4, 5):
-            for oy in range(-4, 5):
-                if ox != 0 or oy != 0:
-                    draw.text((topic_x + ox, topic_y + oy), topic_text, fill=(255, 255, 255), font=topic_font)
-        draw.text((topic_x, topic_y), topic_text, fill=(255, 69, 0), font=topic_font)
+        # テキスト幅をチェックして必要なら改行
+        topic_bbox = draw.textbbox((0, 0), topic_text, font=topic_font)
+        topic_text_width = topic_bbox[2] - topic_bbox[0]
+
+        if topic_text_width > max_topic_width:
+            # 改行が必要
+            topic_lines = wrap_text(topic_text, topic_font, max_topic_width, draw)
+        else:
+            topic_lines = [topic_text]
+
+        topic_y = 500  # バー位置調整に合わせて下にずらす（450→500）
+        line_height = 110  # 行間
+
+        for line_idx, line in enumerate(topic_lines):
+            line_bbox = draw.textbbox((0, 0), line, font=topic_font)
+            line_x = (WIDTH - (line_bbox[2] - line_bbox[0])) // 2
+            line_y = topic_y + line_idx * line_height
+
+            # 影
+            for i in range(6, 0, -1):
+                draw.text((line_x + i, line_y + i), line, fill=(0, 0, 0), font=topic_font)
+            # 白縁取り
+            for ox in range(-4, 5):
+                for oy in range(-4, 5):
+                    if ox != 0 or oy != 0:
+                        draw.text((line_x + ox, line_y + oy), line, fill=(255, 255, 255), font=topic_font)
+            draw.text((line_x, line_y), line, fill=(255, 69, 0), font=topic_font)
 
     # === キャラクターは表示しない（順位発表画面はシンプルに） ===
 
