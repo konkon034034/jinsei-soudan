@@ -1558,6 +1558,7 @@ LINEだともっと詳しい情報
 
 def send_discord_error_notification(error_message: str, title: str = ""):
     """Discord通知（エラー時のみ）"""
+    return  # 通知無効化
     webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
     if not webhook_url:
         return
@@ -1574,6 +1575,7 @@ def send_discord_error_notification(error_message: str, title: str = ""):
 
 def send_slack_script_notification(script: list, title: str, scheduled_time: str = "18:00"):
     """台本をSlackに送信"""
+    return  # 通知無効化
     webhook_url = os.environ.get("SLACK_WEBHOOK_SCRIPT")
     if not webhook_url:
         print("  ⚠ SLACK_WEBHOOK_SCRIPT未設定のため台本通知をスキップ")
@@ -1762,6 +1764,7 @@ def create_community_image(question: str, output_path: str) -> str:
 
 def send_community_post_to_slack_short(post_data: dict):
     """ショート動画用コミュニティ投稿案をSlackに送信"""
+    return  # 通知無効化
     if not post_data:
         return
 
@@ -2138,6 +2141,7 @@ def send_first_comment_to_slack_short(title: str, topic: str = ""):
         title: 動画タイトル
         topic: トピック/テーマ
     """
+    return  # 通知無効化
     webhook_url = os.environ.get("SLACK_WEBHOOK_COMMENT")
     if not webhook_url:
         print("  ⚠ SLACK_WEBHOOK_COMMENT未設定のためスキップ")

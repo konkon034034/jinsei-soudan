@@ -169,7 +169,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: 成功時にDiscord通知
-        if: success()
+        if: false  # 通知無効化
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
@@ -197,7 +197,7 @@ jobs:
           fi
 
       - name: 成功時にLINE通知
-        if: success() && github.event.inputs.test_mode != 'true'
+        if: false  # 通知無効化
         env:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
         run: |
@@ -234,7 +234,7 @@ jobs:
           fi
 
       - name: エラー時にDiscord通知
-        if: failure()
+        if: false  # 通知無効化
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |

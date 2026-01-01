@@ -945,6 +945,7 @@ class Notifier:
     @staticmethod
     def discord(message: str):
         """Discord通知"""
+        return  # 通知無効化
         webhook_url = Config.DISCORD_WEBHOOK_URL
         if not webhook_url:
             return
@@ -958,6 +959,7 @@ class Notifier:
     @staticmethod
     def slack_error(error_message: str):
         """Slackエラー通知"""
+        return  # 通知無効化
         webhook_url = Config.SLACK_WEBHOOK_URL
         if not webhook_url:
             return

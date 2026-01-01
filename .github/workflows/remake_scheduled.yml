@@ -50,6 +50,7 @@ jobs:
           cat remake_data.json
 
       - name: Notify Discord
+        if: false  # 通知無効化
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |

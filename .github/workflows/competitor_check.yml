@@ -38,7 +38,7 @@ jobs:
           git push
 
       - name: Discord通知（成功）
-        if: success()
+        if: false  # 通知無効化
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
@@ -49,7 +49,7 @@ jobs:
           fi
 
       - name: Discord通知（失敗）
-        if: failure()
+        if: false  # 通知無効化
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
