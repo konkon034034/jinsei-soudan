@@ -22,6 +22,14 @@ on:
         options:
           - 'false'
           - 'true'
+      auto_upload:
+        description: 'YouTubeに自動アップロード'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 env:
   PYTHON_VERSION: '3.11'
@@ -124,7 +132,7 @@ jobs:
           ls -la output/
 
       - name: YouTubeにアップロード
-        if: success() && github.event.inputs.test_mode != 'true'
+        if: success() && github.event.inputs.auto_upload == 'true'
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
@@ -145,27 +153,46 @@ jobs:
           # アップロードスクリプトを実行
           python upload_youtube.py "$VIDEO_FILE"
 
-      - name: テスト用アーティファクトをアップロード
-        if: ${{ github.event.inputs.test_mode == 'true' }}
+      - name: 成果物をアップロード
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: company-kuchikomi-video-${{ github.run_id }}
           path: |
             output/*.mp4
             company_scripts/*.json
-          retention-days: 3
+          retention-days: 7
+          if-no-files-found: ignore
 
-      - name: 成功時にSlack通知
-        if: success() && github.event.inputs.test_mode != 'true'
+      - name: 成功時にDiscord通知
+        if: success()
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          AUTO_UPLOAD: ${{ github.event.inputs.auto_upload || 'false' }}
         run: |
-          if [ -n "$SLACK_WEBHOOK_URL" ]; then
-            curl -X POST "$SLACK_WEBHOOK_URL" \
-              -H "Content-Type: application/json" \
-              -d "{
-                \"text\": \"会社口コミランキング動画を投稿しました\n\nワークフロー: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
-              }"
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            VIDEO_URL=""
+            VIDEO_TITLE=""
+            if [ -f "video_url.txt" ]; then
+              VIDEO_URL=$(cat video_url.txt)
+            fi
+            if [ -f "video_title.txt" ]; then
+              VIDEO_TITLE=$(cat video_title.txt)
+            fi
+
+            if [ "$AUTO_UPLOAD" = "true" ] && [[ "$VIDEO_URL" == https://*youtube.com/* ]]; then
+              curl -X POST "$DISCORD_WEBHOOK_URL" \
+                -H "Content-Type: application/json" \
+                -d "{
+                  \"content\": \"✅ **会社口コミランキング動画投稿完了！**\n━━━━━━━━━━━━━━━━━━\n\n📺 動画URL: ${VIDEO_URL}\n📝 タイトル: ${VIDEO_TITLE}\n\n━━━━━━━━━━━━━━━━━━\"
+                }"
+            else
+              curl -X POST "$DISCORD_WEBHOOK_URL" \
+                -H "Content-Type: application/json" \
+                -d "{
+                  \"content\": \"🎬 **会社口コミランキング動画生成完了（確認待ち）**\n━━━━━━━━━━━━━━━━━━\n\n📝 タイトル: ${VIDEO_TITLE}\n\n📥 **Artifactsから動画をダウンロード:**\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\n✅ 確認後、auto_upload=trueで再実行してください\n\n━━━━━━━━━━━━━━━━━━\"
+                }"
+            fi
           fi
 
       - name: エラー時にSlack通知

@@ -5338,85 +5338,100 @@ LINE登録で毎日の年金ニュースも届きます📱
 
         tags = script.get("tags", ["年金", "ニュース", "シニア"])
 
-        try:
-            video_url = upload_to_youtube(video_path, title, description, tags)
+        # SKIP_UPLOAD環境変数でアップロードをスキップ
+        skip_upload = os.environ.get("SKIP_UPLOAD", "").lower() == "true"
 
-            # 動画URL・タイトルをファイルに保存（ワークフロー通知用）
+        if skip_upload:
+            print("\n[6/7] アップロードをスキップ（SKIP_UPLOAD=true）")
+            video_url = f"file://{os.path.abspath(video_path)}"
+            # 動画パスをファイルに保存（確認用）
             with open("video_url.txt", "w") as f:
                 f.write(video_url)
             with open("video_title.txt", "w") as f:
                 f.write(title)
+            print(f"  動画ファイル: {video_path}")
+            print(f"  タイトル: {title}")
+            print("  ✓ Artifactsから動画をダウンロードして確認してください")
+        else:
+            try:
+                video_url = upload_to_youtube(video_path, title, description, tags)
 
-            # 動画IDを抽出
-            video_id = video_url.split("v=")[-1] if "v=" in video_url else ""
+                # 動画URL・タイトルをファイルに保存（ワークフロー通知用）
+                with open("video_url.txt", "w") as f:
+                    f.write(video_url)
+                with open("video_title.txt", "w") as f:
+                    f.write(title)
 
-            # サムネイルを設定
-            if video_id and os.path.exists(thumbnail_path):
-                print("\n[6/7] サムネイルを設定中...")
-                set_youtube_thumbnail(video_id, thumbnail_path)
+                # 動画IDを抽出
+                video_id = video_url.split("v=")[-1] if "v=" in video_url else ""
 
-            # 最初のコメントを生成・投稿（70代老夫婦の視点）
-            first_comment = ""
-            if video_id:
-                print("\n[6.5/7] 最初のコメントを生成・投稿中...")
-                first_comment = generate_first_comment(script, news_data, key_manager)
+                # サムネイルを設定
+                if video_id and os.path.exists(thumbnail_path):
+                    print("\n[6/7] サムネイルを設定中...")
+                    set_youtube_thumbnail(video_id, thumbnail_path)
+
+                # 最初のコメントを生成・投稿（70代老夫婦の視点）
+                first_comment = ""
+                if video_id:
+                    print("\n[6.5/7] 最初のコメントを生成・投稿中...")
+                    first_comment = generate_first_comment(script, news_data, key_manager)
+                    if first_comment:
+                        post_youtube_comment(video_id, first_comment)
+
+                # 処理時間を計算
+                processing_time = time.time() - start_time
+
+                # 成功をログに記録
+                log_to_spreadsheet(
+                    status="成功",
+                    title=title,
+                    url=video_url,
+                    news_count=news_count,
+                    processing_time=processing_time
+                )
+
+                # 使用済みニュースタイトルを保存（重複防止用）
+                used_news_titles = []
+                for section in script.get("news_sections", []):
+                    news_title = section.get("news_title", "")
+                    if news_title:
+                        used_news_titles.append(news_title)
+                if used_news_titles:
+                    save_used_news_titles(used_news_titles)
+
+                # コメント内容を表示
                 if first_comment:
-                    post_youtube_comment(video_id, first_comment)
+                    print(f"\n📝 最初のコメント: {first_comment}")
 
-            # 処理時間を計算
-            processing_time = time.time() - start_time
+                # コミュニティ投稿案を生成・送信（テストモード以外）
+                if not TEST_MODE and video_id:
+                    community_post = generate_community_post(news_data, key_manager)
+                    if community_post:
+                        send_community_post_to_slack(community_post, title, video_url)
 
-            # 成功をログに記録
-            log_to_spreadsheet(
-                status="成功",
-                title=title,
-                url=video_url,
-                news_count=news_count,
-                processing_time=processing_time
-            )
+                    # 初コメント案を送信
+                    topics = news_data.get("news", []) if news_data else []
+                    send_first_comment_to_slack(title, topics)
 
-            # 使用済みニュースタイトルを保存（重複防止用）
-            used_news_titles = []
-            for section in script.get("news_sections", []):
-                news_title = section.get("news_title", "")
-                if news_title:
-                    used_news_titles.append(news_title)
-            if used_news_titles:
-                save_used_news_titles(used_news_titles)
-
-            # コメント内容を表示
-            if first_comment:
-                print(f"\n📝 最初のコメント: {first_comment}")
-
-            # コミュニティ投稿案を生成・送信（テストモード以外）
-            if not TEST_MODE and video_id:
-                community_post = generate_community_post(news_data, key_manager)
-                if community_post:
-                    send_community_post_to_slack(community_post, title, video_url)
-
-                # 初コメント案を送信
-                topics = news_data.get("news", []) if news_data else []
-                send_first_comment_to_slack(title, topics)
-
-        except Exception as e:
-            print(f"❌ YouTube投稿エラー: {e}")
-            # エラーをログに記録
-            processing_time = time.time() - start_time
-            log_to_spreadsheet(
-                status="エラー",
-                title=title,
-                news_count=news_count,
-                processing_time=processing_time,
-                error_message=str(e)
-            )
-            # Discord エラー通知
-            if not TEST_MODE:
-                send_discord_error_notification(str(e), title)
-            # ローカルに保存
-            import shutil
-            output_file = f"nenkin_news_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
-            shutil.copy(video_path, output_file)
-            print(f"   ローカル保存: {output_file}")
+            except Exception as e:
+                print(f"❌ YouTube投稿エラー: {e}")
+                # エラーをログに記録
+                processing_time = time.time() - start_time
+                log_to_spreadsheet(
+                    status="エラー",
+                    title=title,
+                    news_count=news_count,
+                    processing_time=processing_time,
+                    error_message=str(e)
+                )
+                # Discord エラー通知
+                if not TEST_MODE:
+                    send_discord_error_notification(str(e), title)
+                # ローカルに保存
+                import shutil
+                output_file = f"nenkin_news_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+                shutil.copy(video_path, output_file)
+                print(f"   ローカル保存: {output_file}")
 
 
 if __name__ == "__main__":

@@ -2186,15 +2186,26 @@ def process_auto_mode(task: dict, key_manager: GeminiKeyManager):
         chapters_text = format_chapters_for_description(chapter_timestamps)
         description_with_chapters = f"{script['description']}\n\n{chapters_text}"
 
-        # 6. YouTubeアップロード（テストモードではスキップ）
-        if TEST_MODE:
-            print("[6/6] テストモード: YouTubeアップロードスキップ")
+        # 6. YouTubeアップロード（テストモードまたはSKIP_UPLOADではスキップ）
+        skip_upload = os.environ.get("SKIP_UPLOAD", "").lower() == "true"
+
+        if TEST_MODE or skip_upload:
+            if skip_upload:
+                print("[6/6] 承認待ち: YouTubeアップロードスキップ（SKIP_UPLOAD=true）")
+            else:
+                print("[6/6] テストモード: YouTubeアップロードスキップ")
             # 動画をカレントディレクトリにコピー
             import shutil
             final_video = f"test_ranking_{Path(video_path).stem.split('_')[-1]}.mp4"
             shutil.copy(video_path, final_video)
-            youtube_url = f"[テスト] {final_video}"
+            youtube_url = f"file://{os.path.abspath(final_video)}"
             print(f"  動画保存: {final_video}")
+            print("  ✓ Artifactsから動画をダウンロードして確認してください")
+            # video_url.txt, video_title.txt を保存（通知用）
+            with open("video_url.txt", "w") as f:
+                f.write(youtube_url)
+            with open("video_title.txt", "w") as f:
+                f.write(script["title"])
         else:
             print("[6/6] YouTubeアップロード中...")
             youtube_url = upload_to_youtube(
