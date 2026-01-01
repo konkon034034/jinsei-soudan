@@ -73,7 +73,7 @@ jobs:
           python nenkin_ab_test.py register "${{ github.event.inputs.video_id }}" "${{ github.event.inputs.title_a }}" "${{ github.event.inputs.title_b }}"
 
       - name: Discord通知（成功）
-        if: success()
+        if: false  # 通知無効化
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
@@ -84,7 +84,7 @@ jobs:
           fi
 
       - name: Discord通知（失敗）
-        if: failure()
+        if: false  # 通知無効化
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |

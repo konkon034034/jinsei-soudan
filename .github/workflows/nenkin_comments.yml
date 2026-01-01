@@ -43,7 +43,7 @@ jobs:
           python nenkin_comments.py
 
       - name: Slack通知（失敗）
-        if: failure()
+        if: false  # 通知無効化
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
