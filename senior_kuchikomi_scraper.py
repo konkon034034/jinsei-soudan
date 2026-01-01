@@ -185,21 +185,32 @@ def get_video_transcript(video_id: str) -> Optional[str]:
     return None
 
 
-def rewrite_with_gemini(original_text: str, video_title: str) -> Optional[dict]:
-    """Geminiで口コミ台本をリライト"""
+def generate_with_gemini(video_title: str, original_text: Optional[str] = None) -> Optional[dict]:
+    """Geminiで口コミ台本を生成（字幕なしでもタイトルから生成可能）"""
     if not GEMINI_API_KEY:
         raise ValueError("GEMINI_API_KEY が設定されていません")
 
     genai.configure(api_key=GEMINI_API_KEY)
     model = genai.GenerativeModel("gemini-2.0-flash-exp")
 
-    prompt = f"""以下の動画字幕を参考に、口コミランキング動画用の台本を作成してください。
+    # 字幕がある場合とない場合でプロンプトを変更
+    if original_text:
+        context_section = f"""【字幕テキスト（参考）】
+{original_text[:5000]}
 
-【元動画タイトル】
+【指示】
+上記の字幕を参考に、口コミランキング動画用の台本を作成してください。"""
+    else:
+        context_section = """【指示】
+上記のタイトルをテーマに、シニア向け口コミランキング動画用のオリジナル台本を作成してください。
+実在の商品名ではなく、カテゴリや一般的な表現を使ってください。"""
+
+    prompt = f"""シニア向け口コミランキング動画用の台本を作成してください。
+
+【参考動画タイトル】
 {video_title}
 
-【字幕テキスト（参考）】
-{original_text[:5000]}  # 長すぎる場合は切り詰め
+{context_section}
 
 【出力形式】
 以下のJSON形式で出力してください。5つの口コミを作成。
@@ -228,7 +239,7 @@ def rewrite_with_gemini(original_text: str, video_title: str) -> Optional[dict]:
 - 口コミは5位から1位の順で5つ
 - 各口コミに3-5個のトーク（カツミとヒロシの掛け合い）
 - カツミ（女性、明るい）とヒロシ（男性、落ち着いた）
-- 元の内容を参考にしつつ、完全にオリジナルの文章で
+- 完全にオリジナルの文章で
 - 著作権に配慮し、固有名詞は一般化
 - JSONのみ出力（説明不要）
 """
@@ -278,25 +289,29 @@ def process_channel(channel: dict) -> Optional[dict]:
 
     print(f"   📹 {len(videos)}本の動画を取得")
 
-    # 最も人気の動画から字幕を取得
+    # 最も人気の動画から台本を生成
     for video in videos:
         print(f"   🎬 {video['title'][:40]}...")
         print(f"      再生回数: {video['view_count']:,}")
 
+        # 字幕を試みる（失敗しても続行）
         transcript = get_video_transcript(video["video_id"])
         if transcript:
             print(f"      ✓ 字幕取得成功 ({len(transcript)}文字)")
+        else:
+            print(f"      ⚠ 字幕なし - タイトルから生成します")
 
-            # Geminiでリライト
-            script = rewrite_with_gemini(transcript, video["title"])
-            if script:
-                script["source"] = {
-                    "channel_name": channel_name,
-                    "video_id": video["video_id"],
-                    "video_title": video["title"],
-                    "view_count": video["view_count"],
-                }
-                return script
+        # Geminiで台本生成（字幕があればそれを参考に、なければタイトルから）
+        script = generate_with_gemini(video["title"], transcript)
+        if script:
+            script["source"] = {
+                "channel_name": channel_name,
+                "video_id": video["video_id"],
+                "video_title": video["title"],
+                "view_count": video["view_count"],
+                "has_transcript": transcript is not None,
+            }
+            return script
 
     return None
 
