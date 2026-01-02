@@ -74,6 +74,11 @@ VOICE_CONFIG = {
 TEST_MODE = os.environ.get("TEST_MODE", "false").lower() == "true"
 TEST_COUNT = 5  # テスト時の口コミ件数
 
+# Modal GPU モード（デフォルト: true）
+# USE_MODAL_GPU=true → Modal GPU で高速エンコード
+# USE_MODAL_GPU=false → ローカル MoviePy（遅い）
+USE_MODAL_GPU = os.environ.get("USE_MODAL_GPU", "true").lower() == "true"
+
 
 def hex_to_rgb(hex_color):
     """HEXカラーをRGBタプルに変換"""
@@ -1660,8 +1665,20 @@ def generate_kuchikomi_with_gemini(theme, count):
     return json.loads(response_text.strip())
 
 
-def generate_tts_audio(text, voice, output_path):
-    """Gemini TTSで音声を生成（新しいgoogle.genai APIを使用）"""
+def generate_tts_audio(text, voice, output_path, max_retries=3):
+    """Gemini TTSで音声を生成（新しいgoogle.genai APIを使用）
+
+    Args:
+        text: 読み上げテキスト
+        voice: 音声名
+        output_path: 出力ファイルパス
+        max_retries: 最大リトライ回数（レート制限対策）
+
+    Returns:
+        Path: 生成された音声ファイルパス
+    """
+    import time
+
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("GEMINI_API_KEY環境変数が設定されていません")
@@ -1669,51 +1686,73 @@ def generate_tts_audio(text, voice, output_path):
     # 新しいgoogle.genai Clientを使用
     client = genai_new.Client(api_key=api_key)
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash-preview-tts",
-        contents=text,
-        config=genai_types.GenerateContentConfig(
-            response_modalities=["AUDIO"],
-            speech_config=genai_types.SpeechConfig(
-                voice_config=genai_types.VoiceConfig(
-                    prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
-                        voice_name=voice
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.5-flash-preview-tts",
+                contents=text,
+                config=genai_types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=genai_types.SpeechConfig(
+                        voice_config=genai_types.VoiceConfig(
+                            prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
+                                voice_name=voice
+                            )
+                        )
                     )
                 )
             )
-        )
-    )
 
-    audio_data = response.candidates[0].content.parts[0].inline_data.data
-    mime_type = response.candidates[0].content.parts[0].inline_data.mime_type
+            audio_data = response.candidates[0].content.parts[0].inline_data.data
+            mime_type = response.candidates[0].content.parts[0].inline_data.mime_type
 
-    # MP3として一時保存してFFmpegでWAVに変換
-    output_path_str = str(output_path)
-    if mime_type and "mp3" in mime_type:
-        # MP3をWAVに変換
-        mp3_path = output_path_str.replace(".wav", ".mp3")
-        with open(mp3_path, "wb") as f:
-            f.write(audio_data)
-        # ffmpegで変換
-        subprocess.run(
-            ["ffmpeg", "-y", "-i", mp3_path, "-ar", "44100", "-ac", "2", output_path_str],
-            capture_output=True
-        )
-        os.remove(mp3_path)
-    else:
-        # PCM/raw audioの場合、ffmpegでWAVに変換
-        raw_path = output_path_str.replace(".wav", ".raw")
-        with open(raw_path, "wb") as f:
-            f.write(audio_data)
-        # PCM 24kHz mono -> WAV 44.1kHz stereo
-        subprocess.run(
-            ["ffmpeg", "-y", "-f", "s16le", "-ar", "24000", "-ac", "1", "-i", raw_path,
-             "-ar", "44100", "-ac", "2", output_path_str],
-            capture_output=True
-        )
-        os.remove(raw_path)
+            # MP3として一時保存してFFmpegでWAVに変換
+            output_path_str = str(output_path)
+            if mime_type and "mp3" in mime_type:
+                # MP3をWAVに変換
+                mp3_path = output_path_str.replace(".wav", ".mp3")
+                with open(mp3_path, "wb") as f:
+                    f.write(audio_data)
+                # ffmpegで変換
+                subprocess.run(
+                    ["ffmpeg", "-y", "-i", mp3_path, "-ar", "44100", "-ac", "2", output_path_str],
+                    capture_output=True
+                )
+                if os.path.exists(mp3_path):
+                    os.remove(mp3_path)
+            else:
+                # PCM/raw audioの場合、ffmpegでWAVに変換
+                raw_path = output_path_str.replace(".wav", ".raw")
+                with open(raw_path, "wb") as f:
+                    f.write(audio_data)
+                # PCM 24kHz mono -> WAV 44.1kHz stereo
+                subprocess.run(
+                    ["ffmpeg", "-y", "-f", "s16le", "-ar", "24000", "-ac", "1", "-i", raw_path,
+                     "-ar", "44100", "-ac", "2", output_path_str],
+                    capture_output=True
+                )
+                if os.path.exists(raw_path):
+                    os.remove(raw_path)
 
-    return output_path
+            return output_path
+
+        except Exception as e:
+            last_error = e
+            error_str = str(e)
+
+            # レート制限エラーの場合はリトライ
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                wait_time = (attempt + 1) * 5  # 5秒、10秒、15秒と増加
+                print(f"    レート制限 - {wait_time}秒待機してリトライ ({attempt + 1}/{max_retries})")
+                time.sleep(wait_time)
+                continue
+            else:
+                # その他のエラーはリトライしない
+                raise
+
+    # 全リトライ失敗
+    raise last_error
 
 
 def generate_all_audio(kuchikomi_data, theme_title, temp_dir):
@@ -1760,22 +1799,32 @@ def generate_all_audio(kuchikomi_data, theme_title, temp_dir):
                 "path": line_path
             })
 
-    # 並列生成
+    # 並列生成（レート制限対策でワーカー数を制限）
     print(f"音声を生成中... ({len(tasks)}件)")
+    success_count = 0
+    fail_count = 0
 
     def generate_one(task):
         try:
             generate_tts_audio(task["text"], task["voice"], task["path"])
-            print(f"  生成完了: {task['path'].name}")
-            return task
+            return {"success": True, "task": task}
         except Exception as e:
-            print(f"  エラー: {task['path'].name} - {e}")
-            return None
+            return {"success": False, "task": task, "error": str(e)}
 
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    # ワーカー数を3に制限（レート制限対策）
+    with ThreadPoolExecutor(max_workers=3) as executor:
         results = list(executor.map(generate_one, tasks))
 
-    return [r for r in results if r is not None]
+    for r in results:
+        if r["success"]:
+            success_count += 1
+            print(f"  生成完了: {r['task']['path'].name}")
+        else:
+            fail_count += 1
+            print(f"  エラー: {r['task']['path'].name} - {r['error']}")
+
+    print(f"音声生成完了: 成功 {success_count}件, 失敗 {fail_count}件")
+    return [r["task"] for r in results if r["success"]]
 
 
 def get_audio_duration(audio_path):
@@ -1963,16 +2012,56 @@ def create_video(kuchikomi_data, theme, temp_dir, output_path):
     print("動画を結合中...")
     final_video = concatenate_videoclips(clips, method="compose")
 
-    print(f"動画を書き出し中: {output_path}")
-    final_video.write_videofile(
-        str(output_path),
-        fps=24,
-        codec="libx264",
-        audio_codec="aac",
-        temp_audiofile=str(temp_dir / "temp_audio.m4a"),
-        remove_temp=True,
-        logger="bar"
-    )
+    if USE_MODAL_GPU:
+        # Modal GPU エンコード
+        print(f"[Modal GPU] 動画を書き出し中: {output_path}")
+        import base64
+
+        # 一時ファイルにローカルで書き出し（低品質・高速）
+        temp_video_path = temp_dir / "temp_video.mp4"
+        final_video.write_videofile(
+            str(temp_video_path),
+            fps=24,
+            codec="libx264",
+            preset="ultrafast",
+            audio_codec="aac",
+            temp_audiofile=str(temp_dir / "temp_audio.m4a"),
+            remove_temp=True,
+            logger="bar"
+        )
+
+        # Modal GPUで再エンコード
+        try:
+            import modal
+            encode_fn = modal.Function.from_name("nenkin-video", "encode_video_from_clips")
+
+            with open(temp_video_path, "rb") as f:
+                video_b64 = base64.b64encode(f.read()).decode()
+
+            print("  [Modal] GPU再エンコード中...")
+            video_bytes = encode_fn.remote([video_b64], output_path.name)
+
+            with open(output_path, "wb") as f:
+                f.write(video_bytes)
+            print(f"  [Modal] 完了: {output_path}")
+
+        except Exception as e:
+            print(f"  [Modal] エラー: {e}")
+            print("  [Modal] ローカルファイルを使用")
+            import shutil
+            shutil.copy(temp_video_path, output_path)
+    else:
+        # ローカル MoviePy エンコード（遅い）
+        print(f"[ローカル] 動画を書き出し中: {output_path}")
+        final_video.write_videofile(
+            str(output_path),
+            fps=24,
+            codec="libx264",
+            audio_codec="aac",
+            temp_audiofile=str(temp_dir / "temp_audio.m4a"),
+            remove_temp=True,
+            logger="bar"
+        )
 
     # クリップをクローズ
     for clip in clips:

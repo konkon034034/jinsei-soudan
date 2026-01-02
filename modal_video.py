@@ -188,6 +188,149 @@ def encode_video_cpu(bg_base64: str, audio_base64: str, ass_content: str, output
             return f.read()
 
 
+@app.function(gpu="A10G", image=image, timeout=1800)
+def encode_video_from_clips(clip_videos_base64: list, output_name: str) -> bytes:
+    """
+    複数の動画クリップを結合してGPUエンコード
+
+    Args:
+        clip_videos_base64: 動画クリップのbase64リスト
+        output_name: 出力ファイル名
+
+    Returns:
+        bytes: エンコードされた動画データ
+    """
+    import base64
+    import subprocess
+    import tempfile
+    import os
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # 各クリップを一時ファイルに保存
+        clip_paths = []
+        for i, clip_b64 in enumerate(clip_videos_base64):
+            clip_path = os.path.join(tmpdir, f"clip_{i:04d}.mp4")
+            with open(clip_path, "wb") as f:
+                f.write(base64.b64decode(clip_b64))
+            clip_paths.append(clip_path)
+
+        # concat用のリストファイル作成
+        list_path = os.path.join(tmpdir, "list.txt")
+        with open(list_path, "w") as f:
+            for path in clip_paths:
+                f.write(f"file '{path}'\n")
+
+        output_path = os.path.join(tmpdir, output_name)
+
+        # ffmpeg concat + GPU re-encode
+        cmd = [
+            'ffmpeg', '-y',
+            '-f', 'concat', '-safe', '0', '-i', list_path,
+            '-c:v', 'h264_nvenc',
+            '-preset', 'fast',
+            '-b:v', '5M',
+            '-c:a', 'aac', '-b:a', '192k',
+            '-pix_fmt', 'yuv420p',
+            '-movflags', '+faststart',
+            output_path
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"GPU encoding failed, falling back to CPU: {result.stderr}")
+            # CPU fallback
+            cmd = [
+                'ffmpeg', '-y',
+                '-f', 'concat', '-safe', '0', '-i', list_path,
+                '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+                '-c:a', 'aac', '-b:a', '192k',
+                '-pix_fmt', 'yuv420p',
+                '-movflags', '+faststart',
+                output_path
+            ]
+            subprocess.run(cmd, check=True)
+
+        with open(output_path, "rb") as f:
+            return f.read()
+
+
+@app.function(gpu="A10G", image=image, timeout=1800)
+def encode_video_from_frames(
+    frames_base64: list,
+    audio_base64: str,
+    fps: int,
+    output_name: str
+) -> bytes:
+    """
+    フレーム画像のリストと音声から動画をGPUエンコード
+
+    Args:
+        frames_base64: フレーム画像のbase64リスト（PNG）
+        audio_base64: 音声ファイル（WAV/MP3）のbase64
+        fps: フレームレート
+        output_name: 出力ファイル名
+
+    Returns:
+        bytes: エンコードされた動画データ
+    """
+    import base64
+    import subprocess
+    import tempfile
+    import os
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # フレーム画像を保存
+        frames_dir = os.path.join(tmpdir, "frames")
+        os.makedirs(frames_dir)
+        for i, frame_b64 in enumerate(frames_base64):
+            frame_path = os.path.join(frames_dir, f"frame_{i:06d}.png")
+            with open(frame_path, "wb") as f:
+                f.write(base64.b64decode(frame_b64))
+
+        # 音声を保存
+        audio_path = os.path.join(tmpdir, "audio.wav")
+        with open(audio_path, "wb") as f:
+            f.write(base64.b64decode(audio_base64))
+
+        output_path = os.path.join(tmpdir, output_name)
+
+        # ffmpeg: フレーム + 音声 → 動画
+        cmd = [
+            'ffmpeg', '-y',
+            '-framerate', str(fps),
+            '-i', os.path.join(frames_dir, 'frame_%06d.png'),
+            '-i', audio_path,
+            '-c:v', 'h264_nvenc',
+            '-preset', 'fast',
+            '-b:v', '5M',
+            '-c:a', 'aac', '-b:a', '192k',
+            '-pix_fmt', 'yuv420p',
+            '-shortest',
+            '-movflags', '+faststart',
+            output_path
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"GPU encoding failed, falling back to CPU: {result.stderr}")
+            cmd = [
+                'ffmpeg', '-y',
+                '-framerate', str(fps),
+                '-i', os.path.join(frames_dir, 'frame_%06d.png'),
+                '-i', audio_path,
+                '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+                '-c:a', 'aac', '-b:a', '192k',
+                '-pix_fmt', 'yuv420p',
+                '-shortest',
+                '-movflags', '+faststart',
+                output_path
+            ]
+            subprocess.run(cmd, check=True)
+
+        with open(output_path, "rb") as f:
+            return f.read()
+
+
 # ローカルからの呼び出し用テスト
 @app.local_entrypoint()
 def main():
@@ -196,10 +339,13 @@ def main():
     print("Modal GPU Video Encoder")
     print("=" * 50)
     print("利用可能な関数:")
-    print("  - encode_video_gpu: A10G GPU (h264_nvenc)")
-    print("  - encode_video_cpu: CPU (libx264)")
+    print("  - encode_video_gpu: A10G GPU (h264_nvenc) - 背景+音声+ASS字幕")
+    print("  - encode_video_cpu: CPU (libx264) - 背景+音声+ASS字幕")
+    print("  - encode_video_from_clips: A10G GPU - 複数クリップ結合")
+    print("  - encode_video_from_frames: A10G GPU - フレーム画像から動画生成")
     print("")
     print("使用例:")
-    print("  from modal_video import encode_video_gpu")
-    print("  result = encode_video_gpu.remote(bg_b64, audio_b64, ass, 'output.mp4')")
+    print("  import modal")
+    print("  encode_fn = modal.Function.from_name('nenkin-video', 'encode_video_gpu')")
+    print("  result = encode_fn.remote(bg_b64, audio_b64, ass, 'output.mp4')")
     print("=" * 50)
