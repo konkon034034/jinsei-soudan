@@ -2588,8 +2588,21 @@ def main():
 
             create_video(kuchikomi_data, theme, temp_dir, output_path)
 
+            # 動画をカレントディレクトリにコピー（Artifacts用）
+            import shutil
+            from datetime import datetime
+            artifact_file = f"company_kuchikomi_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+            shutil.copy(output_path, artifact_file)
+
             print()
             print(f"✅ 完了! 出力ファイル: {output_path}")
+            print(f"  Artifactsファイル: {artifact_file}")
+
+            # 通知用にファイル出力
+            with open("video_url.txt", "w") as f:
+                f.write(f"file://{os.path.abspath(artifact_file)}")
+            with open("video_title.txt", "w") as f:
+                f.write(theme_title)
 
         return
 
@@ -2651,12 +2664,19 @@ def main():
 
         create_video(kuchikomi_data, theme, temp_dir, output_path)
 
+        # 動画をカレントディレクトリにコピー（Artifacts用）
+        import shutil
+        from datetime import datetime
+        artifact_file = f"company_kuchikomi_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+        shutil.copy(output_path, artifact_file)
+
         print()
         print(f"完了! 出力ファイル: {output_path}")
+        print(f"  Artifactsファイル: {artifact_file}")
 
         # 通知用にファイル出力
         with open("video_url.txt", "w") as f:
-            f.write(f"file://{output_path}")
+            f.write(f"file://{os.path.abspath(artifact_file)}")
         with open("video_title.txt", "w") as f:
             f.write(theme["title"])
 

@@ -2,8 +2,8 @@ name: 会社口コミランキング動画自動生成
 
 on:
   schedule:
-    # 毎日 JST 8:00 に実行 (UTC 23:00 前日)
-    - cron: '0 23 * * *'
+    # 毎日 JST 9:00 に実行 (UTC 0:00)
+    - cron: '0 0 * * *'
   workflow_dispatch:
     inputs:
       test_mode:
@@ -22,6 +22,21 @@ on:
         options:
           - 'false'
           - 'true'
+      use_modal_gpu:
+        description: 'Modal GPUを使用する'
+        required: false
+        default: 'true'
+        type: boolean
+      theme:
+        description: 'テーマ（0=ブラック企業）'
+        required: false
+        default: '0'
+        type: string
+      count:
+        description: '口コミ件数'
+        required: false
+        default: '5'
+        type: string
       auto_upload:
         description: 'YouTubeに自動アップロード'
         required: false
@@ -57,7 +72,14 @@ jobs:
       - name: Python依存関係をインストール
         run: |
           pip install --upgrade pip
-          pip install google-genai google-generativeai pydub pillow google-auth google-api-python-client requests youtube-transcript-api moviepy numpy qrcode[pil]
+          pip install -r requirements.txt
+
+      - name: Modal関数をデプロイ
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          modal deploy modal_video.py
 
       - name: 競合チャンネルから台本生成
         if: ${{ github.event.inputs.skip_scraper != 'true' }}
@@ -123,9 +145,16 @@ jobs:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN_26: ${{ secrets.YOUTUBE_REFRESH_TOKEN_26 }}
+          # Modal GPU
+          USE_MODAL_GPU: ${{ github.event.inputs.use_modal_gpu || 'true' }}
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
         run: |
           echo "=== 会社口コミランキング動画生成 ==="
-          python company_kuchikomi_ranking.py --script latest
+          THEME="${{ github.event.inputs.theme || '0' }}"
+          COUNT="${{ github.event.inputs.count || '5' }}"
+          echo "テーマ: $THEME, 件数: $COUNT"
+          python company_kuchikomi_ranking.py --script latest --theme "$THEME" --count "$COUNT"
 
           echo ""
           echo "=== 生成された動画 ==="
@@ -159,6 +188,7 @@ jobs:
         with:
           name: company-kuchikomi-video-${{ github.run_id }}
           path: |
+            company_kuchikomi_*.mp4
             output/*.mp4
             company_scripts/*.json
           retention-days: 7
