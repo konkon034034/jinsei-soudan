@@ -2,8 +2,8 @@ name: シニア口コミランキング動画自動生成
 
 on:
   schedule:
-    # 毎日 JST 7:00 に実行 (UTC 22:00 前日)
-    - cron: '0 22 * * *'
+    # 毎日 JST 10:00 に実行 (UTC 1:00)
+    - cron: '0 1 * * *'
   workflow_dispatch:
     inputs:
       test_mode:
@@ -75,6 +75,9 @@ jobs:
       - name: 口コミランキング動画を生成
         env:
           TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
+          USE_MODAL_GPU: 'true'
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           # Gemini API Keys (1-42) for TTS rotation
           GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
@@ -125,7 +128,8 @@ jobs:
           YOUTUBE_REFRESH_TOKEN_27: ${{ secrets.YOUTUBE_REFRESH_TOKEN_27 }}
         run: |
           echo "=== 口コミランキング動画生成 ==="
-          python senior_kuchikomi_ranking.py --script latest
+          pip install modal
+          python senior_kuchikomi_ranking.py --theme 0 --count 5
 
           echo ""
           echo "=== 生成された動画 ==="
