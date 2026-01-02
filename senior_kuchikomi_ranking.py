@@ -1195,8 +1195,8 @@ def create_talk_with_topic_frame(rank, percent, topic, speaker, subtitle_text, t
     subtitle_height = 180
     subtitle_y = HEIGHT - subtitle_height
 
-    # 半透明の黒背景
-    subtitle_bg = Image.new('RGBA', (WIDTH, subtitle_height), (0, 0, 0, 180))
+    # 薄いピンクベージュ背景 rgba(255, 228, 225, 0.9)
+    subtitle_bg = Image.new('RGBA', (WIDTH, subtitle_height), (255, 228, 225, 230))  # 0.9 * 255 ≈ 230
     img.paste(subtitle_bg, (0, subtitle_y), subtitle_bg)
 
     # 字幕テキスト
@@ -1204,8 +1204,9 @@ def create_talk_with_topic_frame(rank, percent, topic, speaker, subtitle_text, t
         subtitle_font = get_font(48)
         # 話者名＋テキスト
         speaker_name = "カツミ" if speaker == "katsumi" else "ヒロシ"
-        # 話者名の色
-        speaker_color = (233, 30, 99) if speaker == "katsumi" else (33, 150, 243)
+        # 話者名の色: カツミ=ピンク #FF69B4、ヒロシ=青 #0066CC
+        name_color = (255, 105, 180) if speaker == "katsumi" else (0, 102, 204)
+        body_color = (51, 51, 51)  # メインテキスト: 黒 #333333
         speaker_text = f"{speaker_name}："
 
         full_text = f"{speaker_name}：{subtitle_text}"
@@ -1223,33 +1224,19 @@ def create_talk_with_topic_frame(rank, percent, topic, speaker, subtitle_text, t
 
             # 最初の行のみ話者名を色分け
             if i == 0 and line.startswith(speaker_name):
-                # 話者名部分（ピンクまたは水色）
+                # 話者名部分（ピンクまたは青）
                 bbox_speaker = draw.textbbox((0, 0), speaker_text, font=subtitle_font)
                 speaker_width = bbox_speaker[2] - bbox_speaker[0]
 
-                # 話者名の黒縁取り
-                for ox in range(-2, 3):
-                    for oy in range(-2, 3):
-                        if ox != 0 or oy != 0:
-                            draw.text((line_x + ox, line_y + oy), speaker_text, fill=(0, 0, 0), font=subtitle_font)
-                draw.text((line_x, line_y), speaker_text, fill=speaker_color, font=subtitle_font)
+                # 話者名（縁取りなし）
+                draw.text((line_x, line_y), speaker_text, fill=name_color, font=subtitle_font)
 
-                # 本文部分（白）
+                # 本文部分（縁取りなし）
                 remaining_text = line[len(speaker_name) + 1:]  # "：" の後
-                # 白縁取り
-                for ox in range(-2, 3):
-                    for oy in range(-2, 3):
-                        if ox != 0 or oy != 0:
-                            draw.text((line_x + speaker_width + ox, line_y + oy), remaining_text, fill=(0, 0, 0), font=subtitle_font)
-                draw.text((line_x + speaker_width, line_y), remaining_text, fill=(255, 255, 255), font=subtitle_font)
+                draw.text((line_x + speaker_width, line_y), remaining_text, fill=body_color, font=subtitle_font)
             else:
-                # 2行目以降は全て白
-                # 白縁取り
-                for ox in range(-2, 3):
-                    for oy in range(-2, 3):
-                        if ox != 0 or oy != 0:
-                            draw.text((line_x + ox, line_y + oy), line, fill=(0, 0, 0), font=subtitle_font)
-                draw.text((line_x, line_y), line, fill=(255, 255, 255), font=subtitle_font)
+                # 2行目以降は本文のみ（縁取りなし）
+                draw.text((line_x, line_y), line, fill=body_color, font=subtitle_font)
 
     # === キャラクター（揺れなし）===
     char_size = 160
