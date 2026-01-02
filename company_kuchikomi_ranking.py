@@ -1196,8 +1196,8 @@ def create_talk_with_topic_frame(rank, percent, topic, speaker, subtitle_text, t
     subtitle_height = 180
     subtitle_y = HEIGHT - subtitle_height
 
-    # 半透明の黒背景
-    subtitle_bg = Image.new('RGBA', (WIDTH, subtitle_height), (0, 0, 0, 180))
+    # 半透明の黒背景 - パターンA: 黄色ゴールド (rgba(0,0,0,0.95))
+    subtitle_bg = Image.new('RGBA', (WIDTH, subtitle_height), (0, 0, 0, 242))  # 0.95 * 255 ≈ 242
     img.paste(subtitle_bg, (0, subtitle_y), subtitle_bg)
 
     # 字幕テキスト
@@ -1208,7 +1208,8 @@ def create_talk_with_topic_frame(rank, percent, topic, speaker, subtitle_text, t
 
         # 話者名の色
         name_color = (233, 30, 99) if speaker == "katsumi" else (33, 150, 243)  # カツミ=ピンク、ヒロシ=水色
-        body_color = (255, 255, 255)  # 本文は白
+        body_color = (255, 215, 0)  # パターンA: 黄色ゴールド #FFD700
+        outline_range = 2  # パターンA: 黒2px
 
         # 折り返し処理
         max_text_width = WIDTH - 100
@@ -1226,8 +1227,8 @@ def create_talk_with_topic_frame(rank, percent, topic, speaker, subtitle_text, t
             if i == 0 and "：" in line:
                 parts = line.split("：", 1)
                 # 話者名部分（黒縁取り）
-                for ox in range(-2, 3):
-                    for oy in range(-2, 3):
+                for ox in range(-outline_range, outline_range + 1):
+                    for oy in range(-outline_range, outline_range + 1):
                         if ox != 0 or oy != 0:
                             draw.text((line_x + ox, line_y + oy), parts[0] + "：", fill=(0, 0, 0), font=subtitle_font)
                 draw.text((line_x, line_y), parts[0] + "：", fill=name_color, font=subtitle_font)
@@ -1237,15 +1238,15 @@ def create_talk_with_topic_frame(rank, percent, topic, speaker, subtitle_text, t
                 body_x = line_x + (name_bbox[2] - name_bbox[0])
 
                 # 本文部分（黒縁取り）
-                for ox in range(-2, 3):
-                    for oy in range(-2, 3):
+                for ox in range(-outline_range, outline_range + 1):
+                    for oy in range(-outline_range, outline_range + 1):
                         if ox != 0 or oy != 0:
                             draw.text((body_x + ox, line_y + oy), parts[1], fill=(0, 0, 0), font=subtitle_font)
                 draw.text((body_x, line_y), parts[1], fill=body_color, font=subtitle_font)
             else:
-                # 2行目以降は本文のみ（白）
-                for ox in range(-2, 3):
-                    for oy in range(-2, 3):
+                # 2行目以降は本文のみ
+                for ox in range(-outline_range, outline_range + 1):
+                    for oy in range(-outline_range, outline_range + 1):
                         if ox != 0 or oy != 0:
                             draw.text((line_x + ox, line_y + oy), line, fill=(0, 0, 0), font=subtitle_font)
                 draw.text((line_x, line_y), line, fill=body_color, font=subtitle_font)
