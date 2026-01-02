@@ -5343,13 +5343,17 @@ LINE登録で毎日の年金ニュースも届きます📱
 
         if skip_upload:
             print("\n[6/7] アップロードをスキップ（SKIP_UPLOAD=true）")
-            video_url = f"file://{os.path.abspath(video_path)}"
+            # 動画をカレントディレクトリにコピー（Artifacts用）
+            import shutil
+            output_file = f"nenkin_news_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+            shutil.copy(video_path, output_file)
+            video_url = f"file://{os.path.abspath(output_file)}"
             # 動画パスをファイルに保存（確認用）
             with open("video_url.txt", "w") as f:
                 f.write(video_url)
             with open("video_title.txt", "w") as f:
                 f.write(title)
-            print(f"  動画ファイル: {video_path}")
+            print(f"  動画ファイル: {output_file}")
             print(f"  タイトル: {title}")
             print("  ✓ Artifactsから動画をダウンロードして確認してください")
         else:
