@@ -188,6 +188,77 @@ def encode_video_cpu(bg_base64: str, audio_base64: str, ass_content: str, output
             return f.read()
 
 
+@app.function(gpu="A10G", image=image, timeout=600)
+def encode_video_recompress_gpu(video_base64: str, audio_base64: str, output_name: str) -> bytes:
+    """
+    GPU (h264_nvenc) で動画を再エンコード
+
+    MoviePyで作成した動画ファイルをNVIDIA GPUで高速再エンコードする
+
+    Args:
+        video_base64: 入力動画ファイル（base64）
+        audio_base64: 音声ファイル（base64）
+        output_name: 出力ファイル名
+
+    Returns:
+        bytes: エンコードされた動画データ
+    """
+    import base64
+    import subprocess
+    import tempfile
+    import os
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # ファイルを一時保存
+        video_path = os.path.join(tmpdir, "input.mp4")
+        audio_path = os.path.join(tmpdir, "audio.wav")
+        output_path = os.path.join(tmpdir, output_name)
+
+        with open(video_path, "wb") as f:
+            f.write(base64.b64decode(video_base64))
+        with open(audio_path, "wb") as f:
+            f.write(base64.b64decode(audio_base64))
+
+        # GPU エンコード（h264_nvenc）
+        cmd = [
+            'ffmpeg', '-y',
+            '-i', video_path,
+            '-i', audio_path,
+            '-map', '0:v',
+            '-map', '1:a',
+            '-c:v', 'h264_nvenc',  # NVIDIA GPU エンコード
+            '-preset', 'fast',
+            '-b:v', '5M',
+            '-c:a', 'aac', '-b:a', '192k',
+            '-shortest',
+            '-pix_fmt', 'yuv420p',
+            '-movflags', '+faststart',
+            output_path
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            # GPU非対応の場合はCPUフォールバック
+            print(f"GPU encoding failed, falling back to CPU: {result.stderr}")
+            cmd = [
+                'ffmpeg', '-y',
+                '-i', video_path,
+                '-i', audio_path,
+                '-map', '0:v',
+                '-map', '1:a',
+                '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+                '-c:a', 'aac', '-b:a', '192k',
+                '-shortest',
+                '-pix_fmt', 'yuv420p',
+                '-movflags', '+faststart',
+                output_path
+            ]
+            subprocess.run(cmd, check=True)
+
+        with open(output_path, "rb") as f:
+            return f.read()
+
+
 # ローカルからの呼び出し用テスト
 @app.local_entrypoint()
 def main():
