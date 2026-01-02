@@ -4,7 +4,7 @@ __pycache__/
 *$py.class
 *.so
 .Python
-.env
+# .env  # Commented out to allow GitHub Actions to commit .env
 .venv
 venv/
 ENV/
