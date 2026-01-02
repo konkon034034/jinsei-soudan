@@ -1982,6 +1982,530 @@ def create_video(kuchikomi_data, theme, temp_dir, output_path):
     return output_path
 
 
+# ========== サムネイル・タイトル・説明文・コメント・YouTube機能 ==========
+
+# サムネイルサイズ
+THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT = 1280, 720
+
+
+def generate_thumbnail_title(theme_title: str, kuchikomi_data: dict) -> str:
+    """サムネイル用のキャッチーなタイトルを生成（Gemini API）
+
+    Args:
+        theme_title: テーマタイトル
+        kuchikomi_data: 口コミデータ
+
+    Returns:
+        str: キャッチーなタイトル（20文字以内）
+    """
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return f"シニアの{theme_title}"
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-2.0-flash")
+
+    # 口コミテキストを取得
+    kuchikomi_texts = []
+    for k in kuchikomi_data.get("kuchikomi", [])[:3]:
+        text = k.get("text", "")
+        if text:
+            kuchikomi_texts.append(text[:50])
+
+    kuchikomi_summary = "\n".join(kuchikomi_texts) if kuchikomi_texts else theme_title
+
+    prompt = f"""
+以下のシニア向け口コミランキングから、YouTubeサムネイル用のキャッチーなタイトルを作成してください。
+
+【テーマ】
+{theme_title}
+
+【口コミサンプル】
+{kuchikomi_summary}
+
+【条件】
+- 15〜20文字以内
+- シニア層の興味を引く表現
+- 「！」「？」「...」などを効果的に使う
+- 共感を呼ぶワードを入れる
+
+【例】
+「60代が選んだ!? 本音ランキング」
+「知らないと損！シニアの常識」
+「みんな同じ！共感の嵐ランキング」
+
+【出力】
+タイトルのみを出力してください。
+"""
+
+    try:
+        response = model.generate_content(prompt)
+        title = response.text.strip().strip('"\'「」『』')
+        if len(title) > 25:
+            title = title[:22] + "..."
+        print(f"  [サムネ] タイトル: {title}")
+        return title
+    except Exception as e:
+        print(f"  ⚠ サムネタイトル生成エラー: {e}")
+        return f"シニアの{theme_title}"
+
+
+def generate_thumbnail(bg_image_path: str, title: str, output_path: str) -> bool:
+    """サムネイル画像を生成（オレンジ背景+白文字スタイル）
+
+    Args:
+        bg_image_path: 背景画像のパス（未使用時はグラデーション）
+        title: サムネイルタイトル
+        output_path: 出力パス
+
+    Returns:
+        bool: 成功したかどうか
+    """
+    from datetime import datetime
+
+    try:
+        # オレンジ系グラデーション背景
+        bg = Image.new('RGB', (THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT))
+        draw = ImageDraw.Draw(bg)
+        for y in range(THUMBNAIL_HEIGHT):
+            ratio = y / THUMBNAIL_HEIGHT
+            r = int(255 - ratio * 30)
+            g = int(140 - ratio * 40)
+            b = int(0 + ratio * 20)
+            draw.line([(0, y), (THUMBNAIL_WIDTH, y)], fill=(r, g, b))
+
+        draw = ImageDraw.Draw(bg)
+
+        # 半透明の茶色バー（下部40%）
+        bar_height = int(THUMBNAIL_HEIGHT * 0.40)
+        bar_y = THUMBNAIL_HEIGHT - bar_height
+        bar_overlay = Image.new('RGBA', (THUMBNAIL_WIDTH, bar_height), (60, 40, 30, 200))
+        bg.paste(bar_overlay, (0, bar_y), bar_overlay)
+
+        # フォント設定（日本語対応）
+        font_paths = [
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc",
+            "/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
+        ]
+
+        font = None
+        font_size = 72
+        for font_path in font_paths:
+            if os.path.exists(font_path):
+                try:
+                    font = ImageFont.truetype(font_path, font_size)
+                    break
+                except:
+                    continue
+
+        if font is None:
+            font = ImageFont.load_default()
+            font_size = 40
+
+        # タイトルテキストを描画（中央配置）
+        draw = ImageDraw.Draw(bg)
+
+        # テキストのバウンディングボックスを取得
+        bbox = draw.textbbox((0, 0), title, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+
+        # 中央配置
+        x = (THUMBNAIL_WIDTH - text_width) // 2
+        y = bar_y + (bar_height - text_height) // 2
+
+        # 白文字で描画
+        draw.text((x, y), title, font=font, fill=(255, 255, 255))
+
+        # 日付を小さく追加
+        date_text = datetime.now().strftime('%Y/%m/%d')
+        date_font_size = 36
+        date_font = None
+        for font_path in font_paths:
+            if os.path.exists(font_path):
+                try:
+                    date_font = ImageFont.truetype(font_path, date_font_size)
+                    break
+                except:
+                    continue
+
+        if date_font:
+            date_bbox = draw.textbbox((0, 0), date_text, font=date_font)
+            date_x = THUMBNAIL_WIDTH - (date_bbox[2] - date_bbox[0]) - 30
+            date_y = 20
+            draw.text((date_x, date_y), date_text, font=date_font, fill=(255, 255, 255))
+
+        # 保存
+        bg = bg.convert('RGB')
+        bg.save(output_path, 'JPEG', quality=95)
+        print(f"  [サムネ] ✓ 生成完了: {output_path}")
+        return True
+
+    except Exception as e:
+        print(f"  ⚠ サムネイル生成エラー: {e}")
+        return False
+
+
+def generate_video_title(theme_title: str, kuchikomi_data: dict) -> str:
+    """YouTube動画タイトルを生成（Gemini API）
+
+    Args:
+        theme_title: テーマタイトル
+        kuchikomi_data: 口コミデータ
+
+    Returns:
+        str: 動画タイトル
+    """
+    from datetime import datetime
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    date_str = datetime.now().strftime('%Y年%m月%d日')
+
+    if not api_key:
+        return f"【シニア口コミ】{theme_title}ランキング｜{date_str}"
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-2.0-flash")
+
+    count = len(kuchikomi_data.get("kuchikomi", []))
+
+    prompt = f"""
+以下のシニア向け口コミランキング動画のYouTubeタイトルを作成してください。
+
+【テーマ】{theme_title}
+【口コミ数】{count}件
+【日付】{date_str}
+
+【条件】
+- 50文字以内
+- シニア層が興味を持つ表現
+- 【】や｜を効果的に使う
+- 日付を入れる
+
+【例】
+「【60代必見】{theme_title}本音ランキングTOP{count}｜{date_str}」
+「シニアが選んだ！{theme_title}ランキング｜みんなの声{count}件」
+
+【出力】
+タイトルのみを出力してください。
+"""
+
+    try:
+        response = model.generate_content(prompt)
+        title = response.text.strip().strip('"\'「」『』')
+        if len(title) > 60:
+            title = title[:57] + "..."
+        print(f"  [タイトル] {title}")
+        return title
+    except Exception as e:
+        print(f"  ⚠ タイトル生成エラー: {e}")
+        return f"【シニア口コミ】{theme_title}ランキング｜{date_str}"
+
+
+def generate_video_description(theme_title: str, kuchikomi_data: dict) -> str:
+    """YouTube動画説明文を生成
+
+    Args:
+        theme_title: テーマタイトル
+        kuchikomi_data: 口コミデータ
+
+    Returns:
+        str: 動画説明文
+    """
+    from datetime import datetime
+
+    date_str = datetime.now().strftime('%Y年%m月%d日')
+    count = len(kuchikomi_data.get("kuchikomi", []))
+
+    # 基本説明文
+    description = f"""📢 {date_str}の口コミランキング
+
+【テーマ】{theme_title}
+【口コミ数】{count}件
+
+シニア世代のリアルな声を集めた口コミランキングをお届けします。
+カツミとヒロシの楽しいトークでご紹介！
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+📺 チャンネル登録・高評価よろしくお願いします！
+🔔 通知をONにして最新動画をチェック！
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+#シニア #口コミ #ランキング #{theme_title.replace(' ', '')} #60代 #70代 #人生相談
+"""
+
+    return description
+
+
+def generate_katsumi_comment(theme_title: str, kuchikomi_data: dict) -> str:
+    """カツミのキャラクターでコメントを生成（Gemini API）
+
+    Args:
+        theme_title: テーマタイトル
+        kuchikomi_data: 口コミデータ
+
+    Returns:
+        str: カツミのコメント
+    """
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return f"今日も見てくれてありがとう〜！{theme_title}のランキング、どうだった？共感してくれたら嬉しいわ〜♪"
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-2.0-flash")
+
+    prompt = f"""
+あなたはYouTubeの口コミランキング動画のナビゲーター「カツミ」です。
+動画を見てくれた視聴者への最初のコメントを書いてください。
+
+【カツミの設定】
+- 60代女性、明るくてポジティブ
+- 「〜わ」「〜よ」「〜ね」などの女性的な語尾
+- 視聴者を「みなさん」と呼ぶ
+- 絵文字を2-3個使う
+
+【今日のテーマ】{theme_title}
+
+【コメント例】
+「みなさん、今日も見てくれてありがとう〜！✨ {theme_title}のランキング、いかがでしたか？私も共感できるものばかりだったわ〜♪ コメント欄であなたの意見も聞かせてね！🎵」
+
+【条件】
+- 80〜120文字程度
+- 温かみのある口調
+- コメント欄での交流を促す
+
+【出力】
+コメントのみを出力してください。
+"""
+
+    try:
+        response = model.generate_content(prompt)
+        comment = response.text.strip().strip('"\'')
+        print(f"  [コメント] {comment[:50]}...")
+        return comment
+    except Exception as e:
+        print(f"  ⚠ コメント生成エラー: {e}")
+        return f"今日も見てくれてありがとう〜！{theme_title}のランキング、どうだった？共感してくれたら嬉しいわ〜♪"
+
+
+def upload_to_youtube(video_path: str, title: str, description: str, tags: list) -> str:
+    """YouTubeにアップロード
+
+    Args:
+        video_path: 動画ファイルパス
+        title: タイトル
+        description: 説明文
+        tags: タグリスト
+
+    Returns:
+        str: 動画URL（失敗時は空文字）
+    """
+    import requests
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload
+
+    client_id = os.environ.get("YOUTUBE_CLIENT_ID")
+    client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
+    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_23")
+
+    if not all([client_id, client_secret, refresh_token]):
+        print("  ⚠ YouTube認証情報が不足しています")
+        return ""
+
+    try:
+        # アクセストークン取得
+        response = requests.post("https://oauth2.googleapis.com/token", data={
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "refresh_token": refresh_token,
+            "grant_type": "refresh_token"
+        })
+        access_token = response.json()["access_token"]
+
+        from google.oauth2.credentials import Credentials as OAuthCredentials
+        creds = OAuthCredentials(
+            token=access_token,
+            refresh_token=refresh_token,
+            client_id=client_id,
+            client_secret=client_secret,
+            token_uri="https://oauth2.googleapis.com/token"
+        )
+        youtube = build("youtube", "v3", credentials=creds)
+
+        body = {
+            "snippet": {
+                "title": title,
+                "description": description,
+                "tags": tags,
+                "categoryId": "22"  # People & Blogs
+            },
+            "status": {
+                "privacyStatus": "public",
+                "selfDeclaredMadeForKids": False
+            }
+        }
+
+        media = MediaFileUpload(video_path, mimetype="video/mp4", resumable=True)
+        request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
+
+        response = None
+        while response is None:
+            status, response = request.next_chunk()
+            if status:
+                print(f"  アップロード進捗: {int(status.progress() * 100)}%")
+
+        video_id = response["id"]
+        url = f"https://www.youtube.com/watch?v={video_id}"
+
+        print("\n" + "=" * 40)
+        print("YouTube投稿完了!")
+        print("=" * 40)
+        print(f"動画URL: {url}")
+        print(f"タイトル: {title}")
+        print(f"公開設定: 公開")
+        print("=" * 40)
+
+        return video_id
+
+    except Exception as e:
+        print(f"  ⚠ YouTubeアップロードエラー: {e}")
+        return ""
+
+
+def set_youtube_thumbnail(video_id: str, thumbnail_path: str) -> bool:
+    """YouTubeにサムネイルを設定
+
+    Args:
+        video_id: 動画ID
+        thumbnail_path: サムネイル画像のパス
+
+    Returns:
+        bool: 成功したかどうか
+    """
+    import requests
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload
+
+    if not os.path.exists(thumbnail_path):
+        print(f"  ⚠ サムネイル画像が見つかりません: {thumbnail_path}")
+        return False
+
+    client_id = os.environ.get("YOUTUBE_CLIENT_ID")
+    client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
+    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_23")
+
+    if not all([client_id, client_secret, refresh_token]):
+        print("  ⚠ YouTube認証情報が不足のためサムネイル設定をスキップ")
+        return False
+
+    try:
+        # アクセストークン取得
+        response = requests.post("https://oauth2.googleapis.com/token", data={
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "refresh_token": refresh_token,
+            "grant_type": "refresh_token"
+        })
+        access_token = response.json()["access_token"]
+
+        from google.oauth2.credentials import Credentials as OAuthCredentials
+        creds = OAuthCredentials(
+            token=access_token,
+            refresh_token=refresh_token,
+            client_id=client_id,
+            client_secret=client_secret,
+            token_uri="https://oauth2.googleapis.com/token"
+        )
+        youtube = build("youtube", "v3", credentials=creds)
+
+        # サムネイルをアップロード
+        youtube.thumbnails().set(
+            videoId=video_id,
+            media_body=MediaFileUpload(thumbnail_path, mimetype='image/jpeg')
+        ).execute()
+
+        print(f"  ✓ YouTubeサムネイル設定完了")
+        return True
+
+    except Exception as e:
+        print(f"  ⚠ YouTubeサムネイル設定エラー: {e}")
+        return False
+
+
+def post_youtube_comment(video_id: str, comment_text: str) -> bool:
+    """YouTubeに最初のコメントを投稿
+
+    Args:
+        video_id: 動画ID
+        comment_text: コメント内容
+
+    Returns:
+        bool: 成功したかどうか
+    """
+    import requests
+    from googleapiclient.discovery import build
+
+    if not comment_text:
+        print("  ⚠ コメントが空のためスキップ")
+        return False
+
+    client_id = os.environ.get("YOUTUBE_CLIENT_ID")
+    client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
+    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_23")
+
+    if not all([client_id, client_secret, refresh_token]):
+        print("  ⚠ YouTube認証情報が不足のためコメント投稿をスキップ")
+        return False
+
+    try:
+        # アクセストークン取得
+        response = requests.post("https://oauth2.googleapis.com/token", data={
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "refresh_token": refresh_token,
+            "grant_type": "refresh_token"
+        })
+        access_token = response.json()["access_token"]
+
+        from google.oauth2.credentials import Credentials as OAuthCredentials
+        creds = OAuthCredentials(
+            token=access_token,
+            refresh_token=refresh_token,
+            client_id=client_id,
+            client_secret=client_secret,
+            token_uri="https://oauth2.googleapis.com/token"
+        )
+        youtube = build("youtube", "v3", credentials=creds)
+
+        # コメント投稿
+        comment_body = {
+            "snippet": {
+                "videoId": video_id,
+                "topLevelComment": {
+                    "snippet": {
+                        "textOriginal": comment_text
+                    }
+                }
+            }
+        }
+
+        youtube.commentThreads().insert(
+            part="snippet",
+            body=comment_body
+        ).execute()
+
+        print(f"  ✓ YouTubeコメント投稿完了")
+        return True
+
+    except Exception as e:
+        print(f"  ⚠ YouTubeコメント投稿エラー: {e}")
+        return False
+
+
 def main():
     """メイン処理"""
     import argparse
