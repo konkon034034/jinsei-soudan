@@ -105,25 +105,55 @@ def draw_text_with_effects(draw, pos, text, font, fill, outline_color=None, shad
 
 
 def get_font(size=48, bold=False):
-    """日本語フォントを取得"""
-    font_paths = [
-        # Linux (GitHub Actions) - Noto CJK fonts
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-        # macOS
+    """日本語フォントを取得（日本語専用フォントを優先）"""
+    # 日本語専用フォントを最優先
+    font_paths_jp = [
+        # Linux (GitHub Actions) - Noto Sans JP (日本語専用)
+        "/usr/share/fonts/opentype/noto/NotoSansJP-Bold.otf",
+        "/usr/share/fonts/truetype/noto/NotoSansJP-Bold.ttf",
+        "/usr/share/fonts/opentype/noto/NotoSansJP-Regular.otf",
+        "/usr/share/fonts/truetype/noto/NotoSansJP-Regular.ttf",
+        # macOS - ヒラギノ（日本語専用）
         "/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc",
         "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
-        "/Library/Fonts/Arial Unicode.ttf",
-        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
     ]
-    for path in font_paths:
+
+    # 日本語専用フォントを試す
+    for path in font_paths_jp:
         if os.path.exists(path):
             try:
                 return ImageFont.truetype(path, size)
             except:
                 continue
+
+    # CJKフォント（日本語インデックス=0を明示的に指定）
+    font_paths_cjk = [
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    ]
+
+    for path in font_paths_cjk:
+        if os.path.exists(path):
+            try:
+                # インデックス0は日本語フォント
+                return ImageFont.truetype(path, size, index=0)
+            except:
+                continue
+
+    # フォールバック
+    fallback_paths = [
+        "/Library/Fonts/Arial Unicode.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+    ]
+    for path in fallback_paths:
+        if os.path.exists(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except:
+                continue
+
     return ImageFont.load_default()
 
 
