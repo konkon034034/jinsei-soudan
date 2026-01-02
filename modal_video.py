@@ -188,6 +188,64 @@ def encode_video_cpu(bg_base64: str, audio_base64: str, ass_content: str, output
             return f.read()
 
 
+@app.function(gpu="A10G", image=image, timeout=600)
+def encode_video_kuchikomi(video_base64: str, output_name: str) -> bytes:
+    """
+    口コミランキング動画をGPU (h264_nvenc) で再エンコード
+
+    Args:
+        video_base64: 入力動画（base64）
+        output_name: 出力ファイル名
+
+    Returns:
+        bytes: エンコードされた動画データ
+    """
+    import base64
+    import subprocess
+    import tempfile
+    import os
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        input_path = os.path.join(tmpdir, "input.mp4")
+        output_path = os.path.join(tmpdir, output_name)
+
+        with open(input_path, "wb") as f:
+            f.write(base64.b64decode(video_base64))
+
+        # GPU エンコード（h264_nvenc）
+        cmd = [
+            'ffmpeg', '-y',
+            '-i', input_path,
+            '-c:v', 'h264_nvenc',
+            '-preset', 'fast',
+            '-b:v', '5M',
+            '-c:a', 'aac', '-b:a', '192k',
+            '-pix_fmt', 'yuv420p',
+            '-movflags', '+faststart',
+            output_path
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            # GPU非対応の場合はCPUフォールバック
+            print(f"GPU encoding failed, falling back to CPU: {result.stderr}")
+            cmd = [
+                'ffmpeg', '-y',
+                '-i', input_path,
+                '-c:v', 'libx264',
+                '-preset', 'fast',
+                '-crf', '23',
+                '-c:a', 'aac', '-b:a', '192k',
+                '-pix_fmt', 'yuv420p',
+                '-movflags', '+faststart',
+                output_path
+            ]
+            subprocess.run(cmd, check=True)
+
+        with open(output_path, "rb") as f:
+            return f.read()
+
+
 # ローカルからの呼び出し用テスト
 @app.local_entrypoint()
 def main():
@@ -196,8 +254,9 @@ def main():
     print("Modal GPU Video Encoder")
     print("=" * 50)
     print("利用可能な関数:")
-    print("  - encode_video_gpu: A10G GPU (h264_nvenc)")
+    print("  - encode_video_gpu: A10G GPU (h264_nvenc) - 年金ニュース用")
     print("  - encode_video_cpu: CPU (libx264)")
+    print("  - encode_video_kuchikomi: A10G GPU (h264_nvenc) - 口コミランキング用")
     print("")
     print("使用例:")
     print("  from modal_video import encode_video_gpu")

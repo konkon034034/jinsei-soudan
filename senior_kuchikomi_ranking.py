@@ -74,6 +74,84 @@ VOICE_CONFIG = {
 TEST_MODE = os.environ.get("TEST_MODE", "false").lower() == "true"
 TEST_COUNT = 5  # テスト時の口コミ件数
 
+# Modal GPUエンコード
+# USE_MODAL_GPU=true（デフォルト） → Modal GPU (高速)
+# USE_MODAL_GPU=false → ローカル CPU (遅い)
+USE_MODAL_GPU = os.environ.get("USE_MODAL_GPU", "true").lower() == "true"
+
+
+class GeminiKeyManager:
+    """Gemini APIキー管理（TTS用にも使用）"""
+    def __init__(self):
+        self.keys = []
+        base_key = os.environ.get("GEMINI_API_KEY")
+        if base_key:
+            self.keys.append(base_key)
+        for i in range(1, 43):  # GEMINI_API_KEY_1 〜 GEMINI_API_KEY_42
+            key = os.environ.get(f"GEMINI_API_KEY_{i}")
+            if key:
+                self.keys.append(key)
+        self.failed_keys = set()
+        self.current_index = 0
+        # 429エラー対策: キーごとの失敗回数を記録
+        self.key_failure_counts = {}
+        self.key_429_counts = {}
+
+    def get_working_key(self):
+        for key in self.keys:
+            if key not in self.failed_keys:
+                return key, f"KEY_{self.keys.index(key)}"
+        self.failed_keys.clear()
+        return self.keys[0] if self.keys else None, "KEY_0"
+
+    def get_key_by_index(self, index: int):
+        """インデックスでキーを取得（パラレル処理用）"""
+        if not self.keys:
+            return None
+        return self.keys[index % len(self.keys)]
+
+    def get_all_keys(self):
+        """全キーを取得"""
+        return self.keys.copy()
+
+    def get_key_with_least_failures(self, exclude_keys: set = None) -> tuple:
+        """失敗回数が最も少ないキーを取得（429対策）"""
+        exclude_keys = exclude_keys or set()
+        available_keys = [k for k in self.keys if k not in exclude_keys]
+
+        if not available_keys:
+            # 除外キーをクリアして全キーから選択
+            available_keys = self.keys.copy()
+
+        # 429エラー回数が最も少ないキーを選択
+        best_key = min(available_keys, key=lambda k: self.key_429_counts.get(k, 0))
+        key_index = self.keys.index(best_key)
+        return best_key, f"KEY_{key_index}"
+
+    def mark_failed(self, key_name):
+        idx = int(key_name.split("_")[1]) if "_" in key_name else 0
+        if idx < len(self.keys):
+            self.failed_keys.add(self.keys[idx])
+
+    def mark_429_error(self, api_key: str):
+        """429エラーを記録"""
+        self.key_429_counts[api_key] = self.key_429_counts.get(api_key, 0) + 1
+        key_index = self.keys.index(api_key) if api_key in self.keys else "?"
+        print(f"        [429] KEY_{key_index} 429エラー回数: {self.key_429_counts[api_key]}")
+
+    def get_error_summary(self) -> str:
+        """エラーサマリーを取得"""
+        summary = []
+        for i, key in enumerate(self.keys):
+            count_429 = self.key_429_counts.get(key, 0)
+            if count_429 > 0:
+                summary.append(f"KEY_{i}: 429x{count_429}")
+        return ", ".join(summary) if summary else "エラーなし"
+
+
+# グローバルなキーマネージャーを初期化
+gemini_key_manager = GeminiKeyManager()
+
 
 def hex_to_rgb(hex_color):
     """HEXカラーをRGBタプルに変換"""
@@ -1660,60 +1738,114 @@ def generate_kuchikomi_with_gemini(theme, count):
     return json.loads(response_text.strip())
 
 
-def generate_tts_audio(text, voice, output_path):
-    """Gemini TTSで音声を生成（新しいgoogle.genai APIを使用）"""
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
+def generate_tts_audio(text, voice, output_path, task_index=0):
+    """Gemini TTSで音声を生成（新しいgoogle.genai APIを使用、キーローテーション対応）
+
+    Args:
+        text: 読み上げるテキスト
+        voice: 音声名（Kore, Puck等）
+        output_path: 出力ファイルパス
+        task_index: タスクのインデックス（キーローテーション用）
+
+    Returns:
+        output_path: 成功時は出力パス
+
+    Raises:
+        ValueError: APIキーがない場合
+        Exception: TTS生成に失敗した場合
+    """
+    import time
+
+    # キーマネージャーからキーを取得（ローテーション）
+    if not gemini_key_manager.keys:
         raise ValueError("GEMINI_API_KEY環境変数が設定されていません")
 
-    # 新しいgoogle.genai Clientを使用
-    client = genai_new.Client(api_key=api_key)
+    # タスクインデックスに基づいてキーを選択（並列処理時の分散）
+    api_key = gemini_key_manager.get_key_by_index(task_index)
+    key_name = f"KEY_{task_index % len(gemini_key_manager.keys)}"
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash-preview-tts",
-        contents=text,
-        config=genai_types.GenerateContentConfig(
-            response_modalities=["AUDIO"],
-            speech_config=genai_types.SpeechConfig(
-                voice_config=genai_types.VoiceConfig(
-                    prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
-                        voice_name=voice
+    max_retries = 3
+    retry_count = 0
+    last_error = None
+
+    while retry_count < max_retries:
+        try:
+            # 新しいgoogle.genai Clientを使用
+            client = genai_new.Client(api_key=api_key)
+
+            response = client.models.generate_content(
+                model="gemini-2.5-flash-preview-tts",
+                contents=text,
+                config=genai_types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=genai_types.SpeechConfig(
+                        voice_config=genai_types.VoiceConfig(
+                            prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
+                                voice_name=voice
+                            )
+                        )
                     )
                 )
             )
-        )
-    )
 
-    audio_data = response.candidates[0].content.parts[0].inline_data.data
-    mime_type = response.candidates[0].content.parts[0].inline_data.mime_type
+            audio_data = response.candidates[0].content.parts[0].inline_data.data
+            mime_type = response.candidates[0].content.parts[0].inline_data.mime_type
 
-    # MP3として一時保存してFFmpegでWAVに変換
-    output_path_str = str(output_path)
-    if mime_type and "mp3" in mime_type:
-        # MP3をWAVに変換
-        mp3_path = output_path_str.replace(".wav", ".mp3")
-        with open(mp3_path, "wb") as f:
-            f.write(audio_data)
-        # ffmpegで変換
-        subprocess.run(
-            ["ffmpeg", "-y", "-i", mp3_path, "-ar", "44100", "-ac", "2", output_path_str],
-            capture_output=True
-        )
-        os.remove(mp3_path)
-    else:
-        # PCM/raw audioの場合、ffmpegでWAVに変換
-        raw_path = output_path_str.replace(".wav", ".raw")
-        with open(raw_path, "wb") as f:
-            f.write(audio_data)
-        # PCM 24kHz mono -> WAV 44.1kHz stereo
-        subprocess.run(
-            ["ffmpeg", "-y", "-f", "s16le", "-ar", "24000", "-ac", "1", "-i", raw_path,
-             "-ar", "44100", "-ac", "2", output_path_str],
-            capture_output=True
-        )
-        os.remove(raw_path)
+            # MP3として一時保存してFFmpegでWAVに変換
+            output_path_str = str(output_path)
+            if mime_type and "mp3" in mime_type:
+                # MP3をWAVに変換
+                mp3_path = output_path_str.replace(".wav", ".mp3")
+                with open(mp3_path, "wb") as f:
+                    f.write(audio_data)
+                # ffmpegで変換
+                subprocess.run(
+                    ["ffmpeg", "-y", "-i", mp3_path, "-ar", "44100", "-ac", "2", output_path_str],
+                    capture_output=True
+                )
+                if os.path.exists(mp3_path):
+                    os.remove(mp3_path)
+            else:
+                # PCM/raw audioの場合、ffmpegでWAVに変換
+                raw_path = output_path_str.replace(".wav", ".raw")
+                with open(raw_path, "wb") as f:
+                    f.write(audio_data)
+                # PCM 24kHz mono -> WAV 44.1kHz stereo
+                subprocess.run(
+                    ["ffmpeg", "-y", "-f", "s16le", "-ar", "24000", "-ac", "1", "-i", raw_path,
+                     "-ar", "44100", "-ac", "2", output_path_str],
+                    capture_output=True
+                )
+                if os.path.exists(raw_path):
+                    os.remove(raw_path)
 
-    return output_path
+            return output_path
+
+        except Exception as e:
+            error_str = str(e)
+            last_error = e
+            retry_count += 1
+
+            # 429エラー（レート制限）の場合
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                gemini_key_manager.mark_429_error(api_key)
+
+                # 別のキーを試す
+                api_key, key_name = gemini_key_manager.get_key_with_least_failures({api_key})
+                print(f"    [TTS] 429エラー、別のキー({key_name})でリトライ ({retry_count}/{max_retries})")
+                time.sleep(1)  # 短い待機
+
+            # 500番台エラー（サーバーエラー）の場合
+            elif "500" in error_str or "503" in error_str or "INTERNAL" in error_str:
+                print(f"    [TTS] サーバーエラー、リトライ ({retry_count}/{max_retries}): {error_str[:100]}")
+                time.sleep(2)  # 待機してリトライ
+
+            else:
+                # その他のエラーはそのまま上げる
+                raise
+
+    # リトライ上限に達した
+    raise Exception(f"TTS生成に失敗（{max_retries}回リトライ後）: {last_error}")
 
 
 def generate_all_audio(kuchikomi_data, theme_title, temp_dir):
@@ -1760,19 +1892,23 @@ def generate_all_audio(kuchikomi_data, theme_title, temp_dir):
                 "path": line_path
             })
 
+    # タスクにインデックスを追加（キーローテーション用）
+    for i, task in enumerate(tasks):
+        task["task_index"] = i
+
     # 並列生成
-    print(f"音声を生成中... ({len(tasks)}件)")
+    print(f"音声を生成中... ({len(tasks)}件、{len(gemini_key_manager.keys)}個のAPIキーを使用)")
 
     def generate_one(task):
         try:
-            generate_tts_audio(task["text"], task["voice"], task["path"])
+            generate_tts_audio(task["text"], task["voice"], task["path"], task["task_index"])
             print(f"  生成完了: {task['path'].name}")
             return task
         except Exception as e:
             print(f"  エラー: {task['path'].name} - {e}")
             return None
 
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=min(5, len(gemini_key_manager.keys) or 5)) as executor:
         results = list(executor.map(generate_one, tasks))
 
     return [r for r in results if r is not None]
@@ -1963,21 +2099,74 @@ def create_video(kuchikomi_data, theme, temp_dir, output_path):
     print("動画を結合中...")
     final_video = concatenate_videoclips(clips, method="compose")
 
-    print(f"動画を書き出し中: {output_path}")
-    final_video.write_videofile(
-        str(output_path),
-        fps=24,
-        codec="libx264",
-        audio_codec="aac",
-        temp_audiofile=str(temp_dir / "temp_audio.m4a"),
-        remove_temp=True,
-        logger="bar"
-    )
+    if USE_MODAL_GPU:
+        # Modal GPU エンコード
+        print(f"動画を書き出し中（Modal GPU）: {output_path}")
+        import base64
 
-    # クリップをクローズ
-    for clip in clips:
-        clip.close()
-    final_video.close()
+        # 一時ファイルにMoviePyで書き出し（高速プリセット）
+        temp_video_path = str(temp_dir / "temp_video_for_modal.mp4")
+        final_video.write_videofile(
+            temp_video_path,
+            fps=24,
+            codec="libx264",
+            preset="ultrafast",
+            audio_codec="aac",
+            temp_audiofile=str(temp_dir / "temp_audio.m4a"),
+            remove_temp=True,
+            logger="bar"
+        )
+
+        # クリップをクローズ（メモリ解放）
+        for clip in clips:
+            clip.close()
+        final_video.close()
+
+        # Modal GPUで再エンコード（高品質）
+        try:
+            import modal
+            print("  [Modal] GPU再エンコード開始...")
+
+            # modal_video_kuchikomi関数を呼び出し
+            encode_video_kuchikomi = modal.Function.from_name("nenkin-video", "encode_video_kuchikomi")
+
+            with open(temp_video_path, "rb") as f:
+                video_base64 = base64.b64encode(f.read()).decode()
+
+            output_name = os.path.basename(str(output_path))
+            video_bytes = encode_video_kuchikomi.remote(video_base64, output_name)
+
+            with open(str(output_path), "wb") as f:
+                f.write(video_bytes)
+
+            print(f"✓ 動画生成完了 (Modal GPU): {output_path}")
+
+            # 一時ファイル削除
+            if os.path.exists(temp_video_path):
+                os.remove(temp_video_path)
+
+        except Exception as e:
+            print(f"  ⚠ Modal GPUエンコード失敗、ローカルファイルを使用: {e}")
+            # Modal失敗時は一時ファイルをそのまま使用
+            import shutil
+            shutil.move(temp_video_path, str(output_path))
+    else:
+        # ローカル CPU エンコード
+        print(f"動画を書き出し中（ローカル）: {output_path}")
+        final_video.write_videofile(
+            str(output_path),
+            fps=24,
+            codec="libx264",
+            audio_codec="aac",
+            temp_audiofile=str(temp_dir / "temp_audio.m4a"),
+            remove_temp=True,
+            logger="bar"
+        )
+
+        # クリップをクローズ
+        for clip in clips:
+            clip.close()
+        final_video.close()
 
     return output_path
 
