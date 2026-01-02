@@ -3,6 +3,9 @@ name: Update .env file
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   update-env:
     runs-on: ubuntu-latest
@@ -10,6 +13,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate .env file
         env:
