@@ -1196,8 +1196,8 @@ def create_talk_with_topic_frame(rank, percent, topic, speaker, subtitle_text, t
     subtitle_height = 180
     subtitle_y = HEIGHT - subtitle_height
 
-    # 半透明の黒背景 - パターンA: 黄色ゴールド (rgba(0,0,0,0.95))
-    subtitle_bg = Image.new('RGBA', (WIDTH, subtitle_height), (0, 0, 0, 242))  # 0.95 * 255 ≈ 242
+    # 薄いピンクベージュ背景 rgba(255, 228, 225, 0.9)
+    subtitle_bg = Image.new('RGBA', (WIDTH, subtitle_height), (255, 228, 225, 230))  # 0.9 * 255 ≈ 230
     img.paste(subtitle_bg, (0, subtitle_y), subtitle_bg)
 
     # 字幕テキスト
@@ -1206,10 +1206,9 @@ def create_talk_with_topic_frame(rank, percent, topic, speaker, subtitle_text, t
         # 話者名＋テキスト
         speaker_name = "カツミ" if speaker == "katsumi" else "ヒロシ"
 
-        # 話者名の色
-        name_color = (233, 30, 99) if speaker == "katsumi" else (33, 150, 243)  # カツミ=ピンク、ヒロシ=水色
-        body_color = (255, 215, 0)  # パターンA: 黄色ゴールド #FFD700
-        outline_range = 2  # パターンA: 黒2px
+        # 話者名の色: カツミ=ピンク #FF69B4、ヒロシ=青 #0066CC
+        name_color = (255, 105, 180) if speaker == "katsumi" else (0, 102, 204)
+        body_color = (51, 51, 51)  # メインテキスト: 黒 #333333
 
         # 折り返し処理
         max_text_width = WIDTH - 100
@@ -1226,29 +1225,17 @@ def create_talk_with_topic_frame(rank, percent, topic, speaker, subtitle_text, t
             # 最初の行は話者名と本文を分けて描画
             if i == 0 and "：" in line:
                 parts = line.split("：", 1)
-                # 話者名部分（黒縁取り）
-                for ox in range(-outline_range, outline_range + 1):
-                    for oy in range(-outline_range, outline_range + 1):
-                        if ox != 0 or oy != 0:
-                            draw.text((line_x + ox, line_y + oy), parts[0] + "：", fill=(0, 0, 0), font=subtitle_font)
+                # 話者名部分（縁取りなし）
                 draw.text((line_x, line_y), parts[0] + "：", fill=name_color, font=subtitle_font)
 
                 # 本文部分の開始位置を計算
                 name_bbox = draw.textbbox((0, 0), parts[0] + "：", font=subtitle_font)
                 body_x = line_x + (name_bbox[2] - name_bbox[0])
 
-                # 本文部分（黒縁取り）
-                for ox in range(-outline_range, outline_range + 1):
-                    for oy in range(-outline_range, outline_range + 1):
-                        if ox != 0 or oy != 0:
-                            draw.text((body_x + ox, line_y + oy), parts[1], fill=(0, 0, 0), font=subtitle_font)
+                # 本文部分（縁取りなし）
                 draw.text((body_x, line_y), parts[1], fill=body_color, font=subtitle_font)
             else:
-                # 2行目以降は本文のみ
-                for ox in range(-outline_range, outline_range + 1):
-                    for oy in range(-outline_range, outline_range + 1):
-                        if ox != 0 or oy != 0:
-                            draw.text((line_x + ox, line_y + oy), line, fill=(0, 0, 0), font=subtitle_font)
+                # 2行目以降は本文のみ（縁取りなし）
                 draw.text((line_x, line_y), line, fill=body_color, font=subtitle_font)
 
     # === キャラクター（揺れなし）===
