@@ -1208,7 +1208,7 @@ def create_talk_with_topic_frame(rank, percent, topic, speaker, subtitle_text, t
 
         # 話者名の色: カツミ=ピンク #FF69B4、ヒロシ=青 #0066CC
         name_color = (255, 105, 180) if speaker == "katsumi" else (0, 102, 204)
-        body_color = (51, 51, 51)  # メインテキスト: 黒 #333333
+        body_color = (139, 69, 19)  # メインテキスト: 茶色 #8B4513
 
         # 折り返し処理
         max_text_width = WIDTH - 100
