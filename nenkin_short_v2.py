@@ -650,33 +650,29 @@ def generate_table_image(table_data: dict, output_path: str):
         cell_font = title_font
         footer_font = title_font
 
-    # 1行目: screen_hook（上部、赤、太い黒縁取り+白影）
+    # 1行目: screen_hook（上部、赤、白縁取り）
     screen_hook = table_data.get("screen_hook", "知らないと損！")
     hook_y = 60
 
-    # 太い縁取り（黒、5px）
-    outline_color = '#000000'
-    outline_width = 5
+    # 白縁取り（4px）
+    outline_color = '#FFFFFF'
+    outline_width = 4
     for dx in range(-outline_width, outline_width + 1):
         for dy in range(-outline_width, outline_width + 1):
             if dx != 0 or dy != 0:
                 draw.text((width//2 + dx, hook_y + dy), screen_hook, fill=outline_color, font=title_font, anchor="mm")
-    # 影（白、右下）
-    draw.text((width//2 + 4, hook_y + 4), screen_hook, fill='#FFFFFF', font=title_font, anchor="mm")
     # 本体（赤）
     draw.text((width//2, hook_y), screen_hook, fill='#FF0000', font=title_font, anchor="mm")
 
-    # 2行目: screen_theme + 【年金1分裏情報】（太い黒縁取り+白影）
+    # 2行目: screen_theme + 【年金1分裏情報】（赤、白縁取り）
     screen_theme = table_data.get("screen_theme", "")
     theme_text = f"{screen_theme}【年金1分裏情報】" if screen_theme else "【年金1分裏情報】"
     theme_y = 130
-    # 太い縁取り（黒、4px）
+    # 白縁取り（4px）
     for dx in range(-4, 5):
         for dy in range(-4, 5):
             if dx != 0 or dy != 0:
-                draw.text((width//2 + dx, theme_y + dy), theme_text, fill='#000000', font=subtitle_font, anchor="mm")
-    # 影（白）
-    draw.text((width//2 + 3, theme_y + 3), theme_text, fill='#FFFFFF', font=subtitle_font, anchor="mm")
+                draw.text((width//2 + dx, theme_y + dy), theme_text, fill='#FFFFFF', font=subtitle_font, anchor="mm")
     # 本体（赤）
     draw.text((width//2, theme_y), theme_text, fill='#FF0000', font=subtitle_font, anchor="mm")
 
