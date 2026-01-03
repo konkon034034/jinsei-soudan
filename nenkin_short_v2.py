@@ -650,7 +650,7 @@ def generate_table_image(table_data: dict, output_path: str):
         cell_font = title_font
         footer_font = title_font
 
-    # 1行目: screen_hook（上部、黄色、太い黒縁取り+白影）
+    # 1行目: screen_hook（上部、赤、太い黒縁取り+白影）
     screen_hook = table_data.get("screen_hook", "知らないと損！")
     hook_y = 60
 
@@ -663,8 +663,8 @@ def generate_table_image(table_data: dict, output_path: str):
                 draw.text((width//2 + dx, hook_y + dy), screen_hook, fill=outline_color, font=title_font, anchor="mm")
     # 影（白、右下）
     draw.text((width//2 + 4, hook_y + 4), screen_hook, fill='#FFFFFF', font=title_font, anchor="mm")
-    # 本体（黄色）
-    draw.text((width//2, hook_y), screen_hook, fill='#FFD700', font=title_font, anchor="mm")
+    # 本体（赤）
+    draw.text((width//2, hook_y), screen_hook, fill='#FF0000', font=title_font, anchor="mm")
 
     # 2行目: screen_theme + 【年金1分裏情報】（太い黒縁取り+白影）
     screen_theme = table_data.get("screen_theme", "")
@@ -677,8 +677,8 @@ def generate_table_image(table_data: dict, output_path: str):
                 draw.text((width//2 + dx, theme_y + dy), theme_text, fill='#000000', font=subtitle_font, anchor="mm")
     # 影（白）
     draw.text((width//2 + 3, theme_y + 3), theme_text, fill='#FFFFFF', font=subtitle_font, anchor="mm")
-    # 本体（黄色）
-    draw.text((width//2, theme_y), theme_text, fill='#FFFF00', font=subtitle_font, anchor="mm")
+    # 本体（赤）
+    draw.text((width//2, theme_y), theme_text, fill='#FF0000', font=subtitle_font, anchor="mm")
 
     # 表の描画
     headers = table_data.get("headers", [])
@@ -692,13 +692,13 @@ def generate_table_image(table_data: dict, output_path: str):
     num_cols = len(headers)
     num_rows = len(rows)
 
-    # 表のサイズと位置
-    table_width = width - 80
+    # 表のサイズと位置（左右に余裕を持たせる）
+    table_width = width - 120  # 左右60pxずつマージン
     cell_height = 60
     header_height = 70
     table_height = header_height + cell_height * num_rows
 
-    table_x = 40
+    table_x = 60  # 左マージン60px
     table_y = 220
 
     cell_width = table_width // num_cols
