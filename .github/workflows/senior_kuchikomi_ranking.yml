@@ -136,7 +136,7 @@ jobs:
           ls -la output/
 
       - name: YouTubeにアップロード
-        if: success() && github.event.inputs.auto_upload == 'true'
+        if: success() && (github.event_name == 'schedule' || github.event.inputs.auto_upload == 'true')
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
@@ -172,6 +172,7 @@ jobs:
         if: success()
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          IS_SCHEDULED: ${{ github.event_name == 'schedule' }}
           AUTO_UPLOAD: ${{ github.event.inputs.auto_upload || 'false' }}
         run: |
           if [ -n "$DISCORD_WEBHOOK_URL" ]; then
@@ -184,12 +185,15 @@ jobs:
               VIDEO_TITLE=$(cat video_title.txt)
             fi
 
-            if [ "$AUTO_UPLOAD" = "true" ] && [[ "$VIDEO_URL" == https://*youtube.com/* ]]; then
-              curl -X POST "$DISCORD_WEBHOOK_URL" \
-                -H "Content-Type: application/json" \
-                -d "{
-                  \"content\": \"✅ **シニア口コミランキング動画投稿完了！**\n━━━━━━━━━━━━━━━━━━\n\n📺 動画URL: ${VIDEO_URL}\n📝 タイトル: ${VIDEO_TITLE}\n\n━━━━━━━━━━━━━━━━━━\"
-                }"
+            # スケジュール実行 または auto_upload=true の場合はYouTubeアップロード済み
+            if [ "$IS_SCHEDULED" = "true" ] || [ "$AUTO_UPLOAD" = "true" ]; then
+              if [[ "$VIDEO_URL" == https://*youtube.com/* ]]; then
+                curl -X POST "$DISCORD_WEBHOOK_URL" \
+                  -H "Content-Type: application/json" \
+                  -d "{
+                    \"content\": \"✅ **シニア口コミランキング動画投稿完了！**\n━━━━━━━━━━━━━━━━━━\n\n📺 動画URL: ${VIDEO_URL}\n📝 タイトル: ${VIDEO_TITLE}\n\n━━━━━━━━━━━━━━━━━━\"
+                  }"
+              fi
             else
               curl -X POST "$DISCORD_WEBHOOK_URL" \
                 -H "Content-Type: application/json" \
