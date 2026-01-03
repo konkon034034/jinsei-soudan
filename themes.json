@@ -1,0 +1,22 @@
+{
+  "themes": [
+    {
+      "id": "black_company",
+      "title": "入社して後悔した会社ランキング",
+      "target": "シニア層",
+      "count": 10
+    },
+    {
+      "id": "good_company",
+      "title": "働いて良かった会社ランキング",
+      "target": "シニア層",
+      "count": 10
+    },
+    {
+      "id": "quit_company",
+      "title": "辞めて正解だった会社ランキング",
+      "target": "シニア層",
+      "count": 10
+    }
+  ]
+}
