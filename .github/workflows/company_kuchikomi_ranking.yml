@@ -153,15 +153,28 @@ jobs:
           echo "=== 会社口コミランキング動画生成 ==="
           THEME="${{ github.event.inputs.theme || '0' }}"
           COUNT="${{ github.event.inputs.count || '5' }}"
-          echo "テーマ: $THEME, 件数: $COUNT"
-          python company_kuchikomi_ranking.py --script latest --theme "$THEME" --count "$COUNT"
+          AUTO_UPLOAD="${{ github.event.inputs.auto_upload || 'false' }}"
+
+          # スケジュール実行時は自動アップロード
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            AUTO_UPLOAD="true"
+          fi
+
+          echo "テーマ: $THEME, 件数: $COUNT, 自動アップロード: $AUTO_UPLOAD"
+
+          if [ "$AUTO_UPLOAD" = "true" ]; then
+            python company_kuchikomi_ranking.py --script latest --theme "$THEME" --count "$COUNT" --auto-upload
+          else
+            python company_kuchikomi_ranking.py --script latest --theme "$THEME" --count "$COUNT"
+          fi
 
           echo ""
           echo "=== 生成された動画 ==="
           ls -la output/
+          ls -la company_kuchikomi_*.mp4 2>/dev/null || true
 
-      - name: YouTubeにアップロード
-        if: success() && github.event.inputs.auto_upload == 'true'
+      - name: YouTubeにアップロード（レガシー）
+        if: false  # Pythonスクリプト内でアップロードするため無効化
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}

@@ -12,6 +12,7 @@ import json
 import random
 import tempfile
 import subprocess
+import requests
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -23,6 +24,8 @@ from moviepy import (
     ImageClip, AudioFileClip, concatenate_videoclips,
     CompositeVideoClip, TextClip
 )
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
 # ========== 設定 ==========
 BASE_DIR = Path(__file__).parent
@@ -2518,6 +2521,74 @@ def post_youtube_comment(video_id: str, comment_text: str) -> bool:
         return False
 
 
+def upload_to_youtube(video_path: str, title: str, description: str, tags: list) -> str:
+    """YouTubeにアップロード（TOKEN_26、公開）"""
+    client_id = os.environ.get("YOUTUBE_CLIENT_ID")
+    client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
+    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_26")
+
+    if not all([client_id, client_secret, refresh_token]):
+        print("  ⚠ YouTube認証情報が不足しています")
+        return None
+
+    # アクセストークン取得
+    response = requests.post("https://oauth2.googleapis.com/token", data={
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token"
+    })
+    access_token = response.json().get("access_token")
+    if not access_token:
+        print(f"  ⚠ アクセストークン取得失敗: {response.json()}")
+        return None
+
+    from google.oauth2.credentials import Credentials as OAuthCredentials
+    creds = OAuthCredentials(
+        token=access_token,
+        refresh_token=refresh_token,
+        client_id=client_id,
+        client_secret=client_secret,
+        token_uri="https://oauth2.googleapis.com/token"
+    )
+    youtube = build("youtube", "v3", credentials=creds)
+
+    body = {
+        "snippet": {
+            "title": title,
+            "description": description,
+            "tags": tags,
+            "categoryId": "22"  # People & Blogs
+        },
+        "status": {
+            "privacyStatus": "public",
+            "selfDeclaredMadeForKids": False
+        }
+    }
+
+    media = MediaFileUpload(video_path, mimetype="video/mp4", resumable=True)
+    request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
+
+    response = None
+    while response is None:
+        status, response = request.next_chunk()
+        if status:
+            print(f"  アップロード進捗: {int(status.progress() * 100)}%")
+
+    video_id = response["id"]
+    url = f"https://www.youtube.com/watch?v={video_id}"
+
+    print("\n" + "=" * 40)
+    print("YouTube投稿完了!")
+    print("=" * 40)
+    print(f"動画URL: {url}")
+    print(f"タイトル: {title}")
+    print(f"公開設定: 公開")
+    print("=" * 40)
+
+    return url
+
+
 def main():
     """メイン処理"""
     import argparse
@@ -2530,6 +2601,7 @@ def main():
     parser.add_argument("--skip-api", action="store_true", help="API呼び出しをスキップ（デバッグ用）")
     parser.add_argument("--script", type=str, default=None, help="kuchikomi_scraper.pyで生成したJSONファイルパス")
     parser.add_argument("--script-index", type=int, default=0, help="JSONが配列の場合のインデックス（デフォルト: 0）")
+    parser.add_argument("--auto-upload", action="store_true", help="YouTubeに自動アップロード")
     args = parser.parse_args()
 
     # 出力ディレクトリ作成
@@ -2598,9 +2670,24 @@ def main():
             print(f"✅ 完了! 出力ファイル: {output_path}")
             print(f"  Artifactsファイル: {artifact_file}")
 
+            # YouTubeアップロード
+            video_url = f"file://{os.path.abspath(artifact_file)}"
+            if args.auto_upload:
+                print("\n=== YouTubeアップロード ===")
+                description = f"""【{theme_title}】
+
+会社の口コミをランキング形式でお届けします。
+
+#会社 #口コミ #ランキング #ブラック企業
+"""
+                tags = ["会社", "口コミ", "ランキング", "ブラック企業", "転職", "就職"]
+                url = upload_to_youtube(str(output_path), theme_title, description, tags)
+                if url:
+                    video_url = url
+
             # 通知用にファイル出力
             with open("video_url.txt", "w") as f:
-                f.write(f"file://{os.path.abspath(artifact_file)}")
+                f.write(video_url)
             with open("video_title.txt", "w") as f:
                 f.write(theme_title)
 
