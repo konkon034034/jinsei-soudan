@@ -4,6 +4,8 @@ on:
   schedule:
     # 毎日 JST 10:00 に実行 (UTC 1:00)
     - cron: '0 1 * * *'
+    # 毎日 JST 16:00 に実行 (UTC 7:00)
+    - cron: '0 7 * * *'
   workflow_dispatch:
     inputs:
       test_mode:
