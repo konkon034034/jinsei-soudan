@@ -250,7 +250,7 @@ jobs:
           fi
 
       - name: エラー時にDiscord通知
-        if: false  # 通知無効化
+        if: failure()
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |

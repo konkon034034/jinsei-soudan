@@ -49,11 +49,13 @@ jobs:
           python youtube_analyzer.py "${{ steps.url.outputs.url }}" -o remake_data.json
           cat remake_data.json
 
-      - name: Notify Discord
-        if: false  # 通知無効化
+      - name: エラー時にDiscord通知
+        if: failure()
         env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          curl -X POST "$DISCORD_WEBHOOK" \
-            -H "Content-Type: application/json" \
-            -d '{"content":"🎬 リメイク処理完了: ${{ steps.url.outputs.url }}"}'
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{\"content\": \"❌ **リメイク動画自動処理** 失敗\n━━━━━━━━━━━━━━━━━━\n\n🔗 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\n━━━━━━━━━━━━━━━━━━\"}"
+          fi
