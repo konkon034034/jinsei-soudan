@@ -12,7 +12,8 @@ import json
 import random
 import tempfile
 import subprocess
-import requests
+import time
+import threading
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -24,8 +25,6 @@ from moviepy import (
     ImageClip, AudioFileClip, concatenate_videoclips,
     CompositeVideoClip, TextClip
 )
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
 
 # ========== 設定 ==========
 BASE_DIR = Path(__file__).parent
@@ -76,6 +75,60 @@ VOICE_CONFIG = {
 # テストモード（口コミ件数）
 TEST_MODE = os.environ.get("TEST_MODE", "false").lower() == "true"
 TEST_COUNT = 5  # テスト時の口コミ件数
+
+
+class GeminiKeyManager:
+    """Gemini APIキー管理（TTS用レート制限対策）"""
+    def __init__(self):
+        self.keys = []
+        base_key = os.environ.get("GEMINI_API_KEY")
+        if base_key:
+            self.keys.append(base_key)
+        # GEMINI_API_KEY_1 〜 GEMINI_API_KEY_42
+        for i in range(1, 43):
+            key = os.environ.get(f"GEMINI_API_KEY_{i}")
+            if key:
+                self.keys.append(key)
+        self.current_index = 0
+        self.lock = threading.Lock()
+        self.key_429_counts = {}
+        print(f"  [KeyManager] {len(self.keys)}個のAPIキーを読み込みました")
+
+    def get_next_key(self):
+        """ラウンドロビンで次のキーを取得"""
+        with self.lock:
+            if not self.keys:
+                return None, "KEY_NONE"
+            key = self.keys[self.current_index]
+            key_name = f"KEY_{self.current_index}"
+            self.current_index = (self.current_index + 1) % len(self.keys)
+            return key, key_name
+
+    def get_key_by_index(self, index: int):
+        """インデックスでキーを取得"""
+        if not self.keys:
+            return None
+        return self.keys[index % len(self.keys)]
+
+    def mark_429_error(self, api_key: str):
+        """429エラーを記録"""
+        with self.lock:
+            self.key_429_counts[api_key] = self.key_429_counts.get(api_key, 0) + 1
+
+    def get_key_count(self):
+        """キー数を取得"""
+        return len(self.keys)
+
+
+# グローバルKeyManager
+_key_manager = None
+
+def get_key_manager():
+    """KeyManagerのシングルトンを取得"""
+    global _key_manager
+    if _key_manager is None:
+        _key_manager = GeminiKeyManager()
+    return _key_manager
 
 
 def hex_to_rgb(hex_color):
@@ -1675,66 +1728,113 @@ talk_linesでの掛け合いは以下のキャラ設定に沿って:
     return json.loads(response_text.strip())
 
 
-def generate_tts_audio(text, voice, output_path):
-    """Gemini TTSで音声を生成（新しいgoogle.genai APIを使用）"""
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY環境変数が設定されていません")
+def generate_tts_audio(text, voice, output_path, api_key=None, max_retries=3):
+    """Gemini TTSで音声を生成（リトライ＆APIキーローテーション対応）
 
-    # 新しいgoogle.genai Clientを使用
-    client = genai_new.Client(api_key=api_key)
+    Args:
+        text: 読み上げテキスト
+        voice: 声（Kore=女性、Puck=男性）
+        output_path: 出力パス
+        api_key: 使用するAPIキー（Noneの場合KeyManagerから取得）
+        max_retries: 最大リトライ回数
+    """
+    key_manager = get_key_manager()
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash-preview-tts",
-        contents=text,
-        config=genai_types.GenerateContentConfig(
-            response_modalities=["AUDIO"],
-            speech_config=genai_types.SpeechConfig(
-                voice_config=genai_types.VoiceConfig(
-                    prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
-                        voice_name=voice
+    for attempt in range(max_retries):
+        # APIキー取得
+        if api_key is None:
+            current_key, key_name = key_manager.get_next_key()
+        else:
+            current_key = api_key
+            key_name = "PROVIDED"
+
+        if not current_key:
+            raise ValueError("GEMINI_API_KEY環境変数が設定されていません")
+
+        try:
+            # 新しいgoogle.genai Clientを使用
+            client = genai_new.Client(api_key=current_key)
+
+            response = client.models.generate_content(
+                model="gemini-2.5-flash-preview-tts",
+                contents=text,
+                config=genai_types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=genai_types.SpeechConfig(
+                        voice_config=genai_types.VoiceConfig(
+                            prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
+                                voice_name=voice
+                            )
+                        )
                     )
                 )
             )
-        )
-    )
 
-    audio_data = response.candidates[0].content.parts[0].inline_data.data
-    mime_type = response.candidates[0].content.parts[0].inline_data.mime_type
+            audio_data = response.candidates[0].content.parts[0].inline_data.data
+            mime_type = response.candidates[0].content.parts[0].inline_data.mime_type
 
-    # MP3として一時保存してFFmpegでWAVに変換
-    output_path_str = str(output_path)
-    if mime_type and "mp3" in mime_type:
-        # MP3をWAVに変換
-        mp3_path = output_path_str.replace(".wav", ".mp3")
-        with open(mp3_path, "wb") as f:
-            f.write(audio_data)
-        # ffmpegで変換
-        subprocess.run(
-            ["ffmpeg", "-y", "-i", mp3_path, "-ar", "44100", "-ac", "2", output_path_str],
-            capture_output=True
-        )
-        os.remove(mp3_path)
-    else:
-        # PCM/raw audioの場合、ffmpegでWAVに変換
-        raw_path = output_path_str.replace(".wav", ".raw")
-        with open(raw_path, "wb") as f:
-            f.write(audio_data)
-        # PCM 24kHz mono -> WAV 44.1kHz stereo
-        subprocess.run(
-            ["ffmpeg", "-y", "-f", "s16le", "-ar", "24000", "-ac", "1", "-i", raw_path,
-             "-ar", "44100", "-ac", "2", output_path_str],
-            capture_output=True
-        )
-        os.remove(raw_path)
+            # MP3として一時保存してFFmpegでWAVに変換
+            output_path_str = str(output_path)
+            if mime_type and "mp3" in mime_type:
+                # MP3をWAVに変換
+                mp3_path = output_path_str.replace(".wav", ".mp3")
+                with open(mp3_path, "wb") as f:
+                    f.write(audio_data)
+                # ffmpegで変換
+                subprocess.run(
+                    ["ffmpeg", "-y", "-i", mp3_path, "-ar", "44100", "-ac", "2", output_path_str],
+                    capture_output=True
+                )
+                if os.path.exists(mp3_path):
+                    os.remove(mp3_path)
+            else:
+                # PCM/raw audioの場合、ffmpegでWAVに変換
+                raw_path = output_path_str.replace(".wav", ".raw")
+                with open(raw_path, "wb") as f:
+                    f.write(audio_data)
+                # PCM 24kHz mono -> WAV 44.1kHz stereo
+                subprocess.run(
+                    ["ffmpeg", "-y", "-f", "s16le", "-ar", "24000", "-ac", "1", "-i", raw_path,
+                     "-ar", "44100", "-ac", "2", output_path_str],
+                    capture_output=True
+                )
+                if os.path.exists(raw_path):
+                    os.remove(raw_path)
 
-    return output_path
+            return output_path
+
+        except Exception as e:
+            error_str = str(e)
+            is_429 = "429" in error_str or "RESOURCE_EXHAUSTED" in error_str
+
+            if is_429:
+                key_manager.mark_429_error(current_key)
+                # 429エラーは別のキーでリトライ
+                if attempt < max_retries - 1:
+                    wait_time = 2 + attempt * 2  # 2, 4, 6秒
+                    print(f"    [429] {key_name} レート制限 → {wait_time}秒待機して別キーでリトライ")
+                    time.sleep(wait_time)
+                    api_key = None  # 次は別のキーを使う
+                    continue
+            else:
+                # その他のエラー
+                if attempt < max_retries - 1:
+                    print(f"    [エラー] {key_name}: {error_str[:50]}... → リトライ")
+                    time.sleep(1)
+                    continue
+
+            # 最終リトライも失敗
+            raise Exception(f"TTS生成失敗 ({key_name}): {error_str}")
 
 
 def generate_all_audio(kuchikomi_data, theme_title, temp_dir):
-    """全ての音声を並列生成（ランキングカードはジングル使用のためTTS不要）"""
+    """全ての音声を順次生成（レート制限対策でAPIキーローテーション使用）"""
     audio_files = []
     tasks = []
+
+    # KeyManagerを初期化
+    key_manager = get_key_manager()
+    key_count = key_manager.get_key_count()
 
     # 口コミ読み上げの音声（ランキングカードはジングルを使うのでイントロ不要）
     for item in kuchikomi_data["kuchikomi"]:
@@ -1742,6 +1842,7 @@ def generate_all_audio(kuchikomi_data, theme_title, temp_dir):
         text = item["text"]
         reader = item["reader"]
         voice = VOICE_CONFIG[reader]
+        speaker_name = "カツミ" if reader == "katsumi" else "ヒロシ"
 
         # 口コミ本文
         content_path = temp_dir / f"kuchikomi_{num}.wav"
@@ -1751,6 +1852,8 @@ def generate_all_audio(kuchikomi_data, theme_title, temp_dir):
             "num": num,
             "text": text,
             "voice": voice,
+            "speaker": reader,
+            "speaker_name": speaker_name,
             "path": content_path
         })
 
@@ -1763,6 +1866,7 @@ def generate_all_audio(kuchikomi_data, theme_title, temp_dir):
             speaker = line["speaker"]
             line_text = line["text"]
             voice = VOICE_CONFIG[speaker]
+            speaker_name = "カツミ" if speaker == "katsumi" else "ヒロシ"
             line_path = temp_dir / f"talk_{num}_{line_idx}.wav"
 
             tasks.append({
@@ -1770,27 +1874,46 @@ def generate_all_audio(kuchikomi_data, theme_title, temp_dir):
                 "num": num,
                 "line_idx": line_idx,
                 "speaker": speaker,
+                "speaker_name": speaker_name,
                 "text": line_text,
                 "voice": voice,
                 "path": line_path
             })
 
-    # 並列生成
-    print(f"音声を生成中... ({len(tasks)}件)")
+    print(f"音声を生成中... ({len(tasks)}件, APIキー: {key_count}個)")
+    print("=" * 60)
 
-    def generate_one(task):
+    # 順次生成（APIキーローテーション）
+    success_count = 0
+    fail_count = 0
+
+    for i, task in enumerate(tasks):
+        # 詳細ログ出力
+        if task["type"] == "content":
+            log_prefix = f"[{i+1}/{len(tasks)}] 口コミ{task['num']}"
+        else:
+            log_prefix = f"[{i+1}/{len(tasks)}] トーク{task['num']}-{task['line_idx']}"
+
+        print(f"  {log_prefix}: {task['speaker_name']}（{task['voice']}）「{task['text'][:20]}...」")
+
         try:
             generate_tts_audio(task["text"], task["voice"], task["path"])
-            print(f"  生成完了: {task['path'].name}")
-            return task
+            print(f"    → 生成完了: {task['path'].name}")
+            success_count += 1
         except Exception as e:
-            print(f"  エラー: {task['path'].name} - {e}")
-            return None
+            print(f"    → エラー: {e}")
+            fail_count += 1
 
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        results = list(executor.map(generate_one, tasks))
+        # レート制限対策: APIキー数に応じて待機
+        # 10キーあれば待機不要、少ないキーほど待機
+        if key_count < 10 and i < len(tasks) - 1:
+            wait_time = max(0.5, 6.0 / max(1, key_count))
+            time.sleep(wait_time)
 
-    return [r for r in results if r is not None]
+    print("=" * 60)
+    print(f"音声生成完了: 成功 {success_count}/{len(tasks)}, 失敗 {fail_count}")
+
+    return [t for t in tasks if Path(t["path"]).exists()]
 
 
 def get_audio_duration(audio_path):
@@ -2521,74 +2644,6 @@ def post_youtube_comment(video_id: str, comment_text: str) -> bool:
         return False
 
 
-def upload_to_youtube(video_path: str, title: str, description: str, tags: list) -> str:
-    """YouTubeにアップロード（TOKEN_26、公開）"""
-    client_id = os.environ.get("YOUTUBE_CLIENT_ID")
-    client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
-    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN_26")
-
-    if not all([client_id, client_secret, refresh_token]):
-        print("  ⚠ YouTube認証情報が不足しています")
-        return None
-
-    # アクセストークン取得
-    response = requests.post("https://oauth2.googleapis.com/token", data={
-        "client_id": client_id,
-        "client_secret": client_secret,
-        "refresh_token": refresh_token,
-        "grant_type": "refresh_token"
-    })
-    access_token = response.json().get("access_token")
-    if not access_token:
-        print(f"  ⚠ アクセストークン取得失敗: {response.json()}")
-        return None
-
-    from google.oauth2.credentials import Credentials as OAuthCredentials
-    creds = OAuthCredentials(
-        token=access_token,
-        refresh_token=refresh_token,
-        client_id=client_id,
-        client_secret=client_secret,
-        token_uri="https://oauth2.googleapis.com/token"
-    )
-    youtube = build("youtube", "v3", credentials=creds)
-
-    body = {
-        "snippet": {
-            "title": title,
-            "description": description,
-            "tags": tags,
-            "categoryId": "22"  # People & Blogs
-        },
-        "status": {
-            "privacyStatus": "public",
-            "selfDeclaredMadeForKids": False
-        }
-    }
-
-    media = MediaFileUpload(video_path, mimetype="video/mp4", resumable=True)
-    request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
-
-    response = None
-    while response is None:
-        status, response = request.next_chunk()
-        if status:
-            print(f"  アップロード進捗: {int(status.progress() * 100)}%")
-
-    video_id = response["id"]
-    url = f"https://www.youtube.com/watch?v={video_id}"
-
-    print("\n" + "=" * 40)
-    print("YouTube投稿完了!")
-    print("=" * 40)
-    print(f"動画URL: {url}")
-    print(f"タイトル: {title}")
-    print(f"公開設定: 公開")
-    print("=" * 40)
-
-    return url
-
-
 def main():
     """メイン処理"""
     import argparse
@@ -2601,7 +2656,6 @@ def main():
     parser.add_argument("--skip-api", action="store_true", help="API呼び出しをスキップ（デバッグ用）")
     parser.add_argument("--script", type=str, default=None, help="kuchikomi_scraper.pyで生成したJSONファイルパス")
     parser.add_argument("--script-index", type=int, default=0, help="JSONが配列の場合のインデックス（デフォルト: 0）")
-    parser.add_argument("--auto-upload", action="store_true", help="YouTubeに自動アップロード")
     args = parser.parse_args()
 
     # 出力ディレクトリ作成
@@ -2670,24 +2724,9 @@ def main():
             print(f"✅ 完了! 出力ファイル: {output_path}")
             print(f"  Artifactsファイル: {artifact_file}")
 
-            # YouTubeアップロード
-            video_url = f"file://{os.path.abspath(artifact_file)}"
-            if args.auto_upload:
-                print("\n=== YouTubeアップロード ===")
-                description = f"""【{theme_title}】
-
-会社の口コミをランキング形式でお届けします。
-
-#会社 #口コミ #ランキング #ブラック企業
-"""
-                tags = ["会社", "口コミ", "ランキング", "ブラック企業", "転職", "就職"]
-                url = upload_to_youtube(str(output_path), theme_title, description, tags)
-                if url:
-                    video_url = url
-
             # 通知用にファイル出力
             with open("video_url.txt", "w") as f:
-                f.write(video_url)
+                f.write(f"file://{os.path.abspath(artifact_file)}")
             with open("video_title.txt", "w") as f:
                 f.write(theme_title)
 
