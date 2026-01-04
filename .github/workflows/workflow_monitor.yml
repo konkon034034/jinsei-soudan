@@ -1,0 +1,48 @@
+name: ワークフロー監視
+
+on:
+  schedule:
+    # 毎日22:00 JST = UTC 13:00
+    - cron: '0 13 * * *'
+  workflow_dispatch:  # 手動実行用
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Python環境をセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: 依存関係をインストール
+        run: |
+          pip install requests
+
+      - name: ワークフロー監視を実行
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python workflow_monitor.py
+
+      - name: エラー時にDiscord通知
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"content\": \"❌ **ワークフロー監視システム自体がエラー**\n━━━━━━━━━━━━━━━━━━\n\n🔗 ワークフロー: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\n━━━━━━━━━━━━━━━━━━\"
+              }"
+          fi
