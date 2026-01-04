@@ -2,10 +2,8 @@ name: 会社口コミランキング動画自動生成
 
 on:
   schedule:
-    # 毎日 JST 7:00 に実行 (UTC 22:00 前日)
-    - cron: '0 22 * * *'
-    # 毎日 JST 17:00 に実行 (UTC 8:00)
-    - cron: '0 8 * * *'
+    # 毎日 JST 9:00 に実行 (UTC 0:00)
+    - cron: '0 0 * * *'
   workflow_dispatch:
     inputs:
       test_mode:
@@ -155,28 +153,15 @@ jobs:
           echo "=== 会社口コミランキング動画生成 ==="
           THEME="${{ github.event.inputs.theme || '0' }}"
           COUNT="${{ github.event.inputs.count || '5' }}"
-          AUTO_UPLOAD="${{ github.event.inputs.auto_upload || 'false' }}"
-
-          # スケジュール実行時は自動アップロード
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            AUTO_UPLOAD="true"
-          fi
-
-          echo "テーマ: $THEME, 件数: $COUNT, 自動アップロード: $AUTO_UPLOAD"
-
-          if [ "$AUTO_UPLOAD" = "true" ]; then
-            python company_kuchikomi_ranking.py --script latest --theme "$THEME" --count "$COUNT" --auto-upload
-          else
-            python company_kuchikomi_ranking.py --script latest --theme "$THEME" --count "$COUNT"
-          fi
+          echo "テーマ: $THEME, 件数: $COUNT"
+          python company_kuchikomi_ranking.py --script latest --theme "$THEME" --count "$COUNT"
 
           echo ""
           echo "=== 生成された動画 ==="
           ls -la output/
-          ls -la company_kuchikomi_*.mp4 2>/dev/null || true
 
-      - name: YouTubeにアップロード（レガシー）
-        if: false  # Pythonスクリプト内でアップロードするため無効化
+      - name: YouTubeにアップロード
+        if: success() && github.event.inputs.auto_upload == 'true'
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
@@ -210,7 +195,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: 成功時にDiscord通知
-        if: false  # 通知無効化
+        if: success()
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           AUTO_UPLOAD: ${{ github.event.inputs.auto_upload || 'false' }}
@@ -240,15 +225,15 @@ jobs:
             fi
           fi
 
-      - name: エラー時にSlack通知
+      - name: エラー時にDiscord通知
         if: failure()
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          if [ -n "$SLACK_WEBHOOK_URL" ]; then
-            curl -X POST "$SLACK_WEBHOOK_URL" \
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -X POST "$DISCORD_WEBHOOK_URL" \
               -H "Content-Type: application/json" \
               -d "{
-                \"text\": \"会社口コミランキング動画生成に失敗しました\n\nワークフロー: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+                \"content\": \"❌ **会社口コミランキング動画生成に失敗しました**\n━━━━━━━━━━━━━━━━━━\n\n🔗 ワークフロー: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\n━━━━━━━━━━━━━━━━━━\"
               }"
           fi
