@@ -84,12 +84,12 @@ jobs:
           fi
 
       - name: Discord通知（失敗）
-        if: false  # 通知無効化
+        if: failure()
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           if [ -n "$DISCORD_WEBHOOK_URL" ]; then
             curl -X POST "$DISCORD_WEBHOOK_URL" \
               -H "Content-Type: application/json" \
-              -d "{\"content\": \"❌ **${{ github.workflow }}** 失敗\n🔗 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}"
+              -d "{\"content\": \"❌ **${{ github.workflow }}** 失敗\n━━━━━━━━━━━━━━━━━━\n\n🔗 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\n━━━━━━━━━━━━━━━━━━\"}"
           fi
